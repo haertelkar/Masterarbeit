@@ -14,6 +14,7 @@ from abtem import Potential, FrozenPhonons, Probe, CTF
 from abtem.detect import AnnularDetector, PixelatedDetector
 from abtem.scan import GridScan
 from abtem.noise import poisson_noise
+import torch
 from tqdm import tqdm
 import csv
 import sys
@@ -51,8 +52,8 @@ for trainOrTest in ["train", "test"]:
             sampling=0.02,
             parametrization="kirkland"
         )
-
-        probe = Probe(semiangle_cutoff=24, energy=200e3, device="gpu")
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        probe = Probe(semiangle_cutoff=24, energy=200e3, device=device)
         probe.match_grid(potential_thick)
 
         pixelated_detector = PixelatedDetector(max_angle=120)
