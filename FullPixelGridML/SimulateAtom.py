@@ -66,7 +66,7 @@ for trainOrTest in ["train", "test"]:
             )
             measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick, pbar = False)
         element = kindsOfElements[element]
-        with open(os.path.join(f'measurements_{trainOrTest}','labels.csv', 'a', newline='')) as csvfile:
+        with open(os.path.join(f'measurements_{trainOrTest}','labels.csv'), 'a', newline='') as csvfile:
             Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
             for xCNT, difPatternRow in enumerate(measurement_thick.array):
                 for yCNT, difPattern in enumerate(difPatternRow):
