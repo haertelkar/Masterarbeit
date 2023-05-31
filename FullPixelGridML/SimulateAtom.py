@@ -19,6 +19,7 @@ from tqdm import tqdm
 import csv
 import sys
 import colorama
+import warnings
 colorama.init()
 
 kindsOfElements = {6:0, 14:1, 74:2}
@@ -56,15 +57,16 @@ for trainOrTest in ["train", "test"]:
             parametrization="kirkland",
             device=device
         )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            probe = Probe(semiangle_cutoff=24, energy=200e3, device=device)
+            probe.match_grid(potential_thick)
 
-        probe = Probe(semiangle_cutoff=24, energy=200e3, device=device)
-        probe.match_grid(potential_thick)
-
-        pixelated_detector = PixelatedDetector(max_angle=120)
-        gridscan = GridScan(
-            (0, 0), potential_thick.extent, sampling=0.2
-        )
-        measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick)
+            pixelated_detector = PixelatedDetector(max_angle=120)
+            gridscan = GridScan(
+                (0, 0), potential_thick.extent, sampling=0.2
+            )
+            measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick)
         element = kindsOfElements[element]
         with open('measurements_{trainOrTest}\\labels.csv'.format(trainOrTest = trainOrTest), 'a', newline='') as csvfile:
             Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
