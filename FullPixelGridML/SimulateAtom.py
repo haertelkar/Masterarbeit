@@ -24,6 +24,7 @@ device = "gpu" if torch.cuda.is_available() else "cpu"
 print(f"Calculating on {device}")
 
 for trainOrTest in ["train", "test"]:
+    print(f"Calculating {trainOrTest}ing data")
     with open('measurements_{trainOrTest}\\labels.csv'.format(trainOrTest = trainOrTest), 'w+', newline='') as csvfile:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         Writer.writerow(["fileName", "element", "xAtomRel", "xAtomShift", "yAtomRel", "yAtomShift", "zAtoms"])
