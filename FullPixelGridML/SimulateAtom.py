@@ -52,7 +52,8 @@ for trainOrTest in ["train", "test"]:
         potential_thick = Potential(
             atomPillar,
             sampling=0.02,
-            parametrization="kirkland"
+            parametrization="kirkland",
+            device=device
         )
 
         probe = Probe(semiangle_cutoff=24, energy=200e3, device=device)
