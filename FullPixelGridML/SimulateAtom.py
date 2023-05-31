@@ -82,7 +82,7 @@ for trainOrTest in ["train", "test"]:
                     fileName = fileName.format(trainOrTest = trainOrTest, element = element, xAtomRel = xAtomRel, xAtomShift = xAtomShift, yAtomRel = yAtomRel, yAtomShift = yAtomShift, zAtoms = zAtoms)
                     np.save(fileName,difPattern)
                     Writer.writerow([fileName.split("\\")[-1]] + [str(difParams) for difParams in [element, xAtomRel, xAtomShift, yAtomRel, yAtomShift, zAtoms]])
-        print(f'\033[{3}A')
+        print(f'\033[{2}A')
             
 # measurement_noise = poisson_noise(measurement_thick, 1e6)
 # for 
