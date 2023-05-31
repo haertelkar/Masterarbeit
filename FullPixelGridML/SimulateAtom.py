@@ -54,7 +54,7 @@ for trainOrTest in ["train", "test"]:
         )
         device = "cuda" if torch.cuda.is_available() else "cpu"
         device = "cpu"
-        print(f"Calculating on {device}")
+        print("Calculating on {}".format(device))
         probe = Probe(semiangle_cutoff=24, energy=200e3, device=device)
         probe.match_grid(potential_thick)
 
