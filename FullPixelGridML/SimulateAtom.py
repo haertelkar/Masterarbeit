@@ -18,6 +18,7 @@ import torch
 from tqdm import tqdm
 import csv
 import warnings
+import os
 
 kindsOfElements = {6:0, 14:1, 74:2}
 device = "gpu" if torch.cuda.is_available() else "cpu"
@@ -66,7 +67,7 @@ for trainOrTest in ["train", "test"]:
             )
             measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick, pbar = False)
         element = kindsOfElements[element]
-        with open('measurements_{trainOrTest}\\labels.csv'.format(trainOrTest = trainOrTest), 'a', newline='') as csvfile:
+        with open(os.path.join('measurements_{trainOrTest}\\labels.csv'.format(trainOrTest = trainOrTest), 'a', newline='')) as csvfile:
             Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
             for xCNT, difPatternRow in enumerate(measurement_thick.array):
                 for yCNT, difPattern in enumerate(difPatternRow):
@@ -76,10 +77,10 @@ for trainOrTest in ["train", "test"]:
                     yPos = yCNT * 0.2
                     xAtomRel = xAtom - xPos
                     yAtomRel = yAtom - yPos
-                    fileName = "measurements_{trainOrTest}\\{element}_{xAtomRel}_{xAtomShift}_{yAtomRel}_{yAtomShift}_{zAtoms}.npy"
+                    fileName = os.path.join(f"measurements_{trainOrTest}",f"{element}_{xAtomRel}_{xAtomShift}_{yAtomRel}_{yAtomShift}_{zAtoms}.npy")
                     fileName = fileName.format(trainOrTest = trainOrTest, element = element, xAtomRel = xAtomRel, xAtomShift = xAtomShift, yAtomRel = yAtomRel, yAtomShift = yAtomShift, zAtoms = zAtoms)
                     np.save(fileName,difPattern)
-                    Writer.writerow([fileName.split("\\")[-1]] + [str(difParams) for difParams in [element, xAtomRel, xAtomShift, yAtomRel, yAtomShift, zAtoms]])
+                    Writer.writerow([fileName.split(os.sep)[-1]] + [str(difParams) for difParams in [element, xAtomRel, xAtomShift, yAtomRel, yAtomShift, zAtoms]])
             
 # measurement_noise = poisson_noise(measurement_thick, 1e6)
 # for 
