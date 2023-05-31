@@ -18,9 +18,10 @@ import torch
 from tqdm import tqdm
 import csv
 import sys
-import colorama
+import os
+# import colorama
 import warnings
-colorama.init()
+# colorama.init()
 
 kindsOfElements = {6:0, 14:1, 74:2}
 device = "gpu" if torch.cuda.is_available() else "cpu"
@@ -82,7 +83,8 @@ for trainOrTest in ["train", "test"]:
                     fileName = fileName.format(trainOrTest = trainOrTest, element = element, xAtomRel = xAtomRel, xAtomShift = xAtomShift, yAtomRel = yAtomRel, yAtomShift = yAtomShift, zAtoms = zAtoms)
                     np.save(fileName,difPattern)
                     Writer.writerow([fileName.split("\\")[-1]] + [str(difParams) for difParams in [element, xAtomRel, xAtomShift, yAtomRel, yAtomShift, zAtoms]])
-        print(f'\033[{2}A')
+        os.system('clear') #on Linux System
+        #print(f'\033[{2}A')
             
 # measurement_noise = poisson_noise(measurement_thick, 1e6)
 # for 
