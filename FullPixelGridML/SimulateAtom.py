@@ -20,6 +20,8 @@ import csv
 import sys
 
 kindsOfElements = {6:0, 14:1, 74:2}
+device = "gpu" if torch.cuda.is_available() else "cpu"
+print(f"Calculating on {device}")
 
 for trainOrTest in ["train", "test"]:
     with open('measurements_{trainOrTest}\\labels.csv'.format(trainOrTest = trainOrTest), 'w+', newline='') as csvfile:
@@ -52,8 +54,7 @@ for trainOrTest in ["train", "test"]:
             sampling=0.02,
             parametrization="kirkland"
         )
-        device = "gpu" if torch.cuda.is_available() else "cpu"
-        print(f"Calculating on {device}")
+
         probe = Probe(semiangle_cutoff=24, energy=200e3, device=device)
         probe.match_grid(potential_thick)
 
