@@ -52,7 +52,7 @@ for trainOrTest in ["train", "test"]:
             sampling=0.02,
             parametrization="kirkland"
         )
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
         probe = Probe(semiangle_cutoff=24, energy=200e3, device=device)
         probe.match_grid(potential_thick)
 
