@@ -19,6 +19,7 @@ from tqdm import tqdm
 import csv
 import sys
 import os
+import contextlib
 # import colorama
 import warnings
 # colorama.init()
@@ -67,7 +68,7 @@ for trainOrTest in ["train", "test"]:
             gridscan = GridScan(
                 (0, 0), potential_thick.extent, sampling=0.2
             )
-            measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick)
+            measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick, pbar = False)
         element = kindsOfElements[element]
         with open('measurements_{trainOrTest}\\labels.csv'.format(trainOrTest = trainOrTest), 'a', newline='') as csvfile:
             Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
@@ -83,7 +84,6 @@ for trainOrTest in ["train", "test"]:
                     fileName = fileName.format(trainOrTest = trainOrTest, element = element, xAtomRel = xAtomRel, xAtomShift = xAtomShift, yAtomRel = yAtomRel, yAtomShift = yAtomShift, zAtoms = zAtoms)
                     np.save(fileName,difPattern)
                     Writer.writerow([fileName.split("\\")[-1]] + [str(difParams) for difParams in [element, xAtomRel, xAtomShift, yAtomRel, yAtomShift, zAtoms]])
-        os.system('clear') #on Linux System
         #print(f'\033[{2}A')
             
 # measurement_noise = poisson_noise(measurement_thick, 1e6)
