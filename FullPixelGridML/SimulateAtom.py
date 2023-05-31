@@ -33,7 +33,6 @@ for trainOrTest in ["train", "test"]:
         ylen = 5
         element = choice([6,14,74])
 
-        # for i in tqdm(range(1000)):
         xAtom = random()*xlen/3 + xlen/3  #x position of first atom (in inner third)
         yAtom = random()*ylen/3 + ylen/3 #y position of first atom (in inner third)
         zAtoms = randint(1,10) #number of atoms in z axis
