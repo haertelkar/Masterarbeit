@@ -82,7 +82,7 @@ VAL_SPLIT = 1 - TRAIN_SPLIT
 # set the device we will be using to train the model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Running computations on {device}")
-
+print("------------------------------------------------------------------")
 for modelName in models:
 	print(f"Training model {modelName}")
 
@@ -269,3 +269,5 @@ for modelName in models:
 	plt.savefig(args["version"])
 	# serialize the model to disk
 	torch.save(model, args["version"])
+
+	print("------------------------------------------------------------------")
