@@ -23,7 +23,7 @@ from torchvision.transforms import ToTensor
 from tqdm import tqdm
 
 modelName = "FullPixelGridML"
-#modelName = "unet"
+#modelName = "ZernikeBottleneck"
 #modelName = "Zernike"
 
 print(f"Training model {modelName}")
@@ -84,7 +84,7 @@ VAL_SPLIT = 1 - TRAIN_SPLIT
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Running computations on {device}")
 
-if modelName == "FullPixelGridML" or modelName == "unet":	
+if modelName == "FullPixelGridML":	
 	#cnn
 	training_data = ptychographicData(
 	    os.path.abspath(os.path.join("FullPixelGridML","measurements_train","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_train")), transform=ToTensor(), target_transform=torch.as_tensor
@@ -93,7 +93,7 @@ if modelName == "FullPixelGridML" or modelName == "unet":
 	test_data = ptychographicData(
 	    os.path.abspath(os.path.join("FullPixelGridML","measurements_test","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_test")), transform=ToTensor(), target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors
 	)
-if modelName == "Zernike":
+if modelName == "Zernike" or modelName == "ZernikeBottleneck":
 	#znn
 	training_data = ptychographicData(
 		os.path.abspath(os.path.join(modelName,"measurements_train","labels.csv")), os.path.abspath(os.path.join(modelName, "measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor
@@ -129,10 +129,10 @@ if modelName == "FullPixelGridML":
 		numChannels=1,
 		classes=len(trainLabels[1])).to(device)
 
-if modelName == "unet":
-	from FullPixelGridML.unet import unet
+if modelName == "ZernikeBottleneck":
+	from Zernike.znnBottleneck import znn
 	print("[INFO] initializing the unet model...")
-	model = unet(
+	model = znn(
 		numChannels=1,
 		classes=len(trainLabels[1])).to(device)
 
