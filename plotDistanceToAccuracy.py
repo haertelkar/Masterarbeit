@@ -3,16 +3,20 @@ import csv
 import numpy as np
 import os
 
-distance = []
-distancePredictionDelta = []
-elements = []
-zAtomsDistance = []
 
 for file in os.listdir(os.getcwd()):
-    if not ("results" in file and ".csv" in file):
+    if "results" not in file or ".csv" != file[-4:]:
         continue
+
+    distance = []
+    distancePredictionDelta = []
+    elements = []
+    zAtomsDistance = []
+
+
     with open(file) as results:
         table = csv.reader(results)
+        print(file)
         for row in table: 
             if "element" in row:
                 continue
@@ -29,11 +33,12 @@ for file in os.listdir(os.getcwd()):
 
     print("average error in predicting thickness: {:.2f}.".format(np.sum(zAtomsDistance)/len(zAtomsDistance)))
     print("element prediction accuracy: {:.2f}%".format(np.sum(elements)/len(elements)*100))
-
     plt.scatter(distance, distancePredictionDelta)
     plt.xlabel("Distance between atom and scan position")
     plt.ylabel("Delta between distance prediction and actual distance") 
-    plt.savefig(file + "distanceToAccuracyCNN.png")
+    plt.savefig(file + "distanceToAccuracyCNN.pdf")
+    plt.close()
+    print()
     #plt.show()   
 
    
