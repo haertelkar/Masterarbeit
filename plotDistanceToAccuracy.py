@@ -16,7 +16,10 @@ for file in os.listdir(os.getcwd()):
         for row in table: 
             if "element" in row:
                 continue
-            elementNN,xAtomRelNN,xAtomShiftNN,yAtomRelNN,yAtomShiftNN, zAtomsNN, element,xAtomRel,xAtomShift,yAtomRel,yAtomShift, zAtoms = row
+            try:
+                elementNN,xAtomRelNN,xAtomShiftNN,yAtomRelNN,yAtomShiftNN, zAtomsNN, element,xAtomRel,xAtomShift,yAtomRel,yAtomShift, zAtoms = row
+            except ValueError:
+                elementNN,xAtomRelNN,yAtomRelNN,zAtomsNN, element,xAtomRel,yAtomRel,zAtoms = row
             distancePredictionDelta.append(np.sqrt((float(xAtomRelNN) - float(xAtomRel))**2 + (float(yAtomRelNN) - float(yAtomRel))**2))
             distance.append((float(xAtomRel)**2 + float(yAtomRel)**2)**(1/2))
             elements.append(int(np.around(float(elementNN))) == int(float(element)))
