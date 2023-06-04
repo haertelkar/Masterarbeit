@@ -69,12 +69,14 @@ ap.add_argument("-m", "--model", type=str, required=True,
 help="path to output trained model")
 ap.add_argument("-p", "--plot", type=str, required=True,
 help="path to output loss/accuracy plot")
+ap.add_argument("-e", "--epochs", type=int, required=True,
+help="number of epchs")
 args = vars(ap.parse_args())
 
 # define training hyperparameters
 INIT_LR = 1e-3
 BATCH_SIZE = 64
-EPOCHS = 400
+EPOCHS = args["epochs"]
 # define the train and val splits
 TRAIN_SPLIT = 0.75
 VAL_SPLIT = 1 - TRAIN_SPLIT
