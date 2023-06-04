@@ -36,20 +36,32 @@ class znnBottleneck(Module):
     def forward(self, x):
         x = self.fc1(x)
         x = self.relu(x)
+        x = self.fc1B(x)
+        x = self.relu(x)
 
         x = self.fc15(x)
+        x = self.relu(x)
+        x = self.fc15B(x)
         x = self.relu(x)
 
         x = self.fc2(x)
         x = self.relu(x)
+        x = self.fc2B(x)
+        x = self.relu(x)
 
         x = self.fcmiddle(x)
+        x = self.relu(x)
+        x = self.fcmiddleB(x)
         x = self.relu(x)
 
         x = self.fc3(x)
         x = self.relu(x)
+        x = self.fc3B(x)
+        x = self.relu(x)
 
         x = self.fc4(x)
+        x = self.relu(x)
+        x = self.fc4B(x)
         x = self.relu(x)
 
         output = self.fc5(x)
