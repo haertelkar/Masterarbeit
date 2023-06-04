@@ -22,8 +22,8 @@ from torch.utils.data import Dataset
 from torchvision.transforms import ToTensor
 from tqdm import tqdm
 
-#modelName = "FullPixelGridML"
-modelName = "ZernikeBottleneck"
+modelName = "FullPixelGridML"
+#modelName = "ZernikeBottleneck"
 #modelName = "Zernike"
 
 print(f"Training model {modelName}")
@@ -55,6 +55,7 @@ class ptychographicData(Dataset):
 		if self.transform:
 			image = self.transform(image) 
 		label /= (self.scalingFactors + np.array([0.00000001 for i in self.scalingFactors]))
+		label -= 0.5
 		if self.target_transform:
 			label = self.target_transform(label)
 		return image, label
@@ -241,8 +242,8 @@ with torch.no_grad(), open('resultsTest_{}.csv'.format(args["model"]), 'w+', new
 		# make the predictions and add them to the list
 		pred = model(x)
 		for predEntry, yEntry in zip(pred.tolist(), y.tolist()):
-			predScaled = test_data.scaleUp(row = predEntry)
-			yScaled = test_data.scaleUp(row = yEntry)
+			predScaled = test_data.scaleUp(row = predEntry) + 0.5
+			yScaled = test_data.scaleUp(row = yEntry) + 0.5
 			Writer.writerow(list(predScaled) + list(yScaled))		
 
 # plot the training loss and accuracy

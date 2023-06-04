@@ -13,26 +13,26 @@ class znnBottleneck(Module):
         # first set fc -> ReLU -> Bottleneck -> ReLU
         self.fc1 = Linear(in_features=inFeatures, out_features=2000)
         self.relu = ReLU()
-        self.fc1B = Linear(in_features=2000, out_features=20)
+        self.fc1B = Linear(in_features=2000, out_features=200)
         # initialize second set, third set etc.
-        self.fc15 = Linear(in_features=20, out_features=4000)
-        self.fc15B = Linear(in_features=4000, out_features=40)
+        self.fc15 = Linear(in_features=200, out_features=4000)
+        self.fc15B = Linear(in_features=4000, out_features=400)
 
-        self.fc2 = Linear(in_features=40, out_features=8000)
-        self.fc2B = Linear(in_features=8000, out_features=80)
+        self.fc2 = Linear(in_features=400, out_features=8000)
+        self.fc2B = Linear(in_features=8000, out_features=800)
 
         #init middle layers
-        self.fcmiddle = Linear(in_features=80, out_features=8000)
-        self.fcmiddleB = Linear(in_features=8000, out_features = 80)
+        self.fcmiddle = Linear(in_features=800, out_features=8000)
+        self.fcmiddleB = Linear(in_features=8000, out_features = 800)
 
         # initialize last sets
-        self.fc3 = Linear(in_features=80, out_features=4000)
-        self.fc3B = Linear(in_features=4000, out_features=40)
+        self.fc3 = Linear(in_features=800, out_features=4000)
+        self.fc3B = Linear(in_features=4000, out_features=400)
 
-        self.fc4 = Linear(in_features=40, out_features=1000)
-        self.fc4B = Linear(in_features=1000, out_features=10)
+        self.fc4 = Linear(in_features=400, out_features=1000)
+        self.fc4B = Linear(in_features=1000, out_features=100)
 
-        self.fc5 = Linear(in_features=10, out_features=outFeatures)
+        self.fc5 = Linear(in_features=100, out_features=outFeatures)
     def forward(self, x):
         x = self.fc1(x)
         x = self.relu(x)

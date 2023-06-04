@@ -51,7 +51,7 @@ for trainOrTest in ["train", "test"]:
 
         potential_thick = Potential(
             atomPillar,
-            sampling=0.002,
+            sampling=0.02,
             parametrization="kirkland",
             device=device
         )
