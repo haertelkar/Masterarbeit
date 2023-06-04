@@ -6,10 +6,10 @@ from torch.nn import ReLU
 from torch.nn import Tanh
 from torch import flatten, cat
 
-class znn(Module):
+class znnBottleneck(Module):
     def __init__(self, inFeatures, outFeatures):
         # call the parent constructor
-        super(znn, self).__init__()
+        super(znnBottleneck, self).__init__()
         # first set fc -> ReLU -> Bottleneck -> ReLU
         self.fc1 = Linear(in_features=inFeatures, out_features=2000)
         self.relu = ReLU()

@@ -22,8 +22,8 @@ from torch.utils.data import Dataset
 from torchvision.transforms import ToTensor
 from tqdm import tqdm
 
-modelName = "FullPixelGridML"
-#modelName = "ZernikeBottleneck"
+#modelName = "FullPixelGridML"
+modelName = "ZernikeBottleneck"
 #modelName = "Zernike"
 
 print(f"Training model {modelName}")
@@ -96,11 +96,11 @@ if modelName == "FullPixelGridML":
 if modelName == "Zernike" or modelName == "ZernikeBottleneck":
 	#znn
 	training_data = ptychographicData(
-		os.path.abspath(os.path.join(modelName,"measurements_train","labels.csv")), os.path.abspath(os.path.join(modelName, "measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor
+		os.path.abspath(os.path.join("Zernike","measurements_train","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor
 		)
 
 	test_data = ptychographicData(
-		os.path.abspath(os.path.join(modelName, "measurements_test","labels.csv")), os.path.abspath(os.path.join(modelName, "measurements_test")), transform=torch.as_tensor, target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors
+		os.path.abspath(os.path.join("Zernike", "measurements_test","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_test")), transform=torch.as_tensor, target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors
 	)
 
 print("[INFO] generating the train/validation split...")
@@ -130,11 +130,11 @@ if modelName == "FullPixelGridML":
 		classes=len(trainLabels[1])).to(device)
 
 if modelName == "ZernikeBottleneck":
-	from Zernike.znnBottleneck import znn
-	print("[INFO] initializing the unet model...")
-	model = znn(
-		numChannels=1,
-		classes=len(trainLabels[1])).to(device)
+	from Zernike.znnBottleneck import znnBottleneck
+	print("[INFO] initializing the znn model...")
+	model = znnBottleneck(
+		inFeatures = len(trainFeatures[1]),
+		outFeatures=len(trainLabels[1])).to(device)
 
 if modelName == "Zernike":
 	from Zernike.znn import znn
