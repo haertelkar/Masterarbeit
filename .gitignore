@@ -164,3 +164,7 @@ cython_debug/
 */*.npy
 */*/*.npy
 */*/*.csv
+*.csv
+*.png 
+.~*
+*.m

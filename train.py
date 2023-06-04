@@ -22,9 +22,11 @@ from torch.utils.data import Dataset
 from torchvision.transforms import ToTensor
 from tqdm import tqdm
 
-#modelName = "FullPixelGridML"
+modelName = "FullPixelGridML"
 #modelName = "unet"
-modelName = "Zernike"
+#modelName = "Zernike"
+
+print(f"Training model {modelName}")
 
 class ptychographicData(Dataset):
 	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors = None):
