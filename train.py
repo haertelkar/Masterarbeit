@@ -61,7 +61,7 @@ class ptychographicData(Dataset):
 	def scaleDown(self, row):
 		row = np.array(row)
 		row /= self.scalingFactors + 0.00000001
-		row -= self.scalingFactors/2
+		row -= self.scalingFactors/2 #TODO is this an improvement?
 		return row
 
 class Learner():
@@ -146,9 +146,7 @@ class Learner():
 		# initialize a dictionary to store training history
 		H = {
 			"train_loss": [],
-			"train_acc": [],
 			"val_loss": [],
-			"val_acc": []
 		}
 		# measure how long training is going to take
 		print("[INFO] training the network...")
@@ -161,10 +159,6 @@ class Learner():
 			# initialize the total training and validation loss
 			totalTrainLoss = 0
 			totalValLoss = 0
-			# initialize the number of correct predictions in the training
-			# and validation step
-			trainCorrect = 0
-			valCorrect = 0
 			# loop over the training set
 			for (x, y) in tqdm(trainDataLoader, leave=False, desc = "Training..."):
 				# send the input to the device
@@ -178,10 +172,7 @@ class Learner():
 				loss.backward()
 				opt.step()
 				# add the loss to the total training loss so far and
-				# calculate the number of correct predictions
 				totalTrainLoss += loss
-				# trainCorrect += (pred.argmax(1) == y).type(
-				# 	torch.float).sum().item()
 						
 			# switch off autograd for evaluation
 			with torch.no_grad():
@@ -194,27 +185,19 @@ class Learner():
 					# make the predictions and calculate the validation loss
 					pred = model(x)
 					totalValLoss += lossFn(pred, y)
-					# calculate the number of correct predictions
-					# valCorrect += (pred.argmax(1) == y).type(
-					#     torch.float).sum().item()
 				
 			# calculate the average training and validation loss
 			avgTrainLoss = totalTrainLoss / trainSteps
 			avgValLoss = totalValLoss / valSteps
-			# calculate the training and validation accuracy
-			trainCorrect = trainCorrect / len(trainDataLoader.dataset)
-			valCorrect = valCorrect / len(valDataLoader.dataset)
 			# update our training history
 			H["train_loss"].append(avgTrainLoss.cpu().detach().numpy())
-			H["train_acc"].append(trainCorrect)
 			H["val_loss"].append(avgValLoss.cpu().detach().numpy())
-			H["val_acc"].append(valCorrect)
 		# print the model training and validation information
 		print("[INFO] EPOCH: {}/{}".format(e + 1, self.EPOCHS))
-		print("Train loss: {:.6f}, Train accuracy: {:.4f}".format(
-		avgTrainLoss, trainCorrect))
-		print("Val loss: {:.6f}, Val accuracy: {:.4f}\n".format(
-		avgValLoss, valCorrect))
+		print("Train loss: {:.6f}".format(
+		avgTrainLoss))
+		print("Val loss: {:.6f}\n".format(
+		avgValLoss))
 
 		#finish measuring how long training took
 		endTime = time.time()
@@ -225,7 +208,7 @@ class Learner():
 
 
 		# turn off autograd for testing evaluation
-		with torch.no_grad(), open('results_{modelName}_{}.csv'.format(self.version), 'w+', newline='') as resultsTest:
+		with torch.no_grad(), open(f'results_{modelName}_{self.version}.csv', 'w+', newline='') as resultsTest:
 			Writer = csv.writer(resultsTest, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
 			Writer.writerow(test_data.columns*2)
 			# set the model in evaluation mode
