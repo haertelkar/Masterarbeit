@@ -35,7 +35,7 @@ for testOrTrain in ["test", "train"]:
                 raise Exception(fileName + " is not a valid filename")
             image = np.load(os.path.join(imgPath, fileName))
             if moments is None:
-                radius = 7#TODO is this better? int(len(image)/2) - 1  
+                radius = int(len(image)/2) - 1  #7
                 desc = ZernikeMoments(radius)
             moments = desc.describe(image)          
             np.save(os.path.join(f"measurements_{testOrTrain}", fileName), moments)
