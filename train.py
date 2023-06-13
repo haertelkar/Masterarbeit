@@ -2,7 +2,7 @@ import csv
 from torch.utils.data import random_split
 from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor
-from torch.optim import Adam
+from torch.optim import Adam, SGD
 from torch import nn
 import matplotlib.pyplot as plt
 import numpy as np
@@ -103,6 +103,9 @@ class Learner():
 		print("[INFO] generating the train/validation split...")
 		numTrainSamples = int(len(training_data) * self.TRAIN_SPLIT)
 		numValSamples = int(len(test_data) * self.VAL_SPLIT)
+		print(len(training_data))
+		print(numTrainSamples)
+		print(len(test_data))
 		(trainData, valData) = random_split(training_data,
 			[numTrainSamples, numValSamples],
 			generator=torch.Generator().manual_seed(42))
@@ -246,11 +249,14 @@ if __name__ == '__main__':
 	help="version number")
 	ap.add_argument("-e", "--epochs", type=int, required=True,
 	help="number of epochs")
+	ap.add_argument("-m" ,"--models", type=str, required=False, help = "only use models with this String in their name")
 	args = vars(ap.parse_args())
 
 	learn = Learner(epochs = args["epochs"], version = args["version"])
 
 	for modelName in models:
+		if args["models"] and args["models"] not in modelName:
+			continue
 		learn.Learner(modelName=modelName)
 
 	# try:

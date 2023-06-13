@@ -4,6 +4,8 @@ import numpy as np
 import os
 
 
+errors = [["modelName", "average error in predicting thickness", "element prediction accuracy", "MSE distance"]]
+
 for file in os.listdir(os.getcwd()):
     if "results" not in file or ".csv" != file[-4:]:
         continue
@@ -16,7 +18,6 @@ for file in os.listdir(os.getcwd()):
 
     with open(file) as results:
         table = csv.reader(results)
-        print(file)
         for row in table: 
             if "element" in row:
                 continue
@@ -30,9 +31,14 @@ for file in os.listdir(os.getcwd()):
             zAtomsDistance.append(np.abs(float(zAtomsNN)-float(zAtoms)))
 
     distancePredictionDelta = np.array(distancePredictionDelta) / max(distancePredictionDelta)
+    modelName = "_".join(file.split("_")[1:])
+    modelName = ".".join(modelName.split(".")[:-1])
+    print(modelName)
 
+    errors.append([modelName, np.sum(zAtomsDistance)/len(zAtomsDistance), np.sum(elements)/len(elements)*100, np.sum(distancePredictionDelta)**2])
     print("average error in predicting thickness: {:.2f}.".format(np.sum(zAtomsDistance)/len(zAtomsDistance)))
     print("element prediction accuracy: {:.2f}%".format(np.sum(elements)/len(elements)*100))
+    print(f"MSE distance {np.sum(distancePredictionDelta)**2:2e}")
     plt.scatter(distance, distancePredictionDelta)
     plt.xlabel("Distance between atom and scan position")
     plt.ylabel("Delta between distance prediction and actual distance") 
@@ -41,4 +47,8 @@ for file in os.listdir(os.getcwd()):
     print()
     #plt.show()   
 
-   
+
+with open("errors.csv", 'w', newline='') as myfile:
+     wr = csv.writer(myfile, quoting=csv.QUOTE_ALL, delimiter= ";")
+     for row in errors:
+        wr.writerow(row)

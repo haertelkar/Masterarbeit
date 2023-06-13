@@ -2,8 +2,8 @@ from torch.nn import Module
 from torch.nn import Conv2d
 from torch.nn import Linear
 from torch.nn import MaxPool2d
-from torch.nn import ReLU
-from torch import flatten
+from torch.nn import ReLU, BatchNorm2d
+from torch import flatten, round, Tensor
 
 class cnn(Module):
     def __init__(self, numChannels, classes):
@@ -32,7 +32,7 @@ class cnn(Module):
         self.fc2 = Linear(in_features=5000, out_features=500)
         # initialize our softmax classifier
         self.fc3 = Linear(in_features=500, out_features=classes)
-    def forward(self, x):
+    def forward(self, x: Tensor):
         x = self.conv1(x)
         x = self.relu(x)
         x = self.maxpool1(x)
@@ -52,5 +52,7 @@ class cnn(Module):
         x = self.fc2(x)
         x = self.relu(x)
         output = self.fc3(x)
+        output[:1].round()
+        output[-1:].round()
 	
         return output

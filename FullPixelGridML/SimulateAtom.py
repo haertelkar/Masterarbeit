@@ -77,7 +77,6 @@ for trainOrTest in ["train", "test"]:
                     xAtomRel = xAtom - xPos
                     yAtomRel = yAtom - yPos
                     fileName = os.path.join(f"measurements_{trainOrTest}",f"{element}_{xAtomRel}_{xAtomShift}_{yAtomRel}_{yAtomShift}_{zAtoms}.npy")
-                    fileName = fileName.format(trainOrTest = trainOrTest, element = element, xAtomRel = xAtomRel, xAtomShift = xAtomShift, yAtomRel = yAtomRel, yAtomShift = yAtomShift, zAtoms = zAtoms)
                     np.save(fileName,difPattern)
                     Writer.writerow([fileName.split(os.sep)[-1]] + [str(difParams) for difParams in [element, xAtomRel, xAtomShift, yAtomRel, yAtomShift, zAtoms]])
             
