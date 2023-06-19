@@ -40,17 +40,17 @@ class ptychographicData(Dataset):
 
 	def __getitem__(self, idx):
 		img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
-		image = np.load(img_path).astype('float32')
-		if len(image.shape) == 2:
-			image = image[:-(image.shape[0]%2), :-(image.shape[1]%2)] #only even dimensions are allowed in unet
+		imageOrZernikeMoments = np.load(img_path).astype('float32')
+		if len(imageOrZernikeMoments.shape) == 2:
+			imageOrZernikeMoments = imageOrZernikeMoments[:-(imageOrZernikeMoments.shape[0]%2), :-(imageOrZernikeMoments.shape[1]%2)] #only even dimensions are allowed in unet
 		label = np.array(self.img_labels.iloc[idx, 1:]).astype('float32') #gets read in as generic objects
-		image /= np.max(image)
+		imageOrZernikeMoments /= np.max(imageOrZernikeMoments)
 		if self.transform:
-			image = self.transform(image) 
+			imageOrZernikeMoments = self.transform(imageOrZernikeMoments) 
 		label = self.scaleDown(label)
 		if self.target_transform:
 			label = self.target_transform(label)
-		return image, label
+		return imageOrZernikeMoments, label
 	
 	def scaleUp(self, row):
 		row = np.array(row)
@@ -61,7 +61,7 @@ class ptychographicData(Dataset):
 	def scaleDown(self, row):
 		row = np.array(row)
 		row /= self.scalingFactors + 0.00000001
-		row -= self.scalingFactors/2 #TODO is this an improvement?
+		row -= self.scalingFactors/2
 		return row
 
 class Learner():
@@ -78,7 +78,7 @@ class Learner():
 		self.TRAIN_SPLIT = 0.75
 		self.VAL_SPLIT = 1 - self.TRAIN_SPLIT
 
-	def Learner(self, modelName):
+	def Learner(self, modelName, leave = True):
 		#print(f"Training model {modelName}")
 
 		if modelName == "FullPixelGridML":	
@@ -103,9 +103,6 @@ class Learner():
 		print("[INFO] generating the train/validation split...")
 		numTrainSamples = int(len(training_data) * self.TRAIN_SPLIT)
 		numValSamples = int(len(test_data) * self.VAL_SPLIT)
-		print(len(training_data))
-		print(numTrainSamples)
-		print(len(test_data))
 		(trainData, valData) = random_split(training_data,
 			[numTrainSamples, numValSamples],
 			generator=torch.Generator().manual_seed(42))
@@ -156,7 +153,7 @@ class Learner():
 		startTime = time.time()
 
 		# loop over our epochs
-		for e in tqdm(range(0, self.EPOCHS)):
+		for e in tqdm(range(0, self.EPOCHS), leave = leave, desc= "Epoch..."):
 			# set the model in training mode
 			model.train()
 			# initialize the total training and validation loss

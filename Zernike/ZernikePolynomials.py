@@ -1,0 +1,63 @@
+import numpy as np
+from scipy.special import factorial
+import matplotlib.pyplot as plt
+
+class Zernike(object):
+    def __init__(self,maxR, pixelsDim, numberOfOSAANSIMoments:int):
+        self.maxR = maxR
+        self.center = np.array([pixelsDim/2 - 1,pixelsDim/2 - 1])
+        self.rGrid = np.zeros((pixelsDim,pixelsDim))
+        self.angleGrid = np.copy(self.rGrid)
+        self.numberOfOSAANSIMoments = numberOfOSAANSIMoments
+        for x in range(pixelsDim):
+            for y in range(pixelsDim):
+                vectorFromCenter = x - self.center[0] + (y - self.center[1])*1j
+                r = np.abs(vectorFromCenter)
+                phi = np.angle(vectorFromCenter)
+                self.rGrid[x,y] = r
+                self.angleGrid[x,y] = (phi + 3*np.pi/2)%(2*np.pi)
+        self.basis = self.computeZernikeBasis()
+        for cnt, basis in enumerate(self.basis):
+            plt.imsave(f"{cnt}.png", basis)
+
+    def calculateZernikeWeights(self, image):
+        #normFactor = np.pi*self.maxR**2 not used otherwise the weights are very small
+        weights = np.sum(self.basis * image[None,:], axis = (1,2)) 
+        return weights
+
+    def computeZernikeBasis(self):
+        basis = []
+        for index in range(self.numberOfOSAANSIMoments):
+            m,n = self.OSAANSIIndexToMNIndex(index)
+            radialPart = self.ZernikePolynomialRadial(n,np.abs(m))
+            angularPart = self.ZernikePolynomialAngular(m)
+            basis.append(radialPart*angularPart) # pixel representation of basis indexed by OSAIndex
+        return np.array(basis)
+
+    def ZernikePolynomialAngular(self, m:int):
+        if m < 0:
+            angularFunc = np.sin 
+        else:
+            angularFunc = np.cos
+
+        return angularFunc(abs(m) * self.angleGrid)
+        
+    def ZernikePolynomialRadial(self, n:int, m:int) -> np.ndarray:
+        assert(n>=m>=0)
+        if (n-m)%2 != 0:
+            return np.zeros_like(self.rGrid)
+        k = np.arange((n-m)/2 + 1)
+        summationTerms = (-1)**k*factorial(n-k)/(factorial(k)*factorial((n+m)/2 - k)*factorial((n-m)/2 - k)) #taken from wikipedia
+        rVector = self.rGrid.flatten()
+        rMatrix = np.power(rVector[:,None]/self.maxR,n-2*k)
+        rMatrix[rVector > self.maxR, :] = 0#set everything outside a specified radius to zero
+        rVector = rMatrix @ summationTerms
+        normalizationFactor = np.sqrt(2*(n+1)) if m else np.sqrt(n+1) #per https://iopscience.iop.org/article/10.1088/2040-8986/ac9e08
+        rVector = rVector.reshape(np.shape(self.rGrid)) * normalizationFactor
+        return rVector
+    
+    def OSAANSIIndexToMNIndex(self, OSAANSIIndex:int):
+        n = int((np.sqrt(8 * OSAANSIIndex + 1) - 1) / 2)
+        m = 2 * OSAANSIIndex - n * (n + 2)
+        return m,n
+    

@@ -2,7 +2,7 @@ from torch.nn import Module
 from torch.nn import Conv2d
 from torch.nn import Linear
 from torch.nn import MaxPool2d
-from torch.nn import ReLU, BatchNorm2d
+from torch.nn import ReLU
 from torch import flatten, round, Tensor
 
 class cnn(Module):
