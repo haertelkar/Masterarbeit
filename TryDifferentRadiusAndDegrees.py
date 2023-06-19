@@ -18,7 +18,7 @@ radiiAndOrders = []
 
 for radius in radii:
     for order in orders:
-        radiiAndOrders.append(radius, order)
+        radiiAndOrders.append([radius, order])
 
 for radius, order in tqdm(radiiAndOrders, desc="Calculating different radii and up to different orders"): 
     cleanUp("Zernike")
