@@ -53,9 +53,9 @@ class ptychographicData(Dataset):
 	def __getitem__(self, idx):
 		img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
 		imageOrZernikeMoments = np.load(img_path).astype('float32')		
-		imageOrZernikeMoments /= max(imageOrZernikeMoments) #should be after else
+		imageOrZernikeMoments /= np.max(imageOrZernikeMoments)
 		if self.transform:
-			imageOrZernikeMoments = self.transform(imageOrZernikeMoments) 
+			imageOrZernikeMoments = self.transform(imageOrZernikeMoments) #not scaled here because it has to be datatype uint8 to be scaled automatically
 		
 		if len(imageOrZernikeMoments.shape) == 2:
 			imageOrZernikeMoments = imageOrZernikeMoments[:-(imageOrZernikeMoments.shape[0]%2), :-(imageOrZernikeMoments.shape[1]%2)] #only even dimensions are allowed in unet
