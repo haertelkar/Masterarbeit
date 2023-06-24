@@ -1,4 +1,4 @@
-from torch.nn import Module
+from torch.nn import Module, LogSoftmax
 from torch.nn import Conv2d
 from torch.nn import Linear
 from torch.nn import MaxPool2d
@@ -33,6 +33,7 @@ class znnBottleneck(Module):
         self.fc4B = Linear(in_features=1000, out_features=100)
 
         self.fc5 = Linear(in_features=100, out_features=outFeatures)
+
     def forward(self, x):
         x = self.fc1(x)
         x = self.relu(x)
@@ -65,7 +66,7 @@ class znnBottleneck(Module):
         x = self.relu(x)
 
         output = self.fc5(x)
-        output[:1].round()
-        output[-1:].round()
+        # output[:1].round()
+        # output[-1:].round()
 	
         return output

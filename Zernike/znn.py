@@ -1,9 +1,4 @@
-from torch.nn import Module
-from torch.nn import Conv2d
-from torch.nn import Linear
-from torch.nn import MaxPool2d
-from torch.nn import ReLU
-from torch.nn import Tanh
+from torch.nn import Module, LogSoftmax, Linear, ReLU
 from torch import flatten, cat
 
 class znn(Module):
@@ -29,6 +24,7 @@ class znn(Module):
         self.fc4 = Linear(in_features=4000, out_features=1000)
 
         self.fc5 = Linear(in_features=1000, out_features=outFeatures)
+        
     def forward(self, x):
         x = self.fc1(x)
         x = self.relu(x)
@@ -49,7 +45,7 @@ class znn(Module):
         x = self.relu(x)
 
         output = self.fc5(x)
-        output[:1].round()
-        output[-1:].round()
+        # output[:1].round()
+        # output[-1:].round()
 	
         return output
