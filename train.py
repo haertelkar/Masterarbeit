@@ -22,16 +22,28 @@ from torch.multiprocessing import Pool, Process, set_start_method
 
 
 class ptychographicData(Dataset):
-	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors = None):
+	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors = None, labelIndicesToPredict = None, classifier = False):
 		self.img_labels = pd.read_csv(annotations_file)
-		self.columns = list(self.img_labels.columns[1:])
+		self.columns = list(self.img_labels.columns)
 		self.img_dir = img_dir
 		self.transform = transform
 		self.target_transform = target_transform
-		if scalingFactors is None:
-			self.scalingFactors = np.array(self.img_labels.iloc[:, 1:].max(axis=0).to_list())
+		self.labelIndicesToPredict = labelIndicesToPredict
+		assert(not(labelIndicesToPredict is 0))
+		if isinstance(labelIndicesToPredict, list):
+			assert(0 not in labelIndicesToPredict)
+		if self.labelIndicesToPredict is None:
+			self.scalingFactors = scalingFactors if scalingFactors is not None else np.array(self.img_labels.iloc[:, 1:].max(axis=0).to_list())
+		elif type(self.labelIndicesToPredict) == list:
+			self.scalingFactors = scalingFactors if scalingFactors is not None else np.array(self.img_labels.iloc[:, labelIndicesToPredict].max(axis=0).to_list())
 		else:
-			self.scalingFactors = scalingFactors
+			self.scalingFactors = scalingFactors if scalingFactors is not None else np.array(self.img_labels.iloc[:, labelIndicesToPredict].max(axis=0))
+		self.classifier = classifier
+		if self.classifier:
+			assert(type(labelIndicesToPredict) != list)
+			self.smallestElem = self.img_labels.iloc[:, labelIndicesToPredict].min()
+			self.numberOfClasses = self.img_labels.iloc[:, labelIndicesToPredict].max() - self.smallestElem + 1
+			
 
 
 	def __len__(self):
@@ -40,18 +52,28 @@ class ptychographicData(Dataset):
 
 	def __getitem__(self, idx):
 		img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
-		imageOrZernikeMoments = np.load(img_path).astype('float32')
-		if len(imageOrZernikeMoments.shape) == 2:
-			imageOrZernikeMoments = imageOrZernikeMoments[:-(imageOrZernikeMoments.shape[0]%2), :-(imageOrZernikeMoments.shape[1]%2)] #only even dimensions are allowed in unet
-		label = np.array(self.img_labels.iloc[idx, 1:]).astype('float32') #gets read in as generic objects
-		imageOrZernikeMoments /= np.max(imageOrZernikeMoments)
+		imageOrZernikeMoments = np.load(img_path).astype('float32')		
+		imageOrZernikeMoments /= max(imageOrZernikeMoments) #should be after else
 		if self.transform:
 			imageOrZernikeMoments = self.transform(imageOrZernikeMoments) 
-		label = self.scaleDown(label)
+		
+		if len(imageOrZernikeMoments.shape) == 2:
+			imageOrZernikeMoments = imageOrZernikeMoments[:-(imageOrZernikeMoments.shape[0]%2), :-(imageOrZernikeMoments.shape[1]%2)] #only even dimensions are allowed in unet
+		if self.classifier:
+			label = np.array(self.img_labels.iloc[idx, self.labelIndicesToPredict]).astype(int)
+			label = self.createOneHotEncodedVector(label)
+		else:
+			label = np.array(self.img_labels.iloc[idx, 1:]).astype('float32') #gets read in as generic objects
+			label = self.scaleDown(label)
 		if self.target_transform:
 			label = self.target_transform(label)
 		return imageOrZernikeMoments, label
 	
+	def createOneHotEncodedVector(self, classIndex):
+		classes = np.zeros(self.numberOfClasses)
+		classes[classIndex - self.smallestElem] = 1
+		return classes
+
 	def scaleUp(self, row):
 		row = np.array(row)
 		row += self.scalingFactors/2
@@ -65,7 +87,7 @@ class ptychographicData(Dataset):
 		return row
 
 class Learner():
-	def __init__(self, epochs, version):
+	def __init__(self, epochs, version, classifier = False, indicesToPredict = None):
 		self.version = version
 		self.device = device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 		print(f"Running computations on {device}")
@@ -77,27 +99,27 @@ class Learner():
 		# define the train and val splits
 		self.TRAIN_SPLIT = 0.75
 		self.VAL_SPLIT = 1 - self.TRAIN_SPLIT
-
-	def Learner(self, modelName, leave = True):
-		#print(f"Training model {modelName}")
-
+		self.classifier = classifier
+		self.indicesToPredict = indicesToPredict
+	
+	def loadData(self, modelName):
 		if modelName == "FullPixelGridML":	
 			#cnn
 			training_data = ptychographicData(
-				os.path.abspath(os.path.join("FullPixelGridML","measurements_train","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_train")), transform=ToTensor(), target_transform=torch.as_tensor
+				os.path.abspath(os.path.join("FullPixelGridML","measurements_train","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_train")), transform=ToTensor(), target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
 			)
 
 			test_data = ptychographicData(
-				os.path.abspath(os.path.join("FullPixelGridML","measurements_test","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_test")), transform=ToTensor(), target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors
+				os.path.abspath(os.path.join("FullPixelGridML","measurements_test","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_test")), transform=ToTensor(), target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
 			)
 		if modelName == "Zernike" or modelName == "ZernikeBottleneck":
 			#znn
 			training_data = ptychographicData(
-				os.path.abspath(os.path.join("Zernike","measurements_train","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor
+				os.path.abspath(os.path.join("Zernike","measurements_train","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
 				)
 
 			test_data = ptychographicData(
-				os.path.abspath(os.path.join("Zernike", "measurements_test","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_test")), transform=torch.as_tensor, target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors
+				os.path.abspath(os.path.join("Zernike", "measurements_test","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_test")), transform=torch.as_tensor, target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
 			)
 
 		print("[INFO] generating the train/validation split...")
@@ -115,8 +137,10 @@ class Learner():
 		# calculate steps per epoch for training and validation set
 		trainSteps = len(trainDataLoader.dataset) // self.BATCH_SIZE
 		valSteps = len(valDataLoader.dataset) // self.BATCH_SIZE
+		return trainSteps, trainDataLoader, valDataLoader, valSteps, testDataLoader, test_data
 
-		# initialize the model
+	def loadModel(self, trainDataLoader):
+		# first element to access dimensions
 		trainFeatures, trainLabels = next(iter(trainDataLoader))
 
 		if modelName == "FullPixelGridML":
@@ -140,9 +164,19 @@ class Learner():
 				inFeatures = len(trainFeatures[1]),
 				outFeatures=len(trainLabels[1])).to(self.device)
 			
+		return model
+
+	def Learner(self, modelName, leave = True):
+		#print(f"Training model {modelName}")
+		trainSteps, trainDataLoader, valDataLoader, valSteps, testDataLoader, test_data = self.loadData(modelName)
+		model = self.loadModel(trainDataLoader)
+	
 		# initialize our optimizer and loss function
 		opt = Adam(model.parameters(), lr=self.INIT_LR)
-		lossFn = nn.MSELoss()
+		if self.classifier:
+			lossFn = nn.CrossEntropyLoss()
+		else:
+			lossFn = nn.MSELoss()
 		# initialize a dictionary to store training history
 		H = {
 			"train_loss": [],
@@ -194,10 +228,8 @@ class Learner():
 			H["val_loss"].append(avgValLoss.cpu().detach().numpy())
 		# print the model training and validation information
 		print("[INFO] EPOCH: {}/{}".format(e + 1, self.EPOCHS))
-		print("Train loss: {:.6f}".format(
-		avgTrainLoss))
-		print("Val loss: {:.6f}\n".format(
-		avgValLoss))
+		print("Train loss: {:.6f}".format(avgTrainLoss))
+		print("Val loss: {:.6f}\n".format(avgValLoss))
 
 		#finish measuring how long training took
 		endTime = time.time()
@@ -210,7 +242,15 @@ class Learner():
 		# turn off autograd for testing evaluation
 		with torch.no_grad(), open(f'results_{modelName}_{self.version}.csv', 'w+', newline='') as resultsTest:
 			Writer = csv.writer(resultsTest, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-			Writer.writerow(test_data.columns*2)
+			try:
+				if not self.classifier: 
+					Writer.writerow([test_data.columns[self.indicesToPredict]]*2)
+				else:
+					Writer.writerow([test_data.columns[self.indicesToPredict]])
+			except TypeError:
+				Writer.writerow(test_data.columns[1:]*2)
+
+
 			# set the model in evaluation mode
 			model.eval()
 			
@@ -220,14 +260,21 @@ class Learner():
 				x = x.to(self.device)
 				# make the predictions and add them to the list
 				pred = model(x)
-				for predEntry, yEntry in zip(pred.tolist(), y.tolist()):
-					predScaled = test_data.scaleUp(row = predEntry)
-					yScaled = test_data.scaleUp(row = yEntry)
-					Writer.writerow(list(predScaled) + list(yScaled))		
+				if not self.classifier:
+					for predEntry, yEntry in zip(pred.tolist(), y.tolist()):
+						predScaled = test_data.scaleUp(row = predEntry)
+						yScaled = test_data.scaleUp(row = yEntry)
+						Writer.writerow(list(predScaled) + list(yScaled))		
+				else:
+					for predEntry,yEntry in zip(pred.cpu().numpy(), y.cpu().numpy()):
+						Writer.writerow([int(predEntry.argmax() == yEntry.argmax())])
+		
+		self.plotTraining(H, modelName, model)
 
+	def	plotTraining(self, H, modelName, model, startingPoint = 1):
 		plt.figure()
-		plt.plot(H["train_loss"][1:], label="train_loss")
-		plt.plot(H["val_loss"][1:], label="val_loss")
+		plt.plot(H["train_loss"][startingPoint:], label="train_loss")
+		plt.plot(H["val_loss"][startingPoint:], label="val_loss")
 		plt.title("Training Loss on Dataset")
 		plt.xlabel("Epoch # - 1")
 		plt.ylabel("Loss/Accuracy")
@@ -247,9 +294,18 @@ if __name__ == '__main__':
 	ap.add_argument("-e", "--epochs", type=int, required=True,
 	help="number of epochs")
 	ap.add_argument("-m" ,"--models", type=str, required=False, help = "only use models with this String in their name")
+	ap.add_argument("-c" ,"--classifier", type=int, required=False, default=0, help = "Use if the model is to be a classfier. Choose the label index to be classified")
 	args = vars(ap.parse_args())
 
-	learn = Learner(epochs = args["epochs"], version = args["version"])
+
+	if not args["classifier"]:
+		classifier = None
+		indicesToPredict = None
+	else:
+		classifier = True
+		indicesToPredict = args["classifier"]
+
+	learn = Learner(epochs = args["epochs"], version = args["version"], classifier=classifier, indicesToPredict = indicesToPredict)
 
 	for modelName in models:
 		if args["models"] and args["models"] not in modelName:
