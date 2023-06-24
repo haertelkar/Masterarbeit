@@ -14,23 +14,29 @@ for file in os.listdir(os.getcwd()):
     distancePredictionDelta = []
     elements = []
     zAtomsDistance = []
-
+    skipFile = False
 
     with open(file) as results:
-        table = csv.reader(results)
+        table = csv.reader(results, delimiter= ",")
         for row in table: 
             if "element" in row:
                 continue
             try:
                 elementNN,xAtomRelNN,xAtomShiftNN,yAtomRelNN,yAtomShiftNN, zAtomsNN, element,xAtomRel,xAtomShift,yAtomRel,yAtomShift, zAtoms = row
             except ValueError:
-                elementNN,xAtomRelNN,yAtomRelNN,zAtomsNN, element,xAtomRel,yAtomRel,zAtoms = row
+                if len(row) > 2:
+                    elementNN,xAtomRelNN,yAtomRelNN,zAtomsNN, element,xAtomRel,yAtomRel,zAtoms = row
+                else:
+                    skipFile = True
+                    break           
             distancePredictionDelta.append(np.sqrt((float(xAtomRelNN) - float(xAtomRel))**2 + (float(yAtomRelNN) - float(yAtomRel))**2))
+            
             distance.append((float(xAtomRel)**2 + float(yAtomRel)**2)**(1/2))
             elements.append(int(np.around(float(elementNN))) == int(float(element)))
             zAtomsDistance.append(np.abs(float(zAtomsNN)-float(zAtoms)))
-
-    distancePredictionDelta = np.array(distancePredictionDelta) / max(distancePredictionDelta)
+    if skipFile:
+        continue
+    distancePredictionDelta = np.array(distancePredictionDelta) / (max(distancePredictionDelta) + 1e-5)
     modelName = "_".join(file.split("_")[1:])
     modelName = ".".join(modelName.split(".")[:-1])
     print(modelName)
