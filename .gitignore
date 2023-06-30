@@ -170,3 +170,5 @@ cython_debug/
 *.m
 *.pdf
 .nfs*
+data/KMNIST/raw/*
+.vscode/launch.json
