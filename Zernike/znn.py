@@ -45,7 +45,7 @@ class znn(Module):
         x = self.relu(x)
 
         output = self.fc5(x)
-        # output[:1].round()
-        # output[-1:].round()
+        output[:1].round()
+        output[-1:].round()
 	
         return output

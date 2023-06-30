@@ -19,6 +19,7 @@ class cnn(Module):
         kernel_size=(2, 2))
         self.maxpool3 = MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
 
+        
         self.fc1 = Linear(in_features=16000, out_features=5000)
 
         self.fc2 = Linear(in_features=5000, out_features=500)

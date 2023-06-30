@@ -36,7 +36,12 @@ for file in os.listdir(os.getcwd()):
             zAtomsDistance.append(np.abs(float(zAtomsNN)-float(zAtoms)))
     if skipFile:
         continue
-    distancePredictionDelta = np.array(distancePredictionDelta) / (max(distancePredictionDelta) + 1e-5)
+    try:
+        distancePredictionDelta = np.array(distancePredictionDelta) / (max(distancePredictionDelta) + 1e-5)
+    except Exception as e:
+        print(e)
+        print("in file ", file)
+        raise Exception
     modelName = "_".join(file.split("_")[1:])
     modelName = ".".join(modelName.split(".")[:-1])
     print(modelName)

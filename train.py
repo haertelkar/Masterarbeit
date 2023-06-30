@@ -2,7 +2,7 @@ import csv
 from torch.utils.data import random_split
 from torch.utils.data import DataLoader
 from torchvision.transforms import ToTensor
-from torch.optim import Adam, SGD
+from torch.optim import AdamW, SGD, Adam
 from torch import nn
 import matplotlib.pyplot as plt
 import numpy as np
@@ -29,6 +29,7 @@ class ptychographicData(Dataset):
 		self.transform = transform
 		self.target_transform = target_transform
 		self.labelIndicesToPredict = labelIndicesToPredict
+		self.scalerZernike = 1
 		assert(not(labelIndicesToPredict is 0))
 		if isinstance(labelIndicesToPredict, list):
 			assert(0 not in labelIndicesToPredict)
@@ -53,10 +54,9 @@ class ptychographicData(Dataset):
 	def __getitem__(self, idx):
 		img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
 		imageOrZernikeMoments = np.load(img_path).astype('float32')		
-		imageOrZernikeMoments /= np.max(imageOrZernikeMoments)
-		if self.transform:
-			imageOrZernikeMoments = self.transform(imageOrZernikeMoments) #not scaled here because it has to be datatype uint8 to be scaled automatically
-		
+		if self.scalerZernike == 1 or len(imageOrZernikeMoments.shape) == 2: #only set once for Zernike
+			self.scalerZernike = np.max(imageOrZernikeMoments)
+		imageOrZernikeMoments /= self.scalerZernike
 		if len(imageOrZernikeMoments.shape) == 2:
 			imageOrZernikeMoments = imageOrZernikeMoments[:-(imageOrZernikeMoments.shape[0]%2), :-(imageOrZernikeMoments.shape[1]%2)] #only even dimensions are allowed in unet
 		if self.classifier:
@@ -67,6 +67,9 @@ class ptychographicData(Dataset):
 			label = self.scaleDown(label)
 		if self.target_transform:
 			label = self.target_transform(label)
+		if self.transform:
+			imageOrZernikeMoments = self.transform(imageOrZernikeMoments) #not scaled here because it has to be datatype uint8 to be scaled automatically
+		
 		return imageOrZernikeMoments, label
 	
 	def createOneHotEncodedVector(self, classIndex):
@@ -103,7 +106,7 @@ class Learner():
 		self.indicesToPredict = indicesToPredict
 	
 	def loadData(self, modelName):
-		if modelName == "FullPixelGridML":	
+		if modelName == "FullPixelGridML" or modelName == "unet":	
 			#cnn
 			training_data = ptychographicData(
 				os.path.abspath(os.path.join("FullPixelGridML","measurements_train","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_train")), transform=ToTensor(), target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
@@ -124,7 +127,7 @@ class Learner():
 
 		print("[INFO] generating the train/validation split...")
 		numTrainSamples = int(len(training_data) * self.TRAIN_SPLIT)
-		numValSamples = int(len(test_data) * self.VAL_SPLIT)
+		numValSamples = int(len(training_data) * self.VAL_SPLIT)
 		(trainData, valData) = random_split(training_data,
 			[numTrainSamples, numValSamples],
 			generator=torch.Generator().manual_seed(42))
@@ -147,6 +150,13 @@ class Learner():
 			from FullPixelGridML.cnn import cnn
 			print("[INFO] initializing the cnn model...")
 			model = cnn(
+				numChannels=1,
+				classes=len(trainLabels[1])).to(self.device)
+			
+		if modelName == "unet":
+			from FullPixelGridML.unet import unet
+			print("[INFO] initializing the unet model...")
+			model = unet(
 				numChannels=1,
 				classes=len(trainLabels[1])).to(self.device)
 
@@ -172,7 +182,7 @@ class Learner():
 		model = self.loadModel(trainDataLoader)
 	
 		# initialize our optimizer and loss function
-		opt = Adam(model.parameters(), lr=self.INIT_LR)
+		opt = Adam(model.parameters(), lr=self.INIT_LR)#, weight_decay=1e-5)
 		if self.classifier:
 			lossFn = nn.CrossEntropyLoss()
 		else:
@@ -286,7 +296,7 @@ class Learner():
 
 
 if __name__ == '__main__':
-	models = ["FullPixelGridML", "ZernikeBottleneck", "Zernike"]
+	models = ["FullPixelGridML", "Zernike", "ZernikeBottleneck"]
 	# construct the argument parser and parse the arguments
 	ap = argparse.ArgumentParser()
 	ap.add_argument("-v", "--version", type=str, required=True,
@@ -307,10 +317,15 @@ if __name__ == '__main__':
 
 	learn = Learner(epochs = args["epochs"], version = args["version"], classifier=classifier, indicesToPredict = indicesToPredict)
 
+	numberOfModels = 0
+
 	for modelName in models:
 		if args["models"] and args["models"] not in modelName:
 			continue
 		learn.Learner(modelName=modelName)
+		numberOfModels += 1
+
+	if numberOfModels == 0: raise Exception("No models fit the required String.")
 
 	# try:
 	# 	set_start_method('spawn')
