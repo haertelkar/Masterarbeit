@@ -15,6 +15,7 @@ from abtem import Potential, FrozenPhonons, Probe, CTF
 from abtem.detect import AnnularDetector, PixelatedDetector
 from abtem.scan import GridScan
 from abtem.noise import poisson_noise
+from abtem.structures import orthogonalize_cell
 import torch
 from tqdm import tqdm
 import csv
@@ -28,11 +29,12 @@ xlen = ylen = 5
 from ase import Atoms
 from ase.build import molecule, bulk
 
-def moveAtoms(atoms:Atoms, xPos, yPos, zPos) -> Atoms:
+def moveAtomsAndOrthogonalize(atoms:Atoms, xPos, yPos, zPos) -> Atoms:
     xPos = random()*xlen/3 + xlen/3 if xPos is None else xPos
     yPos = random()*ylen/3 + ylen/3 if yPos is None else yPos
     zPos = 0 if zPos is None else zPos
     atoms.positions += np.array([xPos, yPos, zPos])[None,:]
+    atoms = orthogonalize_cell(atoms)
     return atoms
 
 def atomPillar(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), xAtomShift = 0, yAtomShift = 0, element = None) -> Atoms:
@@ -47,43 +49,43 @@ def atomPillar(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), xA
     for atomBefore in range(zAtoms-1):
         positions += [positions[atomBefore] + np.array([xAtomShift, yAtomShift, 1])]
     atomPillar = Atoms(numbers = [element] * zAtoms , positions=positions, cell = [xlen, ylen, zAtoms,90,90,90])
-    atomPillar = moveAtoms(atomPillar)
+    atomPillar = moveAtomsAndOrthogonalize(atomPillar, xPos, yPos, zPos)
     return atomPillar
 
 def grapheneC(xPos = None, yPos = None, zPos = None) -> Atoms:
     grapheneC = graphene(a=2.46,  # Lattice constant (in Angstrom)
                               size=(1, 1, 1))  # Number of unit cells in each direction
-    grapheneC = moveAtoms(grapheneC, xPos, yPos, zPos)
+    grapheneC = moveAtomsAndOrthogonalize(grapheneC, xPos, yPos, zPos)
     return grapheneC
 
 def MoS2(xPos = None, yPos = None, zPos = None) -> Atoms:
     molybdenum_sulfur = mx2(formula='MoS2', kind='2H', a=3.18, thickness=3.19, size=(1, 1, 1), vacuum=None)
-    molybdenum_sulfur = moveAtoms(molybdenum_sulfur, xPos, yPos, zPos)
+    molybdenum_sulfur = moveAtomsAndOrthogonalize(molybdenum_sulfur, xPos, yPos, zPos)
     return molybdenum_sulfur
 
 def Si(xPos = None, yPos = None, zPos = None):
     silicon = bulk('Si', 'diamond', a=5.43, cubic=True)
-    silicon = moveAtoms(silicon , xPos, yPos, zPos)
+    silicon = moveAtomsAndOrthogonalize(silicon , xPos, yPos, zPos)
     return silicon
 
 def GaAs(xPos = None, yPos = None, zPos = None):
     gaas = bulk('GaAs', 'zincblende', a=5.65, cubic=True)
-    gaas = moveAtoms(gaas , xPos, yPos, zPos)
+    gaas = moveAtomsAndOrthogonalize(gaas , xPos, yPos, zPos)
     return gaas
 
 def SrTiO3(xPos = None, yPos = None, zPos = None):
     srtio3 = read('structures/SrTiO3.cif')
-    srtio3 = moveAtoms(srtio3, xPos, yPos, zPos)
+    srtio3 = moveAtomsAndOrthogonalize(srtio3, xPos, yPos, zPos)
     return srtio3
 
 def MAPbI3(xPos = None, yPos = None, zPos = None):
     mapi = read('structures/H6PbCI3N.cif')
-    mapi = moveAtoms(mapi, xPos, yPos, zPos)
+    mapi = moveAtomsAndOrthogonalize(mapi, xPos, yPos, zPos)
     return mapi
 
 def WSe2(xPos = None, yPos = None, zPos = None):
     wse2 = read('structures/WSe2.cif')
-    wse2 = moveAtoms(wse2, xPos, yPos, zPos)
+    wse2 = moveAtomsAndOrthogonalize(wse2, xPos, yPos, zPos)
     return wse2
 
 def StructureUnknown(struct):
@@ -124,15 +126,15 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Atoms:
         return nameStruct, struct 
 
 def threeClosestAtoms(atomStruct: Atoms, xPos, yPos):
-    xyDistances = (atomStruct.get_positions() - np.array([xPos, yPos, 0])[None,:])[:,0:1]
-    xyDistances[:,1] *= 1j
+    xyDistances = (atomStruct.get_positions() - np.array([xPos, yPos, 0])[None,:])[:,0:2]
+    xyDistances = xyDistances[:,0] + xyDistances[:,1] * 1j
     xyDistanceSortedIndices = np.absolute(xyDistances).argsort() #Quatsch, ich muss auch noch die Indices rausfinden
 
     while len(xyDistanceSortedIndices) < 3: #if less than three atoms, just append the closest one again
         xyDistanceSortedIndices += xyDistanceSortedIndices
     
     atomNumbers = atomStruct.get_atomic_numbers()[xyDistanceSortedIndices[:3]]
-    xPositions, yPositions = atomStruct.get_positions()[xyDistanceSortedIndices[:3]].transpose()
+    xPositions, yPositions = atomStruct.get_positions()[xyDistanceSortedIndices[:3]].transpose()[:2]
     return atomNumbers, xPositions, yPositions
 
 
@@ -145,33 +147,41 @@ for trainOrTest in ["train", "test"]:
         nameStruct, atomStruct = createStructure()
         # view(atomPillar)
         # plt.show()
-
-        potential_thick = Potential(
-            atomStruct,
-            sampling=0.02,
-            parametrization="kirkland",
-            device=device
-        )
+        try:
+            potential_thick = Potential(
+                atomStruct,
+                sampling=0.02,
+                parametrization="kirkland",
+                device=device
+            )
+        except Exception as e:
+            print(nameStruct, atomStruct)
+            raise(e)
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             probe = Probe(semiangle_cutoff=24, energy=200e3, device=device)
             probe.match_grid(potential_thick)
 
             pixelated_detector = PixelatedDetector(max_angle=120)
+            gridSampling = 0.2
             gridscan = GridScan(
-                (0, 0), potential_thick.extent, sampling=0.2
+                (0, 0), potential_thick.extent, sampling=gridSampling
             )
             measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick, pbar = False)
         
+        if len(atomStruct.positions) <= 3:
+            atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct, xPos, yPos)
+
         with open(os.path.join(f'measurements_{trainOrTest}','labels.csv'), 'a', newline='') as csvfile:
             Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            for xCNT, difPatternRow in enumerate(measurement_thick.array):
-                for yCNT, difPattern in enumerate(difPatternRow):
+            for xCNT, difPatternRow in tqdm(enumerate(measurement_thick.array), leave = False, desc="Going through the x scan positions", total= len(measurement_thick.array)):
+                for yCNT, difPattern in tqdm(enumerate(difPatternRow), leave = False, desc="Going through the y scan positions", total= len(difPatternRow)):
                     if yCNT%2 or xCNT%2:
-                        continue #less data from a single position
-                    atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct, xPos, yPos)         
-                    xPos = xCNT * 0.2
-                    yPos = yCNT * 0.2
+                        continue #less data from a single position         
+                    xPos = xCNT * gridSampling
+                    yPos = yCNT * gridSampling
+                    if len(atomStruct.positions) > 3:
+                        atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct, xPos, yPos)
                     xAtomRel = xPositionsAtoms - xPos
                     yAtomRel = yPositionsAtoms - yPos
                     fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{xPos}_{yPos}_{np.array2string(atomNumbers)}_{np.array2string(xAtomRel)}_{np.array2string(yAtomRel)}.npy")
