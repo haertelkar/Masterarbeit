@@ -3,6 +3,7 @@ import os
 import csv
 from tqdm import tqdm
 from mahotas.features import zernike_moments
+import matplotlib.pyplot as plt
 try:
     from ZernikePolynomials import Zernike
 except ModuleNotFoundError:
@@ -31,8 +32,19 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
                 if ZernikeObject is None:
                     radius = radius or int(len(image)/2)
                     ZernikeObject = Zernike(radius, len(image), noOfMoments)
-                momentsMyCalc = ZernikeObject.calculateZernikeWeights(image * 1e3) #scaled up so it's more useful
-                np.save(os.path.join(f"measurements_{testOrTrain}", fileName), momentsMyCalc)
+                moments = ZernikeObject.calculateZernikeWeights(image * 1e3) #scaled up so it's more useful
+                # moments = zernike_moments(image, radius, 40) #modified zernike_moments so it doesn't output the abs values, otherwise directional analytics are not possible
+                # plt.bar(np.arange(len(momentsByMahotas)),momentsByMahotas)
+                # plt.savefig("mahotas.png")
+                # plt.close()
+
+                # print(momentsMyCalc)
+                # plt.bar(np.arange(len(momentsMyCalc)), momentsMyCalc)
+                # plt.savefig("myCalc.png")
+                # plt.close()
+                
+                # exit()
+                np.save(os.path.join(f"measurements_{testOrTrain}", fileName), moments)
                 
                 Writer.writerow([fileName] + [str(difParams) for difParams in [element, xAtomRel, yAtomRel, zAtoms]])    
     os.chdir(oldDir)
