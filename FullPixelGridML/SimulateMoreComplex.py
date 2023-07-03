@@ -167,7 +167,7 @@ for trainOrTest in ["train", "test"]:
 
             pixelated_detector = PixelatedDetector(max_angle=120)
             coarseSamplingFactor = 2 #so less pixels positions get sampled
-            numberOfScanPos = int(np.array(potential_thick.extent)/0.2)
+            numberOfScanPos = (np.array(potential_thick.extent)/0.2).astype(int)
             gridSampling = np.array(potential_thick.extent)/numberOfScanPos
             gridscan = GridScan(
                 start = (0, 0), end = potential_thick.extent, gpts=numberOfScanPos
