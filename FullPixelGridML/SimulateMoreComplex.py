@@ -21,20 +21,22 @@ from tqdm import tqdm
 import csv
 import warnings
 import os
+from numba import njit
+from ase import Atoms
+from ase.build import molecule, bulk
 
 
 device = "gpu" if torch.cuda.is_available() else "cpu"
 print(f"Calculating on {device}")
 xlen = ylen = 5
-from ase import Atoms
-from ase.build import molecule, bulk
 
-def moveAtomsAndOrthogonalize(atoms:Atoms, xPos, yPos, zPos) -> Atoms:
+
+def moveAtomsAndOrthogonalize(atoms:Atoms, xPos, yPos, zPos, ortho = True) -> Atoms:
     xPos = random()*xlen/3 + xlen/3 if xPos is None else xPos
     yPos = random()*ylen/3 + ylen/3 if yPos is None else yPos
     zPos = 0 if zPos is None else zPos
     atoms.positions += np.array([xPos, yPos, zPos])[None,:]
-    atoms = orthogonalize_cell(atoms)
+    if ortho: atoms = orthogonalize_cell(atoms, max_repetitions=10)
     return atoms
 
 def atomPillar(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), xAtomShift = 0, yAtomShift = 0, element = None) -> Atoms:
@@ -49,7 +51,7 @@ def atomPillar(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), xA
     for atomBefore in range(zAtoms-1):
         positions += [positions[atomBefore] + np.array([xAtomShift, yAtomShift, 1])]
     atomPillar = Atoms(numbers = [element] * zAtoms , positions=positions, cell = [xlen, ylen, zAtoms,90,90,90])
-    atomPillar = moveAtomsAndOrthogonalize(atomPillar, xPos, yPos, zPos)
+    atomPillar = moveAtomsAndOrthogonalize(atomPillar, xPos, yPos, zPos, ortho=False)
     return atomPillar
 
 def grapheneC(xPos = None, yPos = None, zPos = None) -> Atoms:
@@ -125,16 +127,17 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Atoms:
         struct = structureFunctions.get(specificStructure, StructureUnknown(specificStructure))
         return nameStruct, struct 
 
-def threeClosestAtoms(atomStruct: Atoms, xPos, yPos):
-    xyDistances = (atomStruct.get_positions() - np.array([xPos, yPos, 0])[None,:])[:,0:2]
+@njit
+def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:float, yPos:float):
+    xyDistances = (atomPositions - np.expand_dims(np.array([xPos, yPos, 0]),0))[:,0:2]
     xyDistances = xyDistances[:,0] + xyDistances[:,1] * 1j
     xyDistanceSortedIndices = np.absolute(xyDistances).argsort() #Quatsch, ich muss auch noch die Indices rausfinden
 
     while len(xyDistanceSortedIndices) < 3: #if less than three atoms, just append the closest one again
         xyDistanceSortedIndices += xyDistanceSortedIndices
     
-    atomNumbers = atomStruct.get_atomic_numbers()[xyDistanceSortedIndices[:3]]
-    xPositions, yPositions = atomStruct.get_positions()[xyDistanceSortedIndices[:3]].transpose()[:2]
+    atomNumbers = atomicNumbers[xyDistanceSortedIndices[:3]]
+    xPositions, yPositions = atomPositions[xyDistanceSortedIndices[:3]].transpose()[:2]
     return atomNumbers, xPositions, yPositions
 
 
@@ -163,25 +166,28 @@ for trainOrTest in ["train", "test"]:
             probe.match_grid(potential_thick)
 
             pixelated_detector = PixelatedDetector(max_angle=120)
-            gridSampling = 0.2
+            coarseSamplingFactor = 2 #so less pixels positions get sampled
+            numberOfScanPos = int(np.array(potential_thick.extent)/0.2)
+            gridSampling = np.array(potential_thick.extent)/numberOfScanPos
             gridscan = GridScan(
-                (0, 0), potential_thick.extent, sampling=gridSampling
+                start = (0, 0), end = potential_thick.extent, gpts=numberOfScanPos
             )
             measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick, pbar = False)
         
+
         if len(atomStruct.positions) <= 3:
-            atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct, xPos, yPos)
+            atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(),atomStruct.get_atomic_numbers(), 0, 0)
 
         with open(os.path.join(f'measurements_{trainOrTest}','labels.csv'), 'a', newline='') as csvfile:
             Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
             for xCNT, difPatternRow in tqdm(enumerate(measurement_thick.array), leave = False, desc="Going through the x scan positions", total= len(measurement_thick.array)):
                 for yCNT, difPattern in tqdm(enumerate(difPatternRow), leave = False, desc="Going through the y scan positions", total= len(difPatternRow)):
-                    if yCNT%2 or xCNT%2:
-                        continue #less data from a single position         
-                    xPos = xCNT * gridSampling
-                    yPos = yCNT * gridSampling
+                    if xCNT %2 == 0 or yCNT %2 == 0: #reduce amount of data from one sample
+                        continue
+                    xPos = xCNT * gridSampling[0]
+                    yPos = yCNT * gridSampling[1]
                     if len(atomStruct.positions) > 3:
-                        atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct, xPos, yPos)
+                        atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPos, yPos)
                     xAtomRel = xPositionsAtoms - xPos
                     yAtomRel = yPositionsAtoms - yPos
                     fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{xPos}_{yPos}_{np.array2string(atomNumbers)}_{np.array2string(xAtomRel)}_{np.array2string(yAtomRel)}.npy")
