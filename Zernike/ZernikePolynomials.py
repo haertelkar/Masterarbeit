@@ -23,7 +23,7 @@ class Zernike(object):
         self.dy = self.dx
 
     def calculateZernikeWeights(self, image):
-        normFactor = np.pi #not used otherwise the weights are very small
+        #normFactor = np.pi #not used otherwise the weights are very small
         weights = np.sum(self.basis * image[None,:] * self.dx * self.dy , axis = (1,2))
         # for cnt in range(len(self.basis)):
         #     randomNumber1 = np.random.randint(0, len(self.basis))
