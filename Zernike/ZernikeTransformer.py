@@ -18,35 +18,28 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
         with open(os.path.join(f'measurements_{testOrTrain}','labels.csv'), 'w+', newline='') as labelsZernike, open(os.path.join(imgPath, 'labels.csv'), 'r', newline='') as labelsFullPixelGrid:
             Writer = csv.writer(labelsZernike, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
             Reader = csv.reader(labelsFullPixelGrid, delimiter=',', quotechar='|')
-            for _ in Reader: #writes the title row
-                Writer.writerow(["fileName","element","xAtomRel","yAtomRel","zAtoms"])
+            for row in Reader: #writes the title row
+                Writer.writerow(row)
                 break
 
             for row in tqdm(Reader, desc = f"Converting {testOrTrain} Data", leave =leave, total = len(os.listdir(imgPath))-1):
                 if "element" in row:
                     continue
-                fileName, element, xAtomRel, xAtomShift, yAtomRel, yAtomShift, zAtoms = row
+                fileName = row[0]
                 if ".npy" not in fileName:
                     raise Exception(fileName + " is not a valid filename")
                 image = np.load(os.path.join(imgPath, fileName))
                 if ZernikeObject is None:
                     radius = radius or int(len(image)/2)
                     ZernikeObject = Zernike(radius, len(image), noOfMoments)
-                moments = ZernikeObject.calculateZernikeWeights(image * 1e3) #scaled up so it's more useful
-                # moments = zernike_moments(image, radius, 40) #modified zernike_moments so it doesn't output the abs values, otherwise directional analytics are not possible
-                # plt.bar(np.arange(len(momentsByMahotas)),momentsByMahotas)
-                # plt.savefig("mahotas.png")
-                # plt.close()
-
-                # print(momentsMyCalc)
-                # plt.bar(np.arange(len(momentsMyCalc)), momentsMyCalc)
-                # plt.savefig("myCalc.png")
-                # plt.close()
-                
+                    plt.imsave("testImage.png", image)
                 # exit()
+                moments = ZernikeObject.calculateZernikeWeights(image)* 1e3 #scaled up so it's more useful
+                # moments = zernike_moments(image, radius, 40) #modified zernike_moments so it doesn't output the abs values, otherwise directional analytics are not possible
+
                 np.save(os.path.join(f"measurements_{testOrTrain}", fileName), moments)
                 
-                Writer.writerow([fileName] + [str(difParams) for difParams in [element, xAtomRel, yAtomRel, zAtoms]])    
+                Writer.writerow(row)    
     os.chdir(oldDir)
 
 if __name__ == "__main__":
