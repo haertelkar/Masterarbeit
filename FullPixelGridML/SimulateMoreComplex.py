@@ -19,6 +19,7 @@ from abtem.structures import orthogonalize_cell
 import torch
 from tqdm import tqdm
 import csv
+import cv2
 import warnings
 import os
 from numba import njit
@@ -144,7 +145,7 @@ def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:f
 for trainOrTest in ["train", "test"]:
     with open(os.path.join(f'measurements_{trainOrTest}','labels.csv'), 'w+', newline='') as csvfile:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        Writer.writerow(["fileName", "element", "xAtomRel", "xAtomShift", "yAtomRel", "yAtomShift", "zAtoms"])
+        Writer.writerow(["fileName", "element1", "element2", "element3", "xAtomRel1", "xAtomRel2", "xAtomRel3", "yAtomRel1", "yAtomRel2", "yAtomRel3"])
         Writer = None
     for i in tqdm(range(20), desc = f"Calculating {trainOrTest}ing data"):
         nameStruct, atomStruct = createStructure()
@@ -190,8 +191,9 @@ for trainOrTest in ["train", "test"]:
                         atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPos, yPos)
                     xAtomRel = xPositionsAtoms - xPos
                     yAtomRel = yPositionsAtoms - yPos
+                    difPatternRes = cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR)
                     fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{xPos}_{yPos}_{np.array2string(atomNumbers)}_{np.array2string(xAtomRel)}_{np.array2string(yAtomRel)}.npy")
-                    np.save(fileName,difPattern)
+                    np.save(fileName,difPatternRes)
                     Writer.writerow([fileName.split(os.sep)[-1]] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])
             
 # measurement_noise = poisson_noise(measurement_thick, 1e6)
