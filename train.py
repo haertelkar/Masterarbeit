@@ -17,6 +17,7 @@ from torch.utils.data import Dataset
 from torchvision.transforms import ToTensor
 from tqdm import tqdm
 from torch.multiprocessing import Pool, Process, set_start_method
+from rowsIndexToHeader import rowsIndexToHeader
 
 
 
@@ -24,27 +25,22 @@ from torch.multiprocessing import Pool, Process, set_start_method
 class ptychographicData(Dataset):
 	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors = None, shift = None, labelIndicesToPredict = None, classifier = False):
 		self.img_labels = pd.read_csv(annotations_file)
-		self.columns = list(self.img_labels.columns)
+		self.columns = np.array(list(self.img_labels.columns))
 		self.img_dir = img_dir
 		self.transform = transform
 		self.target_transform = target_transform
 		self.labelIndicesToPredict = labelIndicesToPredict
 		self.scalerZernike = 1
+		self.classifier = classifier
+		self.scalingFactors = None
+		self.shift = None
+
 		assert(not(labelIndicesToPredict is 0))
 		if isinstance(labelIndicesToPredict, list):
 			assert(0 not in labelIndicesToPredict)
-		if self.classifier:
-			pass
-		elif self.labelIndicesToPredict is None:
-			self.scalingFactors = scalingFactors if scalingFactors is not None else np.array(self.img_labels.iloc[:, 1:].max(axis=0).to_list())
-			self.shift = shift if shift is not None else np.array(self.img_labels.iloc[:, 1:].mean(axis=0).to_list())
-		elif type(self.labelIndicesToPredict) == list:
-			self.scalingFactors = scalingFactors if scalingFactors is not None else np.array(self.img_labels.iloc[:, labelIndicesToPredict].max(axis=0).to_list())
-			self.shift = shift if shift is not None else np.array(self.img_labels.iloc[:, labelIndicesToPredict].mean(axis=0).to_list())
-		else:
-			self.scalingFactors = scalingFactors if scalingFactors is not None else np.array(self.img_labels.iloc[:, labelIndicesToPredict].max(axis=0))
-			self.shift = shift if shift is not None else np.array(self.img_labels.iloc[:, labelIndicesToPredict].mean(axis=0))
-		self.classifier = classifier
+		
+		self.createScaleAndShift(scalingFactors = scalingFactors, shift = shift)
+
 		if self.classifier:
 			assert(type(labelIndicesToPredict) != list)
 			self.smallestElem = self.img_labels.iloc[:, labelIndicesToPredict].min()
@@ -80,6 +76,34 @@ class ptychographicData(Dataset):
 		
 		return imageOrZernikeMoments, label
 	
+	def createScaleAndShift(self, scalingFactors, shift):
+		dontShift = []
+		for index in rowsIndexToHeader.keys():
+			if "element" in rowsIndexToHeader[index]: #don't scale elements
+				dontShift.append(index)
+
+		if self.classifier:
+			return
+		
+		if scalingFactors is not None:
+			self.scalingFactors = scalingFactors
+		else:
+			self.scalingFactors = np.array(self.img_labels.iloc[:, 1:].max(axis=0).to_list())
+			#self.scalingFactors[np.array(dontScale)-1] = 1
+			if self.labelIndicesToPredict is not None: self.scalingFactors = self.scalingFactors[np.array(self.labelIndicesToPredict)-1]
+
+		if shift is not None:
+			self.shift = shift 
+		else:
+			self.shift = np.array(self.img_labels.iloc[:, 1:].mean(axis=0).to_list())
+			self.shift[np.array(dontShift)-1] = 0
+			if self.labelIndicesToPredict is not None: self.shift = self.shift[np.array(self.labelIndicesToPredict)-1]
+			
+			
+
+			
+
+
 	def createOneHotEncodedVector(self, classIndex):
 		classes = np.zeros(self.numberOfClasses)
 		classes[classIndex - self.smallestElem] = 1
@@ -262,11 +286,11 @@ class Learner():
 			Writer = csv.writer(resultsTest, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
 			try:
 				if not self.classifier: 
-					Writer.writerow([test_data.columns[self.indicesToPredict]]*2)
+					Writer.writerow(list(test_data.columns[np.array(self.indicesToPredict)]*2))
 				else:
-					Writer.writerow([test_data.columns[self.indicesToPredict]])
+					Writer.writerow(list(test_data.columns[np.array(self.indicesToPredict)]))
 			except TypeError:
-				Writer.writerow(test_data.columns[1:]*2)
+				Writer.writerow(list(test_data.columns[1:]*2))
 
 
 			# set the model in evaluation mode
