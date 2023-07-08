@@ -284,14 +284,10 @@ class Learner():
 		# turn off autograd for testing evaluation
 		with torch.no_grad(), open(f'results_{modelName}_{self.version}.csv', 'w+', newline='') as resultsTest:
 			Writer = csv.writer(resultsTest, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-			try:
-				if not self.classifier: 
-					Writer.writerow(list(test_data.columns[np.array(self.indicesToPredict)]*2))
-				else:
-					Writer.writerow(list(test_data.columns[np.array(self.indicesToPredict)]))
-			except TypeError:
-				Writer.writerow(list(test_data.columns[1:]*2))
-
+			if not self.classifier: 
+				Writer.writerow(list(test_data.columns[np.array(self.indicesToPredict)])*2)
+			else:
+				Writer.writerow(list(test_data.columns[np.array(self.indicesToPredict)]))
 
 			# set the model in evaluation mode
 			model.eval()
