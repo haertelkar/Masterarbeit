@@ -5,10 +5,10 @@ class znn(Module):
     def __init__(self, inFeatures, outFeatures):
         # call the parent constructor
         super(znn, self).__init__()
-        # initialize first set of CONV => RELU => POOL layers
+
         self.fc1 = Linear(in_features=inFeatures, out_features=2000)
         self.relu = ReLU()
-        # initialize second set of CONV => RELU => POOL layers
+
         self.fc15 = Linear(in_features=2000, out_features=4000)
 
 
@@ -17,10 +17,10 @@ class znn(Module):
 
         self.fcmiddle = Linear(in_features=8000, out_features=8000)
 
-        # initialize first (and only) set of FC => RELU layers
+
         self.fc3 = Linear(in_features=8000, out_features=4000)
 
-        # initialize our softmax classifier
+
         self.fc4 = Linear(in_features=4000, out_features=1000)
 
         self.fc5 = Linear(in_features=1000, out_features=outFeatures)

@@ -147,7 +147,7 @@ class Learner():
 			test_data = ptychographicData(
 				os.path.abspath(os.path.join("FullPixelGridML","measurements_test","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_test")), transform=ToTensor(), target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors, shift = training_data.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
 			)
-		if modelName == "Zernike" or modelName == "ZernikeBottleneck":
+		if modelName == "Zernike" or modelName == "ZernikeBottleneck" or modelName == "ZernikeComplex":
 			#znn
 			training_data = ptychographicData(
 				os.path.abspath(os.path.join("Zernike","measurements_train","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
@@ -201,6 +201,13 @@ class Learner():
 
 		if modelName == "Zernike":
 			from Zernike.znn import znn
+			print("[INFO] initializing the znn model...")
+			model = znn(
+				inFeatures = len(trainFeatures[1]),
+				outFeatures=len(trainLabels[1])).to(self.device)
+			
+		if modelName == "ZernikeComplex":
+			from Zernike.znnMoreComplex import znn
 			print("[INFO] initializing the znn model...")
 			model = znn(
 				inFeatures = len(trainFeatures[1]),
@@ -324,7 +331,7 @@ class Learner():
 
 
 if __name__ == '__main__':
-	models = ["FullPixelGridML", "Zernike", "ZernikeBottleneck"]
+	models = ["FullPixelGridML", "Zernike", "ZernikeBottleneck", "ZernikeComplex"]
 	# construct the argument parser and parse the arguments
 	ap = argparse.ArgumentParser()
 	ap.add_argument("-v", "--version", type=str, required=True,
