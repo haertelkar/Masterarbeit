@@ -192,7 +192,7 @@ for trainOrTest in ["train", "test"]:
                     xAtomRel = xPositionsAtoms - xPos
                     yAtomRel = yPositionsAtoms - yPos
                     difPatternRes = cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR)
-                    fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{xPos}_{yPos}_{np.array2string(atomNumbers)}_{np.array2string(xAtomRel)}_{np.array2string(yAtomRel)}.npy")
+                    fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{i}_{xPos}_{yPos}_{np.array2string(atomNumbers)}_{np.array2string(xAtomRel)}_{np.array2string(yAtomRel)}.npy")
                     np.save(fileName,difPatternRes)
                     Writer.writerow([fileName.split(os.sep)[-1]] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])
             
