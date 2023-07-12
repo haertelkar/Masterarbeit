@@ -132,7 +132,7 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Atoms:
 def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:float, yPos:float):
     xyDistances = (atomPositions - np.expand_dims(np.array([xPos, yPos, 0]),0))[:,0:2]
     xyDistances = xyDistances[:,0] + xyDistances[:,1] * 1j
-    xyDistanceSortedIndices = np.absolute(xyDistances).argsort() #Quatsch, ich muss auch noch die Indices rausfinden
+    xyDistanceSortedIndices = np.absolute(xyDistances).argsort() 
 
     while len(xyDistanceSortedIndices) < 3: #if less than three atoms, just append the closest one again
         xyDistanceSortedIndices += xyDistanceSortedIndices
