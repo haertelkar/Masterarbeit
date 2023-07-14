@@ -31,10 +31,16 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
                 image = np.load(os.path.join(imgPath, fileName))
                 if ZernikeObject is None:
                     radius = radius or int(len(image)/2)
-                    ZernikeObject = Zernike(radius, len(image), noOfMoments)
-                    plt.imsave("testImage.png", image)
+                    ZernikeObject = Zernike(radius, image.shape[-1], noOfMoments)
                 # exit()
-                moments = ZernikeObject.calculateZernikeWeights(image)* 1e3 #scaled up so it's more useful
+                assert(len(np.shape(image)) in [2,3])
+                if len(np.shape(image)) == 3:
+                    moments = []
+                    for im in image:
+                        moments.append(ZernikeObject.calculateZernikeWeights(im)*1e3)
+                    moments = np.array(moments).flatten()
+                else:
+                    moments = ZernikeObject.calculateZernikeWeights(image)* 1e3 #scaled up so it's more useful
                 # moments = zernike_moments(image, radius, 40) #modified zernike_moments so it doesn't output the abs values, otherwise directional analytics are not possible
 
                 np.save(os.path.join(f"measurements_{testOrTrain}", fileName), moments)
