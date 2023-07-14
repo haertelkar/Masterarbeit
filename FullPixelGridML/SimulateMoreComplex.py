@@ -121,10 +121,12 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Atoms:
 
     if specificStructure == "random":
         nameStruct = choice(list(structureFunctions.keys()))
+        tqdm.write(nameStruct)
         struct = structureFunctions.get(nameStruct)
         return nameStruct, struct
     else:
         nameStruct = specificStructure
+        tqdm.write(nameStruct)
         struct = structureFunctions.get(specificStructure, StructureUnknown(specificStructure))
         return nameStruct, struct 
 
