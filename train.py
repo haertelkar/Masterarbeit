@@ -22,6 +22,7 @@ from rowsIndexToHeader import rowsIndexToHeader
 
 
 
+
 class ptychographicData(Dataset):
 	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors = None, shift = None, labelIndicesToPredict = None, classifier = False):
 		self.img_labels = pd.read_csv(annotations_file)
@@ -47,19 +48,16 @@ class ptychographicData(Dataset):
 			self.numberOfClasses = self.img_labels.iloc[:, labelIndicesToPredict].max() - self.smallestElem + 1
 			
 
-
 	def __len__(self):
 		file_count = len(self.img_labels)
 		return file_count
 
 	def __getitem__(self, idx):
-		img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
-		imageOrZernikeMoments = np.load(img_path).astype('float32')		
-		if self.scalerZernike == 1 or len(imageOrZernikeMoments.shape) == 2: #only set once for Zernike
-			self.scalerZernike = np.max(imageOrZernikeMoments)
-		imageOrZernikeMoments /= self.scalerZernike
-		if len(imageOrZernikeMoments.shape) == 2 and (imageOrZernikeMoments.shape[0]%2 or imageOrZernikeMoments.shape[1]%2):
-			raise Exception("uneven dimension not allowed in unet") #only even dimensions are allowed in unet
+		label = self.getLabel(idx)
+		imageOrZernikeMoments = self.getImageOrZernike(idx)
+		return imageOrZernikeMoments, label
+	
+	def getLabel(self, idx):
 		if self.classifier:
 			label = np.array(self.img_labels.iloc[idx, self.labelIndicesToPredict]).astype(int)
 			label = self.createOneHotEncodedVector(label)
@@ -71,11 +69,20 @@ class ptychographicData(Dataset):
 			label = self.scaleDown(label)
 		if self.target_transform:
 			label = self.target_transform(label)
+		return np.array(label)
+
+	def getImageOrZernike(self, idx):
+		img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0])
+		imageOrZernikeMoments = np.load(img_path).astype('float32')		
+		if self.scalerZernike == 1 or len(imageOrZernikeMoments.shape) == 2: #only set once for Zernike
+			self.scalerZernike = np.max(imageOrZernikeMoments)
+		imageOrZernikeMoments /= self.scalerZernike
+		if len(imageOrZernikeMoments.shape) == 2 and (imageOrZernikeMoments.shape[0]%2 or imageOrZernikeMoments.shape[1]%2) and self.classifier:
+			raise Exception("uneven dimension not allowed in unet") #only even dimensions are allowed in unet
 		if self.transform:
 			imageOrZernikeMoments = self.transform(imageOrZernikeMoments) #not scaled here because it has to be datatype uint8 to be scaled automatically
-		
-		return imageOrZernikeMoments, label
-	
+		return imageOrZernikeMoments
+
 	def createScaleAndShift(self, scalingFactors, shift):
 		dontShift = []
 		for index in rowsIndexToHeader.keys():
@@ -98,11 +105,6 @@ class ptychographicData(Dataset):
 			self.shift = np.array(self.img_labels.iloc[:, 1:].mean(axis=0).to_list())
 			self.shift[np.array(dontShift)-1] = 0
 			if self.labelIndicesToPredict is not None: self.shift = self.shift[np.array(self.labelIndicesToPredict)-1]
-			
-			
-
-			
-
 
 	def createOneHotEncodedVector(self, classIndex):
 		classes = np.zeros(self.numberOfClasses)
@@ -120,6 +122,65 @@ class ptychographicData(Dataset):
 		row -= self.shift
 		row /= self.scalingFactors + 0.00000001
 		return row
+
+class multiPos(ptychographicData):
+	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors=None, shift=None, labelIndicesToPredict=None, classifier=False):
+		super().__init__(annotations_file, img_dir, transform, target_transform, scalingFactors, shift, labelIndicesToPredict, classifier)
+		self.scansPerSpecimen = 100
+		self.numberOfSpecimen = None
+		self.indicesPerSpecimen = 20
+		self.idxToXY = {}
+		self.indices = self.getIndicesOfSparseScan(indicesPerSpecimen = self.indicesPerSpecimen, outputsPerSpecimen = self.scansPerSpecimen)
+
+	def getIndicesOfSparseScan(self, indicesPerSpecimen, outputsPerSpecimen):
+		allFileNames = self.img_labels.iloc[:, 0]
+		specimenToIndex = {}
+		self.numberOfSpecimen = 0
+		for idx, fileName in enumerate(allFileNames):
+			_, specimen, xPos, yPos, _, _, _ = fileName.split("_")
+			self.idxToXY[idx] = (float(xPos), float(yPos))
+			if specimen not in specimenToIndex: 
+				specimenToIndex[specimen] = [idx]
+				self.numberOfSpecimen += 1
+			else:
+				specimenToIndex[specimen].append(idx)
+
+		randomIdxArray = []
+		for idxArray in specimenToIndex.values():
+			for _ in range(outputsPerSpecimen): 
+				randomIdxArray.append(np.random.choice(idxArray, size = indicesPerSpecimen, replace= False))
+		
+		return np.array(randomIdxArray)
+
+	def __len__(self):
+		return self.scansPerSpecimen * self.numberOfSpecimen
+
+	def __getitem__(self, sample):
+		zernikeMultiPos = None
+		labelMultiPos = None
+		# XYs = []
+
+
+		for idx in self.indices[sample]:
+			if labelMultiPos is None: labelMultiPos = self.getLabel(idx)
+			if zernikeMultiPos is None: zernikeMultiPos = self.getImageOrZernike(idx)
+
+			x,y = self.idxToXY.get(idx)
+			labelMultiPos = np.append(labelMultiPos,self.getLabel(idx))
+			zernikeMultiPos = torch.cat((torch.Tensor((x,y)), zernikeMultiPos,self.getImageOrZernike(idx)))
+			# XYs += [x,y] 
+
+
+
+		# zernikeMultiPos = np.append(np.array(zernikeMultiPos).flatten(),XYs) #TODO only valid for znn, wont work with cnn, for cnn use layers (also no idea how to implement xy for cnn)
+		# labelMultiPos = np.array(labelMultiPos).flatten()
+		#TODO missing Xpos And Ypos Also Labels Should Be Cleaned Up
+
+
+		#TODO ideally one label with the absolute pos of all atoms and also not a random SparseScan
+		#TODO easier: four close positions -> probably needs different simulateMoreComplex.py
+		return zernikeMultiPos, labelMultiPos
+
 
 class Learner():
 	def __init__(self, epochs, version, classifier = False, indicesToPredict = None):
@@ -141,11 +202,11 @@ class Learner():
 		if modelName == "FullPixelGridML" or modelName == "unet":	
 			#cnn
 			training_data = ptychographicData(
-				os.path.abspath(os.path.join("FullPixelGridML","measurements_train","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_train")), transform=ToTensor(), target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
+				os.path.abspath(os.path.join("FullPixelGridML","measurements_train","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
 			)
 
 			test_data = ptychographicData(
-				os.path.abspath(os.path.join("FullPixelGridML","measurements_test","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_test")), transform=ToTensor(), target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors, shift = training_data.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
+				os.path.abspath(os.path.join("FullPixelGridML","measurements_test","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_test")), transform=torch.as_tensor, target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors, shift = training_data.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
 			)
 		if modelName == "Zernike" or modelName == "ZernikeBottleneck" or modelName == "ZernikeComplex":
 			#znn
@@ -156,6 +217,14 @@ class Learner():
 			test_data = ptychographicData(
 				os.path.abspath(os.path.join("Zernike", "measurements_test","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_test")), transform=torch.as_tensor, target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors, shift = training_data.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
 			)
+
+			# training_data = multiPos(
+			# 	os.path.abspath(os.path.join("Zernike","measurements_train","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
+			# 	)
+
+			# test_data = multiPos(
+			# 	os.path.abspath(os.path.join("Zernike", "measurements_test","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_test")), transform=torch.as_tensor, target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors, shift = training_data.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
+			# )
 
 		print("[INFO] generating the train/validation split...")
 		numTrainSamples = int(len(training_data) * self.TRAIN_SPLIT)
@@ -177,19 +246,20 @@ class Learner():
 	def loadModel(self, trainDataLoader):
 		# first element to access dimensions
 		trainFeatures, trainLabels = next(iter(trainDataLoader))
+		numChannels = trainFeatures.shape[1]		
 
 		if modelName == "FullPixelGridML":
 			from FullPixelGridML.cnn import cnn
 			print("[INFO] initializing the cnn model...")
 			model = cnn(
-				numChannels=1,
+				numChannels=numChannels,
 				classes=len(trainLabels[1])).to(self.device)
 			
 		if modelName == "unet":
 			from FullPixelGridML.unet import unet
 			print("[INFO] initializing the unet model...")
 			model = unet(
-				numChannels=1,
+				numChannels=numChannels,
 				classes=len(trainLabels[1])).to(self.device)
 
 		if modelName == "ZernikeBottleneck":
@@ -208,7 +278,7 @@ class Learner():
 			
 		if modelName == "ZernikeComplex":
 			from Zernike.znnMoreComplex import znn
-			print("[INFO] initializing the znn model...")
+			print("[INFO] initializing the znnComplex model...")
 			model = znn(
 				inFeatures = len(trainFeatures[1]),
 				outFeatures=len(trainLabels[1])).to(self.device)
@@ -218,6 +288,8 @@ class Learner():
 	def Learner(self, modelName, leave = True):
 		#print(f"Training model {modelName}")
 		trainSteps, trainDataLoader, valDataLoader, valSteps, testDataLoader, test_data = self.loadData(modelName)
+		assert(trainSteps > 0)
+		assert(valSteps > 0)
 		model = self.loadModel(trainDataLoader)
 	
 		# initialize our optimizer and loss function
@@ -273,6 +345,7 @@ class Learner():
 			avgTrainLoss = totalTrainLoss / trainSteps
 			avgValLoss = totalValLoss / valSteps
 			# update our training history
+			tqdm.write(f"epoch {e}, train loss {avgTrainLoss}, val loss {avgValLoss}")
 			H["train_loss"].append(avgTrainLoss.cpu().detach().numpy())
 			H["val_loss"].append(avgValLoss.cpu().detach().numpy())
 		# print the model training and validation information
@@ -291,7 +364,9 @@ class Learner():
 		# turn off autograd for testing evaluation
 		with torch.no_grad(), open(f'results_{modelName}_{self.version}.csv', 'w+', newline='') as resultsTest:
 			Writer = csv.writer(resultsTest, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-			if not self.classifier: 
+			if not self.classifier and self.indicesToPredict is None:
+				Writer.writerow(list(test_data.columns[1:])*2)
+			elif not self.classifier:
 				Writer.writerow(list(test_data.columns[np.array(self.indicesToPredict)])*2)
 			else:
 				Writer.writerow(list(test_data.columns[np.array(self.indicesToPredict)]))
