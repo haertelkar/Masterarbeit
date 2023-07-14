@@ -164,9 +164,9 @@ def createSmallTiles(array2D, xDim: int, yDim: int):
     indicesOfTilesInX = np.unique(x_)
     indicesOfTilesInY = np.unique(y_)
     #skip the last row/line when less pixel than xDim or yDim
-    if len(array2D[indicesOfTilesInX[-1]]) < xDim:
+    if len(array2D[x_ == indicesOfTilesInX[-1]]) < xDim:
         indicesOfTilesInX = indicesOfTilesInX[:-1]
-    if len(array2D[indicesOfTilesInX[-1]]) < yDim:
+    if len(array2D[:,y_ == indicesOfTilesInY[-1]]) < yDim:
         indicesOfTilesInY = indicesOfTilesInY[:-1]
     for x, y in zip(indicesOfTilesInX, indicesOfTilesInY):
         yield x, y, array2D[x_ == x][:, y_ == y]
@@ -226,32 +226,32 @@ for trainOrTest in ["train", "test"]:
         xRealLength = XDIMTILES * gridSampling[0]
         yRealLength = YDIMTILES * gridSampling[1]
 
-        with open(os.path.join(f'measurements_{trainOrTest}','labels.csv'), 'a', newline='') as csvfile:
-            Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            for xCNT, yCNT, difPatternArray in tqdm(createSmallTiles(measurement_thick.array, XDIMTILES, YDIMTILES), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles", total= len(measurement_thick.array)):
-                xPos = xCNT * gridSampling[0]
-                yPos = yCNT * gridSampling[1]
-                #findAtomsInTile(xPos, yPos, xRealLength, yRealLength, atomStruct.get_positions())
-                if len(atomStruct.positions) > 3:
-                    atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPos + xRealLength/2, yPos + yRealLength/2)
-                xAtomRel = xPositionsAtoms - xPos
-                yAtomRel = yPositionsAtoms - yPos
-                difPatterns = []
-                # difPatterns.append(difPatternArray[0,0])
-                # difPatterns.append(difPatternArray[0,-1])
-                # difPatterns.append(difPatternArray[-1,0])
-                # difPatterns.append(difPatternArray[-1,-1])
-                for x in range(difPatternArray.shape[0]):
-                    for y in range(difPatternArray.shape[1]):
-                        difPatterns.append(difPatternArray[x][y])
-
-        
-                #difPatterns = np.array(difPatterns)
-                for cnt, difPattern in enumerate(difPatterns):
-                    difPatterns[cnt] = cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR)
-                fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{i}_{xPos}_{yPos}_{np.array2string(atomNumbers)}_{np.array2string(xAtomRel)}_{np.array2string(yAtomRel)}.npy")
-                np.save(fileName, np.array(difPatterns))
-                Writer.writerow([fileName.split(os.sep)[-1]] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])        
+        #with open(os.path.join(f'measurements_{trainOrTest}','labels.csv'), 'a', newline='') as csvfile:
+        #Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        for xCNT, yCNT, difPatternArray in tqdm(createSmallTiles(measurement_thick.array, XDIMTILES, YDIMTILES), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles", total= len(measurement_thick.array)):
+            xPos = xCNT * gridSampling[0]
+            yPos = yCNT * gridSampling[1]
+            #findAtomsInTile(xPos, yPos, xRealLength, yRealLength, atomStruct.get_positions())
+            if len(atomStruct.positions) > 3:
+                atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPos + xRealLength/2, yPos + yRealLength/2)
+            xAtomRel = xPositionsAtoms - xPos
+            yAtomRel = yPositionsAtoms - yPos
+            difPatterns = []
+            # difPatterns.append(difPatternArray[0,0])
+            # difPatterns.append(difPatternArray[0,-1])
+            # difPatterns.append(difPatternArray[-1,0])
+            # difPatterns.append(difPatternArray[-1,-1])
+            for x in range(difPatternArray.shape[0]):
+                for y in range(difPatternArray.shape[1]):
+                    difPatterns.append(difPatternArray[x][y])
+            print(len(difPatterns))
+            continue
+            #difPatterns = np.array(difPatterns)
+            for cnt, difPattern in enumerate(difPatterns):
+                difPatterns[cnt] = cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR)
+            fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{i}_{xPos}_{yPos}_{np.array2string(atomNumbers)}_{np.array2string(xAtomRel)}_{np.array2string(yAtomRel)}.npy")
+            np.save(fileName, np.array(difPatterns))
+            Writer.writerow([fileName.split(os.sep)[-1]] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])        
 # measurement_noise = poisson_noise(measurement_thick, 1e6)
 # for 
 #     fileName = "measurements\\{element}_{i}_{xAtom}_{xAtomShift}_{yAtom}_{yAtomShift}"
