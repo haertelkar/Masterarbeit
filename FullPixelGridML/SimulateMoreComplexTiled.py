@@ -17,7 +17,7 @@ from abtem.scan import GridScan
 from abtem.noise import poisson_noise
 from abtem.structures import orthogonalize_cell
 import torch
-from tqdm import tqdm
+#from tqdm import tqdm
 import csv
 import cv2
 import warnings
@@ -25,6 +25,8 @@ import os
 from numba import njit
 from ase import Atoms
 from ase.build import molecule, bulk
+from joblib import Parallel, delayed
+
 
 
 device = "gpu" if torch.cuda.is_available() else "cpu"
@@ -121,12 +123,12 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Atoms:
 
     if specificStructure == "random":
         nameStruct = choice(list(structureFunctions.keys()))
-        tqdm.write(nameStruct)
+        #tqdm.write(nameStruct)
         struct = structureFunctions.get(nameStruct)(**kwargs)
         return nameStruct, struct
     else:
         nameStruct = specificStructure
-        tqdm.write(nameStruct)
+        #tqdm.write(nameStruct)
         struct = structureFunctions.get(specificStructure(**kwargs), StructureUnknown(specificStructure))
         return nameStruct, struct 
 
@@ -185,6 +187,51 @@ def findAtomsInTile(xPos:float, yPos:float, xRealLength:float, yRealLength:float
 
     return xPositions, yPositions
 
+def generateDiffractionArray(i):
+    nameStruct, atomStruct = createStructure()
+    try:
+        potential_thick = Potential(
+            atomStruct,
+            sampling=0.02,
+            parametrization="kirkland",
+            device=device
+        )
+    except Exception as e:
+        print(nameStruct, atomStruct)
+        raise(e)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        probe = Probe(semiangle_cutoff=24, energy=200e3, device=device)
+        probe.match_grid(potential_thick)
+
+        pixelated_detector = PixelatedDetector(max_angle=100)
+        gridSampling = (0.2,0.2)
+        gridscan = GridScan(
+            start = (0, 0), end = potential_thick.extent, sampling=gridSampling
+        )
+        measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick, pbar = False)
+
+        return i, nameStruct, gridSampling, atomStruct, measurement_thick
+
+
+from tqdm.auto import tqdm
+
+class ProgressParallel(Parallel):
+    def __init__(self, use_tqdm=True, total=None, *args, **kwargs):
+        self._use_tqdm = use_tqdm
+        self._total = total
+        super().__init__(*args, **kwargs)
+
+    def __call__(self, *args, **kwargs):
+        with tqdm(disable=not self._use_tqdm, total=self._total, leave = False, desc = f"Calculating {trainOrTest}ing data") as self._pbar:
+            return Parallel.__call__(self, *args, **kwargs)
+
+    def print_progress(self):
+        if self._total is None:
+            self._pbar.total = self.n_dispatched_tasks
+        self._pbar.n = self.n_completed_tasks
+        self._pbar.refresh()
+
 XDIMTILES = 5
 YDIMTILES = 5
 
@@ -193,33 +240,10 @@ for trainOrTest in ["train", "test"]:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         Writer.writerow(["fileName", "element1", "element2", "element3", "xAtomRel1", "xAtomRel2", "xAtomRel3", "yAtomRel1", "yAtomRel2", "yAtomRel3"])
         Writer = None
-    for i in tqdm(range(200), desc = f"Calculating {trainOrTest}ing data",):
-        nameStruct, atomStruct = createStructure()
-        # view(atomPillar)
-        # plt.show()
-        try:
-            potential_thick = Potential(
-                atomStruct,
-                sampling=0.02,
-                parametrization="kirkland",
-                device=device
-            )
-        except Exception as e:
-            print(nameStruct, atomStruct)
-            raise(e)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            probe = Probe(semiangle_cutoff=24, energy=200e3, device=device)
-            probe.match_grid(potential_thick)
 
-            pixelated_detector = PixelatedDetector(max_angle=100)
-            gridSampling = (0.2,0.2)
-            gridscan = GridScan(
-                start = (0, 0), end = potential_thick.extent, sampling=gridSampling
-            )
-            measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick, pbar = False)
-        
+    parallizedGenerator = ProgressParallel(total = 2000, n_jobs=5)(delayed(generateDiffractionArray)(i) for i in tqdm(range(2000), leave = False))
 
+    for i, nameStruct, gridSampling, atomStruct, measurement_thick in parallizedGenerator:
         if len(atomStruct.positions) <= 3:
             atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(),atomStruct.get_atomic_numbers(), 0, 0)
         
