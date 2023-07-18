@@ -17,7 +17,7 @@ from abtem.scan import GridScan
 from abtem.noise import poisson_noise
 from abtem.structures import orthogonalize_cell
 import torch
-#from tqdm import tqdm
+from tqdm import tqdm
 import csv
 import cv2
 import warnings
@@ -25,8 +25,11 @@ import os
 from numba import njit
 from ase import Atoms
 from ase.build import molecule, bulk
-from joblib import Parallel, delayed
-
+import faulthandler
+import signal
+faulthandler.register(signal.SIGUSR1.value)
+# from hanging_threads import start_monitoring
+# monitoring_thread = start_monitoring(seconds_frozen=60, test_interval=100)
 
 
 device = "gpu" if torch.cuda.is_available() else "cpu"
@@ -187,7 +190,8 @@ def findAtomsInTile(xPos:float, yPos:float, xRealLength:float, yRealLength:float
 
     return xPositions, yPositions
 
-def generateDiffractionArray(i):
+def generateDiffractionArray():
+
     nameStruct, atomStruct = createStructure()
     try:
         potential_thick = Potential(
@@ -211,69 +215,76 @@ def generateDiffractionArray(i):
         )
         measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick, pbar = False)
 
-        return i, nameStruct, gridSampling, atomStruct, measurement_thick
+        return nameStruct, gridSampling, atomStruct, measurement_thick
 
+def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, processID = ""):
+    rows = []
+    for nameStruct, gridSampling, atomStruct, measurement_thick in (generateDiffractionArray() for i in tqdm(range(numberOfPatterns), leave = False, desc = f"Calculating {trainOrTest}ing data {processID}")):
+        if len(atomStruct.positions) <= 3:
+            atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(),atomStruct.get_atomic_numbers(), 0, 0)
+    
+        xRealLength = XDIMTILES * gridSampling[0]
+        yRealLength = YDIMTILES * gridSampling[1]
 
-from tqdm.auto import tqdm
+        for xCNT, yCNT, difPatternArray in tqdm(createSmallTiles(measurement_thick.array, XDIMTILES, YDIMTILES), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}", total= len(measurement_thick.array)):
+            xPos = xCNT * gridSampling[0]
+            yPos = yCNT * gridSampling[1]
+            #findAtomsInTile(xPos, yPos, xRealLength, yRealLength, atomStruct.get_positions())
+            if len(atomStruct.positions) > 3:
+                atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPos + xRealLength/2, yPos + yRealLength/2)
+            xAtomRel = xPositionsAtoms - xPos
+            yAtomRel = yPositionsAtoms - yPos
+            difPatterns = []
+            # difPatterns.append(difPatternArray[0,0])
+            # difPatterns.append(difPatternArray[0,-1])
+            # difPatterns.append(difPatternArray[-1,0])
+            # difPatterns.append(difPatternArray[-1,-1])
+            for x in range(difPatternArray.shape[0]):
+                for y in range(difPatternArray.shape[1]):
+                    difPatterns.append(difPatternArray[x][y])
+            #difPatterns = np.array(difPatterns)
+            for cnt, difPattern in enumerate(difPatterns):
+                difPatterns[cnt] = cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR)
+            fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{xPos}_{yPos}_{np.array2string(atomNumbers)}_{np.array2string(xAtomRel)}_{np.array2string(yAtomRel)}.npy")
+            np.save(fileName, np.array(difPatterns))
+            rows += [fileName.split(os.sep)[-1]] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]]
+    return rows
+                
 
-class ProgressParallel(Parallel):
-    def __init__(self, use_tqdm=True, total=None, *args, **kwargs):
-        self._use_tqdm = use_tqdm
-        self._total = total
-        super().__init__(*args, **kwargs)
-
-    def __call__(self, *args, **kwargs):
-        with tqdm(disable=not self._use_tqdm, total=self._total, leave = False, desc = f"Calculating {trainOrTest}ing data") as self._pbar:
-            return Parallel.__call__(self, *args, **kwargs)
-
-    def print_progress(self):
-        if self._total is None:
-            self._pbar.total = self.n_dispatched_tasks
-        self._pbar.n = self.n_completed_tasks
-        self._pbar.refresh()
-
-XDIMTILES = 5
-YDIMTILES = 5
-
-for trainOrTest in ["train", "test"]:
-    with open(os.path.join(f'measurements_{trainOrTest}','labels.csv'), 'w+', newline='') as csvfile:
+def createTopLine(trainOrTest, processID = ""):
+    with open(os.path.join(f'measurements_{trainOrTest}',f'labels{processID}.csv'), 'w+', newline='') as csvfile:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         Writer.writerow(["fileName", "element1", "element2", "element3", "xAtomRel1", "xAtomRel2", "xAtomRel3", "yAtomRel1", "yAtomRel2", "yAtomRel3"])
         Writer = None
 
-    parallizedGenerator = ProgressParallel(total = 2000, n_jobs=5)(delayed(generateDiffractionArray)(i) for i in tqdm(range(2000), leave = False))
+def writeAllRows(rows, trainOrTest, processID = "", createTopRow = None):
+    if createTopRow is None: createTopRow = not os.path.exists(os.path.join(f'measurements_{trainOrTest}',f'labels{processID}.csv'))
+    if createTopRow: createTopLine(trainOrTest,processID=processID)
+    with open(os.path.join(f'measurements_{trainOrTest}',f'labels{processID}.csv'), 'a', newline='') as csvfile:
+        Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        for row in rows:
+            Writer.writerow(row)
 
-    for i, nameStruct, gridSampling, atomStruct, measurement_thick in parallizedGenerator:
-        if len(atomStruct.positions) <= 3:
-            atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(),atomStruct.get_atomic_numbers(), 0, 0)
+
+
+if __name__ == "__main__":
+    print("Running")
+    import argparse
+    import datetime
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-id", "--id", type=str, required=False, default= "",help="version number")
+    args = vars(ap.parse_args())
+
+    XDIMTILES = 5
+    YDIMTILES = 5
+
+    for trainOrTest in ["train", "test"]:
+        for i in tqdm(range(74)):
+            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, 20, processID=args["id"])
+            writeAllRows(rows=rows, trainOrTest=trainOrTest,processID=args["id"])
+        tqdm.write(datetime.datetime.now())
+
         
-        xRealLength = XDIMTILES * gridSampling[0]
-        yRealLength = YDIMTILES * gridSampling[1]
-
-        with open(os.path.join(f'measurements_{trainOrTest}','labels.csv'), 'a', newline='') as csvfile:
-            Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-            for xCNT, yCNT, difPatternArray in tqdm(createSmallTiles(measurement_thick.array, XDIMTILES, YDIMTILES), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles", total= len(measurement_thick.array)):
-                xPos = xCNT * gridSampling[0]
-                yPos = yCNT * gridSampling[1]
-                #findAtomsInTile(xPos, yPos, xRealLength, yRealLength, atomStruct.get_positions())
-                if len(atomStruct.positions) > 3:
-                    atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPos + xRealLength/2, yPos + yRealLength/2)
-                xAtomRel = xPositionsAtoms - xPos
-                yAtomRel = yPositionsAtoms - yPos
-                difPatterns = []
-                # difPatterns.append(difPatternArray[0,0])
-                # difPatterns.append(difPatternArray[0,-1])
-                # difPatterns.append(difPatternArray[-1,0])
-                # difPatterns.append(difPatternArray[-1,-1])
-                for x in range(difPatternArray.shape[0]):
-                    for y in range(difPatternArray.shape[1]):
-                        difPatterns.append(difPatternArray[x][y])
-                #difPatterns = np.array(difPatterns)
-                for cnt, difPattern in enumerate(difPatterns):
-                    difPatterns[cnt] = cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR)
-                fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{i}_{xPos}_{yPos}_{np.array2string(atomNumbers)}_{np.array2string(xAtomRel)}_{np.array2string(yAtomRel)}.npy")
-                np.save(fileName, np.array(difPatterns))
-                Writer.writerow([fileName.split(os.sep)[-1]] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])        
 # measurement_noise = poisson_noise(measurement_thick, 1e6)
 # for 
 #     fileName = "measurements\\{element}_{i}_{xAtom}_{xAtomShift}_{yAtom}_{yAtomShift}"
