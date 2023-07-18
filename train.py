@@ -348,6 +348,8 @@ class Learner():
 			tqdm.write(f"epoch {e}, train loss {avgTrainLoss}, val loss {avgValLoss}")
 			H["train_loss"].append(avgTrainLoss.cpu().detach().numpy())
 			H["val_loss"].append(avgValLoss.cpu().detach().numpy())
+			if avgTrainLoss < 1e-5 and avgValLoss < 1e-5:
+				break
 		# print the model training and validation information
 		print("[INFO] EPOCH: {}/{}".format(e + 1, self.EPOCHS))
 		print("Train loss: {:.6f}".format(avgTrainLoss))
