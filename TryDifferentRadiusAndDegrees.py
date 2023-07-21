@@ -26,7 +26,7 @@ for radius, order in tqdm(radiiAndOrders, desc="Calculating different radii and 
     zernikeTransformation("Zernike",radius = radius, noOfMoments= order, leave=False)
     learn = Learner(epochs = 300, version = f"radius{radius or 'Full'}_order{order}", classifier=True, indicesToPredict=1)
 
-    learn.Learner(modelName="Zernike", leave = False)
+    learn.learn(modelName="Zernike", leave = False)
     enablePrint()
 
         
