@@ -172,3 +172,4 @@ cython_debug/
 .nfs*
 data/KMNIST/raw/*
 .vscode/launch.json
+*out
