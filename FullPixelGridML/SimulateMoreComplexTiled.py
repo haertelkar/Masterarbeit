@@ -142,7 +142,7 @@ def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:f
     xyDistanceSortedIndices = np.absolute(xyDistances).argsort() 
 
     while len(xyDistanceSortedIndices) < 3: #if less than three atoms, just append the closest one again
-        xyDistanceSortedIndices += xyDistanceSortedIndices
+        xyDistanceSortedIndices = np.concatenate((xyDistanceSortedIndices,xyDistanceSortedIndices))
     
     atomNumbers = atomicNumbers[xyDistanceSortedIndices[:3]]
     xPositions, yPositions = atomPositions[xyDistanceSortedIndices[:3]].transpose()[:2]
@@ -217,16 +217,16 @@ def generateDiffractionArray():
 
         return nameStruct, gridSampling, atomStruct, measurement_thick
 
-def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, processID = ""):
+def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, processID = "", silence = False):
     rows = []
-    for nameStruct, gridSampling, atomStruct, measurement_thick in (generateDiffractionArray() for i in tqdm(range(numberOfPatterns), leave = False, desc = f"Calculating {trainOrTest}ing data {processID}")):
+    for nameStruct, gridSampling, atomStruct, measurement_thick in (generateDiffractionArray() for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}")):
         if len(atomStruct.positions) <= 3:
             atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(),atomStruct.get_atomic_numbers(), 0, 0)
     
         xRealLength = XDIMTILES * gridSampling[0]
         yRealLength = YDIMTILES * gridSampling[1]
 
-        for xCNT, yCNT, difPatternArray in tqdm(createSmallTiles(measurement_thick.array, XDIMTILES, YDIMTILES), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}", total= len(measurement_thick.array)):
+        for xCNT, yCNT, difPatternArray in tqdm(createSmallTiles(measurement_thick.array, XDIMTILES, YDIMTILES), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}", total= len(measurement_thick.array), disable=silence):
             xPos = xCNT * gridSampling[0]
             yPos = yCNT * gridSampling[1]
             #findAtomsInTile(xPos, yPos, xRealLength, yRealLength, atomStruct.get_positions())
@@ -247,7 +247,7 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, proc
                 difPatterns[cnt] = cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR)
             fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{xPos}_{yPos}_{np.array2string(atomNumbers)}_{np.array2string(xAtomRel)}_{np.array2string(yAtomRel)}.npy")
             np.save(fileName, np.array(difPatterns))
-            rows += [fileName.split(os.sep)[-1]] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]]
+            rows.append([fileName.split(os.sep)[-1]] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])
     return rows
                 
 
@@ -258,6 +258,19 @@ def createTopLine(trainOrTest, processID = ""):
         Writer = None
 
 def writeAllRows(rows, trainOrTest, processID = "", createTopRow = None):
+    """
+    Writes the given rows to a CSV file.
+
+    Args:
+        rows (list): A list of rows to be written to the CSV file.
+        trainOrTest (str): Indicates whether the data is for training or testing purposes.
+        processID (str, optional): An optional identifier for the process. Defaults to an empty string.
+        createTopRow (bool, optional): Specifies whether to create a top row in the CSV file. If None,
+            it checks if the file already exists and creates the top row if it doesn't. Defaults to None.
+
+    Returns:
+        None
+    """
     if createTopRow is None: createTopRow = not os.path.exists(os.path.join(f'measurements_{trainOrTest}',f'labels{processID}.csv'))
     if createTopRow: createTopLine(trainOrTest,processID=processID)
     with open(os.path.join(f'measurements_{trainOrTest}',f'labels{processID}.csv'), 'a', newline='') as csvfile:
@@ -273,16 +286,19 @@ if __name__ == "__main__":
     import datetime
     ap = argparse.ArgumentParser()
     ap.add_argument("-id", "--id", type=str, required=False, default= "",help="version number")
+    ap.add_argument("-it", "--iterations", type=int, required=False, default= 5,help="number of iterations")
     args = vars(ap.parse_args())
+
 
     XDIMTILES = 5
     YDIMTILES = 5
 
     for trainOrTest in ["train", "test"]:
-        for i in tqdm(range(74)):
-            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, 20, processID=args["id"])
+        for i in tqdm(range(args["iterations"]), disable=True):
+            print(f"PID {os.getpid()} on step {i+1} at {datetime.datetime.now()}")
+            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, 20, processID=args["id"], silence=True)
             writeAllRows(rows=rows, trainOrTest=trainOrTest,processID=args["id"])
-        tqdm.write(datetime.datetime.now())
+    print(f"PID {os.getpid()} done.")
 
         
 # measurement_noise = poisson_noise(measurement_thick, 1e6)
