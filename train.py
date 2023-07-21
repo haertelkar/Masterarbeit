@@ -208,7 +208,7 @@ class Learner():
 			test_data = ptychographicData(
 				os.path.abspath(os.path.join("FullPixelGridML","measurements_test","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_test")), transform=torch.as_tensor, target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors, shift = training_data.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
 			)
-		if modelName == "Zernike" or modelName == "ZernikeBottleneck" or modelName == "ZernikeComplex":
+		if modelName == "ZernikeNormal" or modelName == "ZernikeBottleneck" or modelName == "ZernikeComplex":
 			#znn
 			training_data = ptychographicData(
 				os.path.abspath(os.path.join("Zernike","measurements_train","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
@@ -269,7 +269,7 @@ class Learner():
 				inFeatures = len(trainFeatures[1]),
 				outFeatures=len(trainLabels[1])).to(self.device)
 
-		if modelName == "Zernike":
+		if modelName == "ZernikeNormal":
 			from Zernike.znn import znn
 			print("[INFO] initializing the znn model...")
 			model = znn(
@@ -285,7 +285,7 @@ class Learner():
 			
 		return model
 
-	def Learner(self, modelName, leave = True):
+	def learn(self, modelName, leave = True):
 		#print(f"Training model {modelName}")
 		trainSteps, trainDataLoader, valDataLoader, valSteps, testDataLoader, test_data = self.loadData(modelName)
 		assert(trainSteps > 0)
@@ -293,7 +293,7 @@ class Learner():
 		model = self.loadModel(trainDataLoader)
 	
 		# initialize our optimizer and loss function
-		opt = Adam(model.parameters(), lr=self.INIT_LR)#, weight_decay=1e-5)
+		opt = AdamW(model.parameters(), lr=self.INIT_LR)#, weight_decay=1e-5)
 		if self.classifier:
 			lossFn = nn.CrossEntropyLoss()
 		else:
@@ -357,12 +357,13 @@ class Learner():
 
 		#finish measuring how long training took
 		endTime = time.time()
-		print("[INFO] total time taken to train the model: {:.2f}s".format(
-			endTime - startTime))
+		print("[INFO] total time taken to train the model: {:.2f}s".format(endTime - startTime))
 		# we can now evaluate the network on the test set
 		print("[INFO] evaluating network...")
 
+		self.evaluater(modelName, testDataLoader, test_data, model, H)
 
+	def evaluater(self, modelName, testDataLoader, test_data :ptychographicData, model, H):
 		# turn off autograd for testing evaluation
 		with torch.no_grad(), open(f'results_{modelName}_{self.version}.csv', 'w+', newline='') as resultsTest:
 			Writer = csv.writer(resultsTest, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
@@ -371,11 +372,11 @@ class Learner():
 			elif not self.classifier:
 				Writer.writerow(list(test_data.columns[np.array(self.indicesToPredict)])*2)
 			else:
-				Writer.writerow(list(test_data.columns[np.array(self.indicesToPredict)]))
+				Writer.writerow(list(test_data.columns[np.array(self.indicesToPredict)])) 
 
 			# set the model in evaluation mode
 			model.eval()
-			
+
 			# loop over the test set
 			for (x, y) in testDataLoader:
 				# send the input to the device
@@ -386,11 +387,11 @@ class Learner():
 					for predEntry, yEntry in zip(pred.tolist(), y.tolist()):
 						predScaled = test_data.scaleUp(row = predEntry)
 						yScaled = test_data.scaleUp(row = yEntry)
-						Writer.writerow(list(predScaled) + list(yScaled))		
+						Writer.writerow(list(predScaled) +  list(yScaled))
 				else:
 					for predEntry,yEntry in zip(pred.cpu().numpy(), y.cpu().numpy()):
 						Writer.writerow([int(predEntry.argmax() == yEntry.argmax())])
-		
+				
 		self.plotTraining(H, modelName, model)
 
 	def	plotTraining(self, H, modelName, model, startingPoint = 1):
@@ -408,7 +409,7 @@ class Learner():
 
 
 if __name__ == '__main__':
-	models = ["FullPixelGridML", "Zernike", "ZernikeBottleneck", "ZernikeComplex"]
+	models = ["FullPixelGridML", "ZernikeNormal", "ZernikeBottleneck", "ZernikeComplex"]
 	# construct the argument parser and parse the arguments
 	ap = argparse.ArgumentParser()
 	ap.add_argument("-v", "--version", type=str, required=True,
@@ -440,10 +441,10 @@ if __name__ == '__main__':
 	for modelName in models:
 		if args["models"] and args["models"] not in modelName:
 			continue
-		learn.Learner(modelName=modelName)
+		learn.learn(modelName=modelName)
 		numberOfModels += 1
 
-	if numberOfModels == 0: raise Exception("No models fit the required String.")
+	if numberOfModels == 0: raise Exception("No model fits the required String.")
 
 	# try:
 	# 	set_start_method('spawn')
