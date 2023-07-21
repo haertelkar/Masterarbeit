@@ -3,6 +3,8 @@ import csv
 import numpy as np
 import os
 from rowsIndexToHeader import headerToRowsIndex
+from train import ptychographicData
+import pandas
 
 def raiseExcep(header, index):
     if type(index) is int:
@@ -17,7 +19,18 @@ def returnFullRowContent(fullRowIndices, fullRow, startInd, endInd):
             returnlist.append(fullRow[i])
     return returnlist
 
+def grabFileNames():
+    #only using it to grab file names, doesn't matter if it is Zernike or not
+    test_data = ptychographicData(
+                    os.path.abspath(os.path.join("Zernike", "measurements_test","labels.csv"))
+                ) 
+    fileNames = test_data.img_labels.iloc[:, 0]
+    return fileNames
+
 errors = [["modelName", "average error in predicting thickness", "element prediction accuracy", "MSE distance"]]
+
+fileNames = grabFileNames()
+
 
 for file in os.listdir(os.getcwd()):
     if "results" not in file or ".csv" != file[-4:]:
@@ -27,6 +40,7 @@ for file in os.listdir(os.getcwd()):
     distancePredictionDelta = []
     elementsCorrect = []
     zAtomsDistance = []
+    structures = []
     skipFile = False
 
     with open(file) as results:
@@ -34,7 +48,7 @@ for file in os.listdir(os.getcwd()):
         fullRowIndices = []
         fullRow = np.zeros(18)
         knownHeaders = []
-        for row in table:
+        for row, fileName in zip(table, fileNames):
             if len(row) %2 != 0:
                 skipFile = True
                 break 
@@ -53,6 +67,7 @@ for file in os.listdir(os.getcwd()):
                 print(file)
                 raise Exception(e)
 
+            structures.append(fileName.split("_")[0])
             elementsNN = np.array([float(i) for i in returnFullRowContent(fullRowIndices, fullRow,0,3)])
             xAtomRelsNN = np.array([float(i) for i in returnFullRowContent(fullRowIndices, fullRow,3,6)])
             yAtomRelsNN = np.array([float(i) for i in returnFullRowContent(fullRowIndices, fullRow,6,9)])
@@ -90,6 +105,12 @@ for file in os.listdir(os.getcwd()):
     if distance.any() and distancePredictionDelta.any():
         for cnt, ds in enumerate(zip(distance,distancePredictionDelta)):
             d,dDelta = ds
+            for struct in structures:
+                d = d[structures == struct]
+                dDelta = dDelta[structures == struct]
+                d,dDelta = ds
+                print(f"Distance between atom nr.{cnt} and scan position less than 0.2 in {100*len(d[dDelta < 0.2])/len(d)}% of cases for {struct}")
+            print(f"Distance between atom nr.{cnt} and scan position less than 0.2 in {100*len(d[dDelta < 0.2])/len(d)}% of cases over all structure")
             plt.scatter(d, dDelta)
             plt.xlabel(f"Distance between atom nr.{cnt} and scan position")
             plt.ylabel("Delta between distance prediction and actual distance") 
