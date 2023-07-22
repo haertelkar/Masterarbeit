@@ -23,8 +23,6 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
                 break
 
             for row in tqdm(Reader, desc = f"Converting {testOrTrain} Data", leave =leave, total = len(os.listdir(imgPath))-1):
-                if "element" in row:
-                    continue
                 fileName = row[0]
                 if ".npy" not in fileName:
                     raise Exception(fileName + " is not a valid filename")
