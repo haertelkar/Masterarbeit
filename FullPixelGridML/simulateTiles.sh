@@ -2,7 +2,7 @@
 
 #Submit this script with: sbatch thefilename
 
-#SBATCH --time=3:00:00   # walltime
+#SBATCH --time=30:00:00   # walltime
 #SBATCH --ntasks=10   # number of processor cores (i.e. tasks)
 #SBATCH --nodes=1   # number of nodes
 #SBATCH -J "tileSimulation"   # job name
@@ -13,4 +13,4 @@
 
 
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
-python3 SimulateMoreComplexTiled.py
+python3 SimulateMoreComplexTiled.py -it 100
