@@ -16,7 +16,7 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
     os.chdir(pathToZernikeFolder)
     ZernikeObject = None
 
-    for testOrTrain in ["test", "train"]:
+    for testOrTrain in ["train", "test"]:
         imgPath = imagePath(testOrTrain)
         imageFileNames = []
         with open(os.path.join(imgPath, 'labels.csv'), 'r', newline='') as labelsFullPixelGrid:
@@ -34,7 +34,7 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
                 ZernikeObject = Zernike(radius, image.shape[-1], noOfMoments)
                 
             for fileName in os.listdir(imgPath):
-                if ".npy" != fileName[-4:]: continue
+                if ".npy" not in fileName: continue
                 imageFileNames.append(fileName)
 
         shutil.copy(os.path.join(imgPath, "labels.csv"), os.path.join(f"measurements_{testOrTrain}", "labels.csv"))
