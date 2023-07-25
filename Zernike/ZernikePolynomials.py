@@ -1,6 +1,10 @@
 import numpy as np
 from scipy.special import factorial
 import matplotlib.pyplot as plt
+import os
+
+def imagePath(testOrTrain):
+    return os.path.join("..","FullPixelGridML",f"measurements_{testOrTrain}")
 
 class Zernike(object):
     def __init__(self,maxR, pixelsDim, numberOfOSAANSIMoments:int):
@@ -21,6 +25,22 @@ class Zernike(object):
         #     plt.imsave(f"{cnt}.png", basis)
         self.dx = 1/self.maxR
         self.dy = self.dx
+
+    def zernikeTransform(self, testOrTrain, fileName):
+        try:
+            image = np.load(os.path.join(imagePath(testOrTrain), fileName))
+        except ValueError as e:
+            raise Exception(e +f"\nError in {fileName}")
+        assert(len(np.shape(image)) in [2,3])
+        if len(np.shape(image)) == 3:
+            moments = []
+            for im in image:
+                moments.append(self.calculateZernikeWeights(im)*1e3)
+            moments = np.array(moments).flatten()
+        else:
+            moments = self.calculateZernikeWeights(image)* 1e3 #scaled up so it's more useful
+        np.save(os.path.join(f"measurements_{testOrTrain}", fileName), moments)
+            # moments = zernike_moments(image, radius, 40) #modified zernike_moments so it doesn't output the abs values, otherwise directional analytics are not possible
 
     def calculateZernikeWeights(self, image):
         #normFactor = np.pi #not used otherwise the weights are very small
