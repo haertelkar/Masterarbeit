@@ -1,11 +1,15 @@
 import os
 import pandas as pd
+from tqdm import tqdm
 
-listOfCSVs = []
-df = pd.DataFrame()
-for file in os.listdir("measurement_test"):
-    if file[:-4] == ".csv" and "labels" in file:
-        data = pd.read_csv(file)
-        df = pd.concat([df, data], axis = 0)
-df.to_csv("labels.csv", index= False)
+for testOrTrain in ["train", "test"]:
+    df = pd.DataFrame()
+    noOfCSVs = 0
+    for file in tqdm(os.listdir(f"measurements_{testOrTrain}"), desc= f"Searching for labels in measurements_{testOrTrain}"):
+        if (".csv" in file) and ("labels" in file):
+            data = pd.read_csv(os.path.join(f"measurements_{testOrTrain}",file))
+            df = pd.concat([df, data], axis = 0)
+            noOfCSVs +=1
+    print(f"Found {noOfCSVs} files. Combining into one file.")
+    df.to_csv(os.path.join(f"measurements_{testOrTrain}","labels.csv"), index= False)
     
