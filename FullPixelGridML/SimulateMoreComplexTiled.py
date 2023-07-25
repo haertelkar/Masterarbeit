@@ -290,8 +290,8 @@ if __name__ == "__main__":
     args = vars(ap.parse_args())
 
 
-    XDIMTILES = 5
-    YDIMTILES = 5
+    XDIMTILES = 2
+    YDIMTILES = 2
 
     for trainOrTest in ["train", "test"]:
         for i in tqdm(range(args["iterations"]), disable=True):
