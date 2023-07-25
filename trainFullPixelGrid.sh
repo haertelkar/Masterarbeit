@@ -7,7 +7,7 @@
 #SBATCH --nodes=1   # number of nodes
 #SBATCH -J "trainFullPixelGrid"   # job name
 #SBATCH --mail-user=haertelk@physik.hu-berlin.de   # email address
-#SBATCH --mail-type=BEGIN
+
 #SBATCH --mail-type=END
 #SBATCH --mail-type=FAIL
 
