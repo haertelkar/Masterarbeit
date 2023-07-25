@@ -197,9 +197,10 @@ class Learner():
 		self.VAL_SPLIT = 1 - self.TRAIN_SPLIT
 		self.classifier = classifier
 		self.indicesToPredict = indicesToPredict
+		self.modelName= None
 	
-	def loadData(self, modelName):
-		if modelName == "FullPixelGridML" or modelName == "unet":	
+	def loadData(self):
+		if self.modelName == "FullPixelGridML" or self.modelName == "unet":	
 			#cnn
 			training_data = ptychographicData(
 				os.path.abspath(os.path.join("FullPixelGridML","measurements_train","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
@@ -208,7 +209,7 @@ class Learner():
 			test_data = ptychographicData(
 				os.path.abspath(os.path.join("FullPixelGridML","measurements_test","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_test")), transform=torch.as_tensor, target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors, shift = training_data.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
 			)
-		if modelName == "ZernikeNormal" or modelName == "ZernikeBottleneck" or modelName == "ZernikeComplex":
+		if self.modelName == "ZernikeNormal" or self.modelName == "ZernikeBottleneck" or self.modelName == "ZernikeComplex":
 			#znn
 			training_data = ptychographicData(
 				os.path.abspath(os.path.join("Zernike","measurements_train","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
@@ -248,35 +249,35 @@ class Learner():
 		trainFeatures, trainLabels = next(iter(trainDataLoader))
 		numChannels = trainFeatures.shape[1]		
 
-		if modelName == "FullPixelGridML":
+		if self.modelName == "FullPixelGridML":
 			from FullPixelGridML.cnn import cnn
 			print("[INFO] initializing the cnn model...")
 			model = cnn(
 				numChannels=numChannels,
 				classes=len(trainLabels[1])).to(self.device)
 			
-		if modelName == "unet":
+		if self.modelName == "unet":
 			from FullPixelGridML.unet import unet
 			print("[INFO] initializing the unet model...")
 			model = unet(
 				numChannels=numChannels,
 				classes=len(trainLabels[1])).to(self.device)
 
-		if modelName == "ZernikeBottleneck":
+		if self.modelName == "ZernikeBottleneck":
 			from Zernike.znnBottleneck import znnBottleneck
 			print("[INFO] initializing the znnBottleneck model...")
 			model = znnBottleneck(
 				inFeatures = len(trainFeatures[1]),
 				outFeatures=len(trainLabels[1])).to(self.device)
 
-		if modelName == "ZernikeNormal":
+		if self.modelName == "ZernikeNormal":
 			from Zernike.znn import znn
 			print("[INFO] initializing the znn model...")
 			model = znn(
 				inFeatures = len(trainFeatures[1]),
 				outFeatures=len(trainLabels[1])).to(self.device)
 			
-		if modelName == "ZernikeComplex":
+		if self.modelName == "ZernikeComplex":
 			from Zernike.znnMoreComplex import znn
 			print("[INFO] initializing the znnComplex model...")
 			model = znn(
@@ -286,6 +287,7 @@ class Learner():
 		return model
 
 	def learn(self, modelName, leave = True):
+		self.modelName = modelName
 		#print(f"Training model {modelName}")
 		trainSteps, trainDataLoader, valDataLoader, valSteps, testDataLoader, test_data = self.loadData(modelName)
 		assert(trainSteps > 0)
