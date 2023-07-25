@@ -22,7 +22,7 @@ def returnFullRowContent(fullRowIndices, fullRow, startInd, endInd):
 def grabFileNames():
     #only using it to grab file names, doesn't matter if it is Zernike or not
     test_data = ptychographicData(
-                    os.path.abspath(os.path.join("Zernike", "measurements_test","labels.csv"))
+                    os.path.abspath(os.path.join("Zernike", "measurements_test","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_test"))
                 ) 
     fileNames = test_data.img_labels.iloc[:, 0]
     return fileNames
@@ -81,7 +81,6 @@ for file in os.listdir(os.getcwd()):
         continue
     try:
         if distancePredictionDelta:
-            distancePredictionDelta = np.array(distancePredictionDelta)
             distancePredictionDelta = np.transpose(distancePredictionDelta)
         if distance:
             distance = np.transpose(distance)
@@ -104,13 +103,19 @@ for file in os.listdir(os.getcwd()):
     distancePredictionDelta = np.array(distancePredictionDelta)
     if distance.any() and distancePredictionDelta.any():
         for cnt, ds in enumerate(zip(distance,distancePredictionDelta)):
-            d,dDelta = ds
-            for struct in structures:
-                d = d[structures == struct]
-                dDelta = dDelta[structures == struct]
+            distanceToBeAccurate = 1
+            for struct in set(structures):
                 d,dDelta = ds
-                print(f"Distance between atom nr.{cnt} and scan position less than 0.2 in {100*len(d[dDelta < 0.2])/len(d)}% of cases for {struct}")
-            print(f"Distance between atom nr.{cnt} and scan position less than 0.2 in {100*len(d[dDelta < 0.2])/len(d)}% of cases over all structure")
+                d = d[np.array(structures) == struct]
+                dDelta = dDelta[np.array(structures) == struct]
+                # dDelta = dDelta[np.array(d) < 2]
+                #d = d[np.array(d) < 2]
+                print(f"Distance between atom nr.{cnt} and scan position less than {distanceToBeAccurate} in {100*len(d[np.array(dDelta) < distanceToBeAccurate])/len(d):.2f}% of cases for {struct}")
+                
+            d,dDelta = ds
+            # dDelta = dDelta[np.array(d) < 2]
+            # d = d[np.array(d) < 2]
+            print(f"Distance between atom nr.{cnt} and scan position less than {distanceToBeAccurate} in {100*len(d[np.array(dDelta) < distanceToBeAccurate])/len(d):.2f}% of cases over all structure")
             plt.scatter(d, dDelta)
             plt.xlabel(f"Distance between atom nr.{cnt} and scan position")
             plt.ylabel("Delta between distance prediction and actual distance") 
