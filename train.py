@@ -289,7 +289,7 @@ class Learner():
 	def learn(self, modelName, leave = True):
 		self.modelName = modelName
 		#print(f"Training model {modelName}")
-		trainSteps, trainDataLoader, valDataLoader, valSteps, testDataLoader, test_data = self.loadData(modelName)
+		trainSteps, trainDataLoader, valDataLoader, valSteps, testDataLoader, test_data = self.loadData()
 		assert(trainSteps > 0)
 		assert(valSteps > 0)
 		model = self.loadModel(trainDataLoader)
