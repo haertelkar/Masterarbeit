@@ -6,28 +6,31 @@ class znn(Module):
         # call the parent constructor
         super(znn, self).__init__()
 
-        self.fc1 = Linear(in_features=inFeatures, out_features=200)
+        self.fc1 = Linear(in_features=inFeatures, out_features=2000)
         self.relu = ReLU()
 
-        self.fc15 = Linear(in_features=200, out_features=400)
+        self.fc15 = Linear(in_features=2000, out_features=4000)
 
 
-        self.fc2 = Linear(in_features=400, out_features=800)
+        self.fc2 = Linear(in_features=4000, out_features=8000)
 
         layers = []
 
-        for i in range(5):
-            layers.append(Linear(800, 800))
-            layers.append(self.relu)
+        layers.append(Linear(8000, 80000))
+        layers.append(self.relu)
+        layers.append(Linear(80000, 80000))
+        layers.append(self.relu)
+        layers.append(Linear(80000, 8000))
+        layers.append(self.relu)
 
         # Create the sequential container with all the layers
         self.fcmiddle = Sequential(*layers) 
 
-        self.fc3 = Linear(in_features=800, out_features=400)
+        self.fc3 = Linear(in_features=8000, out_features=4000)
 
-        self.fc4 = Linear(in_features=400, out_features=100)
+        self.fc4 = Linear(in_features=4000, out_features=1000)
 
-        self.fc5 = Linear(in_features=100, out_features=outFeatures)
+        self.fc5 = Linear(in_features=1000, out_features=outFeatures)
         
     def forward(self, x):
         x = self.fc1(x)
