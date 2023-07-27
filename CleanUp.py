@@ -8,7 +8,7 @@ def cleanUp(directory = "", printEmptiedDirs = False):
     for dirpath, dirnames, filenames in tqdm(os.walk(os.path.join(os.getcwd(),directory)), desc = "Going through folders",disable= not printEmptiedDirs):
         if "measurements" not in dirpath:
             continue
-        for filename in tqdm(filenames, desc = "deleting", leave = False):
+        for filename in tqdm(filenames, desc = f"deleting dirpath", leave = False):
             if ".npy" in filename or ".csv" in filename:
                 os.remove(os.path.join(dirpath, filename))
                 emptyDirs.add(dirpath)
