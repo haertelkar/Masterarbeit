@@ -235,13 +235,14 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, proc
             xAtomRel = xPositionsAtoms - xPos
             yAtomRel = yPositionsAtoms - yPos
             difPatterns = []
-            # difPatterns.append(difPatternArray[0,0])
-            # difPatterns.append(difPatternArray[0,-1])
-            # difPatterns.append(difPatternArray[-1,0])
-            # difPatterns.append(difPatternArray[-1,-1])
-            for x in range(difPatternArray.shape[0]):
-                for y in range(difPatternArray.shape[1]):
-                    difPatterns.append(difPatternArray[x][y])
+            difPatterns.append(difPatternArray[3,3])
+            difPatterns.append(difPatternArray[3,7])
+            difPatterns.append(difPatternArray[7,3]) 
+            difPatterns.append(difPatternArray[7,7])
+            difPatterns.append(difPatternArray[5,5])
+            # for x in range(difPatternArray.shape[0]):
+            #     for y in range(difPatternArray.shape[1]):
+            #         difPatterns.append(difPatternArray[x][y])
             #difPatterns = np.array(difPatterns)
             for cnt, difPattern in enumerate(difPatterns):
                 difPatterns[cnt] = cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR)
@@ -290,8 +291,8 @@ if __name__ == "__main__":
     args = vars(ap.parse_args())
 
 
-    XDIMTILES = 2
-    YDIMTILES = 2
+    XDIMTILES = 11
+    YDIMTILES = 11
 
     for trainOrTest in ["train", "test"]:
         for i in tqdm(range(args["iterations"]), disable=True):
