@@ -174,3 +174,6 @@ data/KMNIST/raw/*
 .vscode/launch.json
 *out
 FullPixelGridML/SplitSimulate.py
+stdout0.txt
+**/measurements_train/
+**/measurements_test/
