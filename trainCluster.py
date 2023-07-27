@@ -172,7 +172,7 @@ class Learner():
 		# find_unused_parameters=True instructs DDP to find unused output of the forward() function of any module in the model
 		print("before DDP")
 		print(f"self.rank = {self.rank}")
-		model = DDP(model,device_ids=[self.rank])#, output_device=self.rank, find_unused_parameters=True)
+		model = DDP(model)#,device_ids=[self.rank])#, output_device=self.rank, find_unused_parameters=True)
 		print("after DDP")
 		# initialize our optimizer and loss function
 		opt = AdamW(model.parameters(), lr=self.INIT_LR)#, weight_decay=1e-5)
@@ -307,6 +307,12 @@ def main(rank, world_size,epochs, version, classifier, indicesToPredict, modelSt
 
 	if numberOfModels == 0: raise Exception("No model fits the required String.")
 
+def getMPIWorldSize():
+	return int(os.environ['OMPI_COMM_WORLD_SIZE'])
+
+def getMPIRank():
+	return int(os.environ['OMPI_COMM_WORLD_RANK'])
+
 if __name__ == '__main__':
 	models = ["FullPixelGridML", "ZernikeNormal", "ZernikeBottleneck", "ZernikeComplex"]
 	# construct the argument parser and parse the arguments
@@ -318,9 +324,8 @@ if __name__ == '__main__':
 	ap.add_argument("-m" ,"--models", type=str, required=False, help = "only use models with this String in their name")
 	ap.add_argument("-c" ,"--classifier", type=int, required=False, default=0, help = "Use if the model is to be a classfier. Choose the label index to be classified")
 	ap.add_argument("-i" ,"--indices", type=str, required=False, default="all", help = "specify indices of labels to predict (eg. '1, 2,5'). Default is all.")
-	ap.add_argument('-r', '--rank', default=0, type=int, help='rank of the current process')
-	ap.add_argument('-p', '--pool', default=20, type=int, help='main pool number')
-	ap.add_argument('-ws', '--world_size', default=2, type=int, help='number of processes participating in the job')
+	ap.add_argument('-r', '--rank', default=-1, type=int, help='rank of the current process')
+	ap.add_argument('-ws', '--world_size', default=-1, type=int, help='number of processes participating in the job')
 	args = vars(ap.parse_args())
 
 
@@ -335,10 +340,12 @@ if __name__ == '__main__':
 	if args["indices"] != "all":
 		indices = args["indices"].split(",")
 		indicesToPredict = [int(i) for i in indices]
-
+	
 	rank = args["rank"]
+	if rank == -1: getMPIRank()
 	sys.stdout = open(f"stdout{rank}.txt", "w", buffering=1)
 	world_size = args["world_size"]
+	if world_size == -1: getMPIWorldSize()
 	main(rank,world_size, args["epochs"], args["version"], classifier, indicesToPredict, args["models"])     
 	
 	#only for multiple gpus per node
