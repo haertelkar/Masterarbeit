@@ -3,6 +3,7 @@ import pandas as pd
 from rowsIndexToHeader import rowsIndexToHeader
 from torch.utils.data import Dataset
 import torch
+import os
 
 class ptychographicData(Dataset):
 	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors = None, shift = None, labelIndicesToPredict = None, classifier = False):
