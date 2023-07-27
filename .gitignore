@@ -177,3 +177,4 @@ FullPixelGridML/SplitSimulate.py
 stdout0.txt
 **/measurements_train/
 **/measurements_test/
+stdout.txt
