@@ -24,24 +24,25 @@ from datasets import ptychographicData
 
 faulthandler.register(signal.SIGUSR1.value)
 
-sys.stdout = open("stdout.txt", "w", buffering=1)
-def print(text):
-    builtins.print(text)
-    os.fsync(sys.stdout)
+# sys.stdout = open("stdout.txt", "w", buffering=1)
+# def print(text):
+#     builtins.print(text)
+#     os.fsync(sys.stdout)
 
-print("This is immediately written to stdout.txt")
+# print("This is immediately written to stdout.txt")
 
 def get_master_addr():
     hostnames = subprocess.check_output(['scontrol', 'show', 'hostnames', os.environ['SLURM_JOB_NODELIST']])
     return hostnames.split()[0].decode('utf-8')
 
-def setup(rank:int, world_size:int, mainPool:int):   
+def setup(rank:int, world_size:int):   
 	os.environ['MASTER_ADDR'] = get_master_addr()
 	os.environ['MASTER_PORT'] = "12355" 
+	print(rank)
 	dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
 from torch.utils.data.distributed import DistributedSampler
-def dataLoaderCustomized(rank, world_size, dataset, batch_size=32, pin_memory=False, num_workers=0, shuffle = False):
+def dataLoaderCustomized(rank, world_size, dataset, batch_size=32, pin_memory=False, num_workers=20, shuffle = False):
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=shuffle, drop_last=False)
     
     dataloader = DataLoader(dataset, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers, drop_last=False, sampler=sampler)
@@ -50,14 +51,14 @@ def dataLoaderCustomized(rank, world_size, dataset, batch_size=32, pin_memory=Fa
 
 
 class Learner():
-	def __init__(self, rank, world_size, epochs, version, classifier = False, indicesToPredict = None, mainPool = "pool20"):
+	def __init__(self, rank, world_size, epochs, version, classifier = False, indicesToPredict = None):
 		self.version = version
 		self.device = device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 		print(f"Running computations on {device}")
 
 		# define training hyperparameters
-		self.INIT_LR = 1e-3
-		self.BATCH_SIZE = 64
+		self.INIT_LR = world_size * 4e-3
+		self.BATCH_SIZE = 256
 		self.EPOCHS = epochs
 		# define the train and val splits
 		self.TRAIN_SPLIT = 0.75
@@ -67,10 +68,9 @@ class Learner():
 		self.modelName= None
 		self.rank = rank
 		self.world_size = world_size
-		self.mainPool = mainPool
 		# setup the process groups
 		
-		setup(self.rank, self.world_size, self.mainPool)
+		setup(self.rank, self.world_size)
 	
 	def loadData(self):
 		if self.modelName == "FullPixelGridML" or self.modelName == "unet":	
@@ -165,15 +165,13 @@ class Learner():
 		trainSteps, trainDataLoader, valDataLoader, valSteps, testDataLoader, test_data = self.loadData()
 		assert(trainSteps > 0)
 		assert(valSteps > 0)
-		model = self.loadModel(trainDataLoader).to(self.rank)
+		model = self.loadModel(trainDataLoader).to(self.device)
 		# wrap the model with DDP
 		# device_ids tell DDP where is your model
 		# output_device tells DDP where to output, in our case, it is rank
 		# find_unused_parameters=True instructs DDP to find unused output of the forward() function of any module in the model
-		print("before DDP")
 		print(f"self.rank = {self.rank}")
 		model = DDP(model)#,device_ids=[self.rank])#, output_device=self.rank, find_unused_parameters=True)
-		print("after DDP")
 		# initialize our optimizer and loss function
 		opt = AdamW(model.parameters(), lr=self.INIT_LR)#, weight_decay=1e-5)
 		if self.classifier:
@@ -205,35 +203,37 @@ class Learner():
 				# perform a forward pass and calculate the training loss
 				pred = model(x)
 				loss = lossFn(pred, y)
+				loss.backward()
+				opt.step()
 				# zero out the gradients, perform the backpropagation step,
 				# and update the weights
 				opt.zero_grad()
-				loss.backward()
-				opt.step()
 				# add the loss to the total training loss so far and
 				totalTrainLoss += loss
 						
 			# switch off autograd for evaluation
-			with torch.no_grad():
-				# set the model in evaluation mode
-				model.eval()
-				# loop over the validation set
-				for (x, y) in valDataLoader:
-					# send the input to the device
-					(x, y) = (x.to(self.device), y.to(self.device))
-					# make the predictions and calculate the validation loss
-					pred = model(x)
-					totalValLoss += lossFn(pred, y)
+			if self.rank == 0:
+				with torch.no_grad():
+					# set the model in evaluation mode
+					model.eval()
+					# loop over the validation set
+					for (x, y) in valDataLoader:
+						# send the input to the device
+						(x, y) = (x.to(self.device), y.to(self.device))
+						# make the predictions and calculate the validation loss
+						pred = model(x)
+						totalValLoss += lossFn(pred, y)
 				
-			# calculate the average training and validation loss
-			avgTrainLoss = totalTrainLoss / trainSteps
-			avgValLoss = totalValLoss / valSteps
-			# update our training history
-			tqdm.write(f"epoch {e}, train loss {avgTrainLoss}, val loss {avgValLoss}")
-			H["train_loss"].append(avgTrainLoss.cpu().detach().numpy())
-			H["val_loss"].append(avgValLoss.cpu().detach().numpy())
-			if avgTrainLoss < 1e-5 and avgValLoss < 1e-5:
-				break
+				# calculate the average training and validation loss
+				avgTrainLoss = totalTrainLoss / trainSteps
+				avgValLoss = totalValLoss / valSteps
+				# update our training history
+				tqdm.write(f"epoch {e}, train loss {avgTrainLoss}, val loss {avgValLoss}")
+				H["train_loss"].append(avgTrainLoss.cpu().detach().numpy())
+				H["val_loss"].append(avgValLoss.cpu().detach().numpy())
+				if avgTrainLoss < 1e-5 and avgValLoss < 1e-5:
+					break
+		cleanup()
 		# print the model training and validation information
 		print("[INFO] EPOCH: {}/{}".format(e + 1, self.EPOCHS))
 		print("Train loss: {:.6f}".format(avgTrainLoss))
@@ -342,10 +342,10 @@ if __name__ == '__main__':
 		indicesToPredict = [int(i) for i in indices]
 	
 	rank = args["rank"]
-	if rank == -1: getMPIRank()
-	sys.stdout = open(f"stdout{rank}.txt", "w", buffering=1)
+	if rank == -1: rank = getMPIRank()
+	if rank == 0: sys.stdout = open(f"stdout{rank}.txt", "w", buffering=1)
 	world_size = args["world_size"]
-	if world_size == -1: getMPIWorldSize()
+	if world_size == -1: world_size = getMPIWorldSize()
 	main(rank,world_size, args["epochs"], args["version"], classifier, indicesToPredict, args["models"])     
 	
 	#only for multiple gpus per node
