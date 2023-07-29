@@ -26,15 +26,15 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
                 firstEntry = row #reads out first row
                 if cnt == 2: break
             fileName = firstEntry[0]
-            if ".npy" not in fileName:
-                raise Exception(f"{fileName} is not a valid filename")
+            if ".npy" not in fileName: raise Exception(f"{fileName} is not a valid filename")
             image = np.load(os.path.join(imgPath, fileName))
             if ZernikeObject is None:
                 radius = radius or int(len(image)/2)
                 ZernikeObject = Zernike(radius, image.shape[-1], noOfMoments)
                 
-            for fileName in os.listdir(imgPath):
-                if ".npy" not in fileName: continue
+            for cnt, row in enumerate(Reader):
+                fileName = row[0]
+                if ".npy" not in fileName: raise Exception(f"{fileName} is not a valid filename")
                 imageFileNames.append(fileName)
 
         shutil.copy(os.path.join(imgPath, "labels.csv"), os.path.join(f"measurements_{testOrTrain}", "labels.csv"))
