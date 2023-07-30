@@ -160,7 +160,7 @@ class Learner():
 
 		return model
 
-	def learn(self, modelName, leave = True):
+	def learn(self, modelName, leave = True, disableTQDM = False):
 		self.modelName = modelName
 		trainSteps, trainDataLoader, valDataLoader, valSteps, testDataLoader, test_data = self.getDataLoaders()
 		assert(trainSteps > 0)
@@ -174,7 +174,6 @@ class Learner():
 		else:
 			lossFn = nn.MSELoss()
 		# initialize a dictionary to store training history
-		disableTQDM = True
 		if self.rank == 0:
 			H = {
 				"train_loss": [],
@@ -183,7 +182,8 @@ class Learner():
 			# measure how long training is going to take
 			print("[INFO] training the network...")
 			startTime = time.time()
-			disableTQDM = False
+		else: 
+			disableTQDM = True
 
 		H = self.trainLoop(leave, trainSteps, trainDataLoader, valDataLoader, valSteps, model, opt, lossFn, disableTQDM, H)
 		if self.rank == 0:
