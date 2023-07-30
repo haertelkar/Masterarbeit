@@ -69,33 +69,8 @@ class Learner():
 		
 		setup(self.rank, self.world_size)
 	
-	def loadData(self):
-		if self.modelName == "FullPixelGridML" or self.modelName == "unet":	
-			#cnn
-			training_data = ptychographicData(
-				os.path.abspath(os.path.join("FullPixelGridML","measurements_train","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
-			)
-
-			test_data = ptychographicData(
-				os.path.abspath(os.path.join("FullPixelGridML","measurements_test","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_test")), transform=torch.as_tensor, target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors, shift = training_data.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
-			)
-		if self.modelName == "ZernikeNormal" or self.modelName == "ZernikeBottleneck" or self.modelName == "ZernikeComplex":
-			#znn
-			training_data = ptychographicData(
-				os.path.abspath(os.path.join("Zernike","measurements_train","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
-				)
-
-			test_data = ptychographicData(
-				os.path.abspath(os.path.join("Zernike", "measurements_test","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_test")), transform=torch.as_tensor, target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors, shift = training_data.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
-			)
-
-			# training_data = multiPos(
-			# 	os.path.abspath(os.path.join("Zernike","measurements_train","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
-			# 	)
-
-			# test_data = multiPos(
-			# 	os.path.abspath(os.path.join("Zernike", "measurements_test","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_test")), transform=torch.as_tensor, target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors, shift = training_data.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
-			# )
+	def getDataLoaders(self):
+		training_data, test_data = self.dataLoader()
 
 		print("[INFO] generating the train/validation split...")
 		numTrainSamples = int(len(training_data) * self.TRAIN_SPLIT)
@@ -113,6 +88,28 @@ class Learner():
 		trainSteps = len(trainDataLoader.dataset) // self.BATCH_SIZE
 		valSteps = len(valDataLoader.dataset) // self.BATCH_SIZE
 		return trainSteps, trainDataLoader, valDataLoader, valSteps, testDataLoader, test_data
+
+	def dataLoader(self):
+		if self.modelName == "FullPixelGridML" or self.modelName == "unet":	
+			#cnn
+			training_data = ptychographicData(
+						os.path.abspath(os.path.join("FullPixelGridML","measurements_train","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
+					)
+
+			test_data = ptychographicData(
+						os.path.abspath(os.path.join("FullPixelGridML","measurements_test","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML","measurements_test")), transform=torch.as_tensor, target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors, shift = training_data.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
+					)
+		if self.modelName == "ZernikeNormal" or self.modelName == "ZernikeBottleneck" or self.modelName == "ZernikeComplex":
+			#znn
+			training_data = ptychographicData(
+						os.path.abspath(os.path.join("Zernike","measurements_train","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_train")), transform=torch.as_tensor, target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
+						)
+
+			test_data = ptychographicData(
+						os.path.abspath(os.path.join("Zernike", "measurements_test","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_test")), transform=torch.as_tensor, target_transform=torch.as_tensor, scalingFactors = training_data.scalingFactors, shift = training_data.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
+					)
+					
+		return training_data,test_data
 
 	def loadModel(self, trainDataLoader):
 		# first element to access dimensions
@@ -153,22 +150,23 @@ class Learner():
 			model = znn(
 				inFeatures = len(trainFeatures[1]),
 				outFeatures=len(trainLabels[1])).to(self.device)
-			
-		return model
-
-	def learn(self, modelName, leave = True):
-		self.modelName = modelName
-		#print(f"Training model {modelName}")
-		trainSteps, trainDataLoader, valDataLoader, valSteps, testDataLoader, test_data = self.loadData()
-		assert(trainSteps > 0)
-		assert(valSteps > 0)
-		model = self.loadModel(trainDataLoader).to(self.device)
+		
 		# wrap the model with DDP
 		# device_ids tell DDP where is your model
 		# output_device tells DDP where to output, in our case, it is rank
 		# find_unused_parameters=True instructs DDP to find unused output of the forward() function of any module in the model
 		print(f"self.rank = {self.rank}")
 		model = DDP(model)#,device_ids=[self.rank])#, output_device=self.rank, find_unused_parameters=True)
+
+		return model
+
+	def learn(self, modelName, leave = True):
+		self.modelName = modelName
+		trainSteps, trainDataLoader, valDataLoader, valSteps, testDataLoader, test_data = self.getDataLoaders()
+		assert(trainSteps > 0)
+		assert(valSteps > 0)
+		model = self.loadModel(trainDataLoader).to(self.device)
+
 		# initialize our optimizer and loss function
 		opt = AdamW(model.parameters(), lr=self.INIT_LR)#, weight_decay=1e-5)
 		if self.classifier:
@@ -187,68 +185,75 @@ class Learner():
 			startTime = time.time()
 			disableTQDM = False
 
-		# loop over our epochs
-		for e in tqdm(range(0, self.EPOCHS), leave = leave, desc= "Epoch...", disable = disableTQDM):
-			trainDataLoader.sampler.set_epoch(e)
-			# set the model in training mode
-			model.train()
-			# initialize the total training and validation loss
-			totalTrainLoss = 0
-			totalValLoss = 0
-
-			# loop over the training set
-			for (x, y) in tqdm(trainDataLoader, leave=False, desc = "Training...", disable = disableTQDM):
-				# send the input to the device
-				(x, y) = (x.to(self.device), y.to(self.device))
-				# perform a forward pass and calculate the training loss
-				pred = model(x)
-				loss = lossFn(pred, y)
-				loss.backward()
-				opt.step()
-				# zero out the gradients, perform the backpropagation step,
-				# and update the weights
-				opt.zero_grad()
-				# add the loss to the total training loss so far and
-				totalTrainLoss += loss
-						
-			# switch off autograd for evaluation
-			if self.rank == 0:
-				with torch.no_grad():
-					# set the model in evaluation mode
-					model.eval()
-					# loop over the validation set
-					for (x, y) in valDataLoader:
-						# send the input to the device
-						(x, y) = (x.to(self.device), y.to(self.device))
-						# make the predictions and calculate the validation loss
-						pred = model(x)
-						totalValLoss += lossFn(pred, y)
-				
-				# calculate the average training and validation loss
-				avgTrainLoss = totalTrainLoss / trainSteps
-				avgValLoss = totalValLoss / valSteps
-				# update our training history
-				tqdm.write(f"epoch {e}, train loss {avgTrainLoss}, val loss {avgValLoss}")
-				H["train_loss"].append(avgTrainLoss.cpu().detach().numpy())
-				H["val_loss"].append(avgValLoss.cpu().detach().numpy())
-				if avgTrainLoss < 1e-5 and avgValLoss < 1e-5:
-					break
+		H = self.trainLoop(leave, trainSteps, trainDataLoader, valDataLoader, valSteps, model, opt, lossFn, disableTQDM, H)
 		if self.rank == 0:
-			# print the model training and validation information
-			print("[INFO] EPOCH: {}/{}".format(e + 1, self.EPOCHS))
-			print("Train loss: {:.6f}".format(avgTrainLoss))
-			print("Val loss: {:.6f}\n".format(avgValLoss))
-
-			#finish measuring how long training took
-			endTime = time.time()
-			print("[INFO] total time taken to train the model: {:.2f}s".format(endTime - startTime))
-			# we can now evaluate the network on the test set
-			print("[INFO] evaluating network...")
-
-			self.evaluater(modelName, testDataLoader, test_data, model, H)
+			self.evaluater(modelName, testDataLoader, test_data, model, H, startTime)
 		cleanup()
 
-	def evaluater(self, modelName, testDataLoader, test_data :ptychographicData, model, H):
+	def trainLoop(self, leave, trainSteps, trainDataLoader, valDataLoader, valSteps, model, opt, lossFn, disableTQDM, H):
+		# loop over our epochs
+		for e in tqdm(range(0, self.EPOCHS), leave = leave, desc= "Epoch...", disable = disableTQDM):
+				trainDataLoader.sampler.set_epoch(e)
+				# set the model in training mode
+				model.train()
+				# initialize the total training and validation loss
+				totalTrainLoss = 0
+				totalValLoss = 0
+
+				# loop over the training set
+				for (x, y) in tqdm(trainDataLoader, leave=False, desc = "Training...", disable = disableTQDM):
+					# send the input to the device
+					(x, y) = (x.to(self.device), y.to(self.device))
+					# perform a forward pass and calculate the training loss
+					pred = model(x)
+					loss = lossFn(pred, y)
+					loss.backward()
+					opt.step()
+					# zero out the gradients, perform the backpropagation step,
+					# and update the weights
+					opt.zero_grad()
+					# add the loss to the total training loss so far and
+					totalTrainLoss += loss
+							
+				# switch off autograd for evaluation
+				if self.rank == 0:
+					H = self.validationLoss(trainSteps, valDataLoader, valSteps, model, lossFn, H, e, totalTrainLoss, totalValLoss)
+					if H["train_loss"][-1] < 1e-5 and H["val_loss"][-1] < 1e-5:
+						break
+		return H
+
+	def validationLoss(self, trainSteps, valDataLoader, valSteps, model, lossFn, H, e, totalTrainLoss, totalValLoss):
+		with torch.no_grad():
+			# set the model in evaluation mode
+			model.eval()
+			# loop over the validation set
+			for (x, y) in valDataLoader:
+				# send the input to the device
+				(x, y) = (x.to(self.device), y.to(self.device))
+				# make the predictions and calculate the validation loss
+				pred = model(x)
+				totalValLoss += lossFn(pred, y)
+				# calculate the average training and validation loss
+			avgTrainLoss = totalTrainLoss / trainSteps
+			avgValLoss = totalValLoss / valSteps
+			# update our training history
+			tqdm.write(f"epoch {e}, train loss {avgTrainLoss}, val loss {avgValLoss}")
+			H["train_loss"].append(avgTrainLoss.cpu().detach().numpy())
+			H["val_loss"].append(avgValLoss.cpu().detach().numpy())
+		return H
+
+	def evaluater(self, modelName, testDataLoader, test_data :ptychographicData, model, H, startTime):
+		# print the model training and validation information
+		print("Finished training model.")
+		print("Train loss: {:.6f}".format(H["train_loss"][-1]))
+		print("Val loss: {:.6f}\n".format(H["val_loss"][-1]))
+
+		#finish measuring how long training took
+		endTime = time.time()
+		print("[INFO] total time taken to train the model: {:.2f}s".format(endTime - startTime))
+		# we can now evaluate the network on the test set
+		print("[INFO] evaluating network...")
+
 		# turn off autograd for testing evaluation
 		with torch.no_grad(), open(f'results_{modelName}_{self.version}.csv', 'w+', newline='') as resultsTest:
 			Writer = csv.writer(resultsTest, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
