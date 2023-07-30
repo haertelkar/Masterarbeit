@@ -36,13 +36,10 @@ def get_master_addr():
     return hostnames.split()[0].decode('utf-8')
 
 def setup(rank:int, world_size:int):   
-	os.environ['MASTER_ADDR'] = get_master_addr()
-	os.environ['MASTER_PORT'] = "12355" 
-	print(rank)
-	dist.init_process_group("nccl", rank=rank, world_size=world_size)
+	dist.init_process_group("nccl")
 
 from torch.utils.data.distributed import DistributedSampler
-def dataLoaderCustomized(rank, world_size, dataset, batch_size=32, pin_memory=False, num_workers=20, shuffle = False):
+def dataLoaderCustomized(rank, world_size, dataset, batch_size=32, pin_memory=False, num_workers=10, shuffle = False):
     sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=shuffle, drop_last=False)
     
     dataloader = DataLoader(dataset, batch_size=batch_size, pin_memory=pin_memory, num_workers=num_workers, drop_last=False, sampler=sampler)
@@ -179,16 +176,19 @@ class Learner():
 		else:
 			lossFn = nn.MSELoss()
 		# initialize a dictionary to store training history
-		H = {
-			"train_loss": [],
-			"val_loss": [],
-		}
-		# measure how long training is going to take
-		print("[INFO] training the network...")
-		startTime = time.time()
+		disableTQDM = True
+		if self.rank == 0:
+			H = {
+				"train_loss": [],
+				"val_loss": [],
+			}
+			# measure how long training is going to take
+			print("[INFO] training the network...")
+			startTime = time.time()
+			disableTQDM = False
 
 		# loop over our epochs
-		for e in tqdm(range(0, self.EPOCHS), leave = leave, desc= "Epoch..."):
+		for e in tqdm(range(0, self.EPOCHS), leave = leave, desc= "Epoch...", disable = disableTQDM):
 			trainDataLoader.sampler.set_epoch(e)
 			# set the model in training mode
 			model.train()
@@ -197,7 +197,7 @@ class Learner():
 			totalValLoss = 0
 
 			# loop over the training set
-			for (x, y) in tqdm(trainDataLoader, leave=False, desc = "Training..."):
+			for (x, y) in tqdm(trainDataLoader, leave=False, desc = "Training...", disable = disableTQDM):
 				# send the input to the device
 				(x, y) = (x.to(self.device), y.to(self.device))
 				# perform a forward pass and calculate the training loss
@@ -233,19 +233,20 @@ class Learner():
 				H["val_loss"].append(avgValLoss.cpu().detach().numpy())
 				if avgTrainLoss < 1e-5 and avgValLoss < 1e-5:
 					break
+		if self.rank == 0:
+			# print the model training and validation information
+			print("[INFO] EPOCH: {}/{}".format(e + 1, self.EPOCHS))
+			print("Train loss: {:.6f}".format(avgTrainLoss))
+			print("Val loss: {:.6f}\n".format(avgValLoss))
+
+			#finish measuring how long training took
+			endTime = time.time()
+			print("[INFO] total time taken to train the model: {:.2f}s".format(endTime - startTime))
+			# we can now evaluate the network on the test set
+			print("[INFO] evaluating network...")
+
+			self.evaluater(modelName, testDataLoader, test_data, model, H)
 		cleanup()
-		# print the model training and validation information
-		print("[INFO] EPOCH: {}/{}".format(e + 1, self.EPOCHS))
-		print("Train loss: {:.6f}".format(avgTrainLoss))
-		print("Val loss: {:.6f}\n".format(avgValLoss))
-
-		#finish measuring how long training took
-		endTime = time.time()
-		print("[INFO] total time taken to train the model: {:.2f}s".format(endTime - startTime))
-		# we can now evaluate the network on the test set
-		print("[INFO] evaluating network...")
-
-		self.evaluater(modelName, testDataLoader, test_data, model, H)
 
 	def evaluater(self, modelName, testDataLoader, test_data :ptychographicData, model, H):
 		# turn off autograd for testing evaluation
@@ -324,8 +325,8 @@ if __name__ == '__main__':
 	ap.add_argument("-m" ,"--models", type=str, required=False, help = "only use models with this String in their name")
 	ap.add_argument("-c" ,"--classifier", type=int, required=False, default=0, help = "Use if the model is to be a classfier. Choose the label index to be classified")
 	ap.add_argument("-i" ,"--indices", type=str, required=False, default="all", help = "specify indices of labels to predict (eg. '1, 2,5'). Default is all.")
-	ap.add_argument('-r', '--rank', default=-1, type=int, help='rank of the current process')
-	ap.add_argument('-ws', '--world_size', default=-1, type=int, help='number of processes participating in the job')
+	# ap.add_argument('-r', '--rank', default=-1, type=int, help='rank of the current process')
+	# ap.add_argument('-ws', '--world_size', default=-1, type=int, help='number of processes participating in the job')
 	args = vars(ap.parse_args())
 
 
@@ -341,12 +342,16 @@ if __name__ == '__main__':
 		indices = args["indices"].split(",")
 		indicesToPredict = [int(i) for i in indices]
 	
-	rank = args["rank"]
-	if rank == -1: rank = getMPIRank()
-	if rank == 0: sys.stdout = open(f"stdout{rank}.txt", "w", buffering=1)
-	world_size = args["world_size"]
-	if world_size == -1: world_size = getMPIWorldSize()
-	main(rank,world_size, args["epochs"], args["version"], classifier, indicesToPredict, args["models"])     
+	# rank = args["rank"]
+	# if rank == -1: rank = getMPIRank()
+	# if rank == 0: sys.stdout = open(f"stdout{rank}.txt", "w", buffering=1)
+	# world_size = args["world_size"]
+	# if world_size == -1: world_size = getMPIWorldSize()
+
+	local_rank = int(os.environ["LOCAL_RANK"])
+	global_rank = int(os.environ["RANK"])
+	world_size = int(os.environ["WORLD_SIZE"])
+	main(global_rank,world_size, args["epochs"], args["version"], classifier, indicesToPredict, args["models"])     
 	
 	#only for multiple gpus per node
 	# mp.spawn(
