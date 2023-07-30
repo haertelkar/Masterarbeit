@@ -21,7 +21,7 @@ head_node_ip=$(srun --nodes=1 --ntasks=1 -w "$head_node" hostname --ip-address)
 echo Node IP: $head_node_ip
 export LOGLEVEL=INFO
 
-srun python3 -m torch.distributed.run --nnodes=$SLURM_JOB_NUM_NODES --nproc_per_node 1 --rdzv_id $RANDOM --rdzv_endpoint $head_node_ip:29500 --rdzv_backend c10d trainCluster.py -v AdamWDenseOnlyClosest2x2C -e 150 -i 4,7 -m ull
+srun python3 -m torch.distributed.run --nnodes=$SLURM_JOB_NUM_NODES --nproc_per_node 1 --rdzv_id $RANDOM --rdzv_endpoint $head_node_ip:29500 --rdzv_backend c10d trainCluster.py -v 11x11C -e 150 -i 4,7 -m ull
 
 
 
