@@ -282,9 +282,10 @@ class Learner():
 					for predEntry,yEntry in zip(pred.cpu().numpy(), y.cpu().numpy()):
 						Writer.writerow([int(predEntry.argmax() == yEntry.argmax())])
 				
-		self.plotTraining(H, modelName, model)
+		self.plotTraining(H, modelName)
+		torch.save(model, os.path.join("models",f"{modelName}_{self.version}.m"))
 
-	def	plotTraining(self, H, modelName, model, startingPoint = 1):
+	def	plotTraining(self, H, modelName, startingPoint = 1):
 		plt.figure()
 		plt.plot(H["train_loss"][startingPoint:], label="train_loss")
 		plt.plot(H["val_loss"][startingPoint:], label="val_loss")
@@ -293,9 +294,9 @@ class Learner():
 		plt.ylabel("Loss/Accuracy")
 		plt.legend(loc="lower left")
 		plt.show()
-		plt.savefig(f'{modelName}_{self.version}.png')
+		plt.savefig(os.path.join("Loss", f'{modelName}_{self.version}.png'))
 		# serialize the model to disk
-		torch.save(model, f"{modelName}_{self.version}.m")
+		
 
 def cleanup():
     dist.destroy_process_group()

@@ -103,25 +103,21 @@ for file in os.listdir(os.getcwd()):
     distancePredictionDelta = np.array(distancePredictionDelta)
     if distance.any() and distancePredictionDelta.any():
         for cnt, ds in enumerate(zip(distance,distancePredictionDelta)):
-            distanceToBeAccurate = 1
+            distanceToBeAccurate = 0.2
             for struct in set(structures):
                 d,dDelta = ds
                 d = d[np.array(structures) == struct]
                 dDelta = dDelta[np.array(structures) == struct]
-                # dDelta = dDelta[np.array(d) < 2]
-                #d = d[np.array(d) < 2]
                 plt.scatter(d, dDelta, label = struct)
                 print(f"Distance between atom nr.{cnt} and scan position less than {distanceToBeAccurate} in {100*len(d[np.array(dDelta) < distanceToBeAccurate])/len(d):.2f}% of cases for {struct}")
             plt.xlabel(f"Distance between atom nr.{cnt} and scan position")
             plt.ylabel("Delta between distance prediction and actual distance")
             plt.legend()
-            plt.savefig(file + f"distanceToAccuracyCNN_atom{cnt}_labeled.png")
+            plt.savefig(os.path.join("DeltaToDistance", file + f"distanceToAccuracyCNN_atom{cnt}_labeled.png"))
             plt.close()
 
-            # d,dDelta = ds
-            # # dDelta = dDelta[np.array(d) < 2]
-            # # d = d[np.array(d) < 2]
-            # print(f"Distance between atom nr.{cnt} and scan position less than {distanceToBeAccurate} in {100*len(d[np.array(dDelta) < distanceToBeAccurate])/len(d):.2f}% of cases over all structure")
+            d,dDelta = ds
+            print(f"Distance between atom nr.{cnt} and scan position less than {distanceToBeAccurate} in {100*len(d[np.array(dDelta) < distanceToBeAccurate])/len(d):.2f}% of cases over all structure")
             # plt.scatter(d, dDelta)
             # plt.xlabel(f"Distance between atom nr.{cnt} and scan position")
             # plt.ylabel("Delta between distance prediction and actual distance") 
