@@ -24,8 +24,9 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
             for cnt, row in enumerate(Reader):
                 if cnt == 0: continue #skips the header line 
                 firstEntry = row #reads out first row
-                if cnt == 2: break
+                break
             fileName = firstEntry[0]
+            imageFileNames.append(fileName)
             if ".npy" not in fileName: raise Exception(f"{fileName} is not a valid filename")
             image = np.load(os.path.join(imgPath, fileName))
             if ZernikeObject is None:
