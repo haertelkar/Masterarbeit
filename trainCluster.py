@@ -255,7 +255,7 @@ class Learner():
 		print("[INFO] evaluating network...")
 
 		# turn off autograd for testing evaluation
-		with torch.no_grad(), open(f'results_{modelName}_{self.version}.csv', 'w+', newline='') as resultsTest:
+		with torch.no_grad(), open(os.path.join("testDataEval",f'results_{modelName}_{self.version}.csv', 'w+', newline='')) as resultsTest:
 			Writer = csv.writer(resultsTest, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
 			if not self.classifier and self.indicesToPredict is None:
 				Writer.writerow(list(test_data.columns[1:])*2)

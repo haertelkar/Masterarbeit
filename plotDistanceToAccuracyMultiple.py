@@ -32,7 +32,7 @@ errors = [["modelName", "average error in predicting thickness", "element predic
 fileNames = grabFileNames()
 
 
-for file in os.listdir(os.getcwd()):
+for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
     if "results" not in file or ".csv" != file[-4:]:
         continue
 
@@ -43,7 +43,7 @@ for file in os.listdir(os.getcwd()):
     structures = []
     skipFile = False
 
-    with open(file) as results:
+    with open(os.path.join("testDataEval", file)) as results:
         table = csv.reader(results, delimiter= ",")
         fullRowIndices = []
         fullRow = np.zeros(18)
