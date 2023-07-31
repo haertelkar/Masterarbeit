@@ -1,4 +1,5 @@
 import csv
+import warnings
 from torch.utils.data import random_split
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
@@ -76,9 +77,11 @@ class Loader():
 			[numTrainSamples, numValSamples],
 			generator=torch.Generator().manual_seed(42))
 		# initialize the train, validation, and test data loaders
+		warnings.filterwarnings("ignore", ".*This DataLoader will create 20 worker processes in total. Our suggested max number of worker in current system is 10.*") #this is an incorrect warning as we have 20 cores
 		trainDataLoader = DataLoader(trainData, shuffle=True, batch_size=self.BATCH_SIZE, num_workers= num_workers)
 		valDataLoader = DataLoader(valData, batch_size= self.BATCH_SIZE, num_workers= num_workers)
 		testDataLoader = DataLoader(test_data, batch_size= self.BATCH_SIZE, num_workers= num_workers)
+
 		return trainDataLoader, valDataLoader, testDataLoader, test_data
 
 	def dataLoader(self):
@@ -184,7 +187,7 @@ def getMPIWorldSize():
 def main(epochs, version, classifier, indicesToPredict, modelString):
 	world_size = getMPIWorldSize()
 	loader = Loader(world_size=world_size, epochs = epochs, version = version, classifier=classifier, indicesToPredict = indicesToPredict)
-	fabric = Fabric(accelerator="gpu", devices=1, num_nodes=world_size)
+	fabric = Fabric(accelerator="gpu", devices=1, num_nodes=world_size, precision="16-mixed")
 	fabric.launch()
 	numberOfModels = 0
 
