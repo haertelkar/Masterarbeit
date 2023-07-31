@@ -187,7 +187,7 @@ def getMPIWorldSize():
 def main(epochs, version, classifier, indicesToPredict, modelString):
 	world_size = getMPIWorldSize()
 	loader = Loader(world_size=world_size, epochs = epochs, version = version, classifier=classifier, indicesToPredict = indicesToPredict)
-	fabric = Fabric(accelerator="gpu", devices=1, num_nodes=world_size, precision="16-mixed")
+	fabric = Fabric(accelerator="gpu", devices=1, num_nodes=world_size)
 	fabric.launch()
 	numberOfModels = 0
 
@@ -197,7 +197,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 		loader.modelName = modelName
 		trainDataLoader, valDataLoader, testDataLoader, test_data = loader.getDataLoaders(num_workers = 20)
 		model = loader.loadModel(trainDataLoader)
-		trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', devices=1)
+		trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', devices=1, precision="16-mixed")
 		trainer.fit(model, trainDataLoader, valDataLoader)
 		loader.evaluater(testDataLoader, test_data, model)
 		torch.save(model, os.path.join("models",f"{modelName}_{version}.m"))
