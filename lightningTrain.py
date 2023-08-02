@@ -9,17 +9,30 @@ import os
 import torch
 import faulthandler
 import signal
+from tqdm import tqdm
 from datasets import ptychographicData
 import torch.nn.functional as F
 import lightning.pytorch as pl
-from lightning.fabric import Fabric
+from lightning.pytorch.callbacks import StochasticWeightAveraging
+from lightning.pytorch.callbacks.early_stopping import EarlyStopping
+from lightning.pytorch.tuner.tuning import Tuner
+from lightning.pytorch.strategies import DDPStrategy, DeepSpeedStrategy
+from deepspeed.ops.adam import DeepSpeedCPUAdam
 
 faulthandler.register(signal.SIGUSR1.value)
 
-class lightnModel(pl.LightningModule):
-	def __init__(self, model):
+
+def getMPIWorldSize():
+	return int(os.environ['SLURM_NNODES'])	
+
+class lightnModelClass(pl.LightningModule):
+	def __init__(self, model, lr = getMPIWorldSize() * 4e-4):
 		super().__init__()
 		self.model = model
+		self.lr = lr
+
+	def forward(self, x):
+		return self.model(x)
 
 	def training_step(self, batch, batch_idx):
 		# training_step defines the train loop.
@@ -37,12 +50,16 @@ class lightnModel(pl.LightningModule):
 		return loss
 
 	def configure_optimizers(self):
-		optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
+		optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+		#TODO go back to GPU optimizer optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 		return optimizer
 	
+	# def train_dataloader(self):
+	# 	return DataLoader(self.trainDataLoader, batch_size=self.batch_size) #maybe use functools.partial to abstract a data loader, where only the batch size is missing
+
 	def test_step(self, batch, batch_idx):
 		x, y = batch
-		y_hat = self.encoder(x)
+		y_hat = self.model(x)
 		test_loss = F.mse_loss(y_hat, y)
 		self.log("test_loss", test_loss)
 
@@ -53,8 +70,8 @@ class Loader():
 		print(f"Running computations on {device}")
 
 		# define training hyperparameters
-		self.INIT_LR = world_size * 4e-3
-		self.BATCH_SIZE = 256
+		self.INIT_LR = world_size * 4e-4
+		self.BATCH_SIZE = 8
 		self.EPOCHS = epochs
 		# define the train and val splits
 		self.TRAIN_SPLIT = 0.75
@@ -78,9 +95,9 @@ class Loader():
 			generator=torch.Generator().manual_seed(42))
 		# initialize the train, validation, and test data loaders
 		warnings.filterwarnings("ignore", ".*This DataLoader will create 20 worker processes in total. Our suggested max number of worker in current system is 10.*") #this is an incorrect warning as we have 20 cores
-		trainDataLoader = DataLoader(trainData, shuffle=True, batch_size=self.BATCH_SIZE, num_workers= num_workers)
-		valDataLoader = DataLoader(valData, batch_size= self.BATCH_SIZE, num_workers= num_workers)
-		testDataLoader = DataLoader(test_data, batch_size= self.BATCH_SIZE, num_workers= num_workers)
+		trainDataLoader = DataLoader(trainData, shuffle=True, batch_size=self.BATCH_SIZE, num_workers= num_workers, pin_memory=True)
+		valDataLoader = DataLoader(valData, batch_size= self.BATCH_SIZE, num_workers= num_workers, pin_memory=True)
+		testDataLoader = DataLoader(test_data, batch_size= self.BATCH_SIZE, num_workers= num_workers, pin_memory=True)
 
 		return trainDataLoader, valDataLoader, testDataLoader, test_data
 
@@ -116,45 +133,44 @@ class Loader():
 			print("[INFO] initializing the cnn model...")
 			model = cnn(
 				numChannels=numChannels,
-				classes=len(trainLabels[1])).to(self.device)
+				classes=len(trainLabels[1]))
 			
 		if self.modelName == "unet":
 			from FullPixelGridML.unet import unet
 			print("[INFO] initializing the unet model...")
 			model = unet(
 				numChannels=numChannels,
-				classes=len(trainLabels[1])).to(self.device)
+				classes=len(trainLabels[1]))
 
 		if self.modelName == "ZernikeBottleneck":
 			from Zernike.znnBottleneck import znnBottleneck
 			print("[INFO] initializing the znnBottleneck model...")
 			model = znnBottleneck(
 				inFeatures = len(trainFeatures[1]),
-				outFeatures=len(trainLabels[1])).to(self.device)
+				outFeatures=len(trainLabels[1]))
 
 		if self.modelName == "ZernikeNormal":
 			from Zernike.znn import znn
 			print("[INFO] initializing the znn model...")
 			model = znn(
 				inFeatures = len(trainFeatures[1]),
-				outFeatures=len(trainLabels[1])).to(self.device)
+				outFeatures=len(trainLabels[1]))
 			
 		if self.modelName == "ZernikeComplex":
 			from Zernike.znnMoreComplex import znn
 			print("[INFO] initializing the znnComplex model...")
 			model = znn(
 				inFeatures = len(trainFeatures[1]),
-				outFeatures=len(trainLabels[1])).to(self.device)
-			
-		model = lightnModel(model)
+				outFeatures=len(trainLabels[1]))
+		
 		return model
 
 	def evaluater(self, testDataLoader, test_data :ptychographicData, model):
 		# we can now evaluate the network on the test set
 		print("[INFO] evaluating network...")
-
+		
 		# turn off autograd for testing evaluation
-		with torch.no_grad(), open(os.path.join("testDataEval",f'results_{self.modelName}_{self.version}.csv'), 'w+', newline='') as resultsTest:
+		with torch.inference_mode(), open(os.path.join("testDataEval",f'results_{self.modelName}_{self.version}.csv'), 'w+', newline='') as resultsTest:
 			Writer = csv.writer(resultsTest, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
 			if not self.classifier and self.indicesToPredict is None:
 				Writer.writerow(list(test_data.columns[1:])*2)
@@ -162,14 +178,11 @@ class Loader():
 				Writer.writerow(list(test_data.columns[np.array(self.indicesToPredict)])*2)
 			else:
 				Writer.writerow(list(test_data.columns[np.array(self.indicesToPredict)])) 
-
-			# set the model in evaluation mode
+			
 			model.eval()
-
+			
 			# loop over the test set
-			for (x, y) in testDataLoader:
-				# send the input to the device
-				x = x.to(self.device)
+			for (x, y) in tqdm(testDataLoader, desc="Going through test data"):
 				# make the predictions and add them to the list
 				pred = model(x)
 				if not self.classifier:
@@ -180,15 +193,11 @@ class Loader():
 				else:
 					for predEntry,yEntry in zip(pred.cpu().numpy(), y.cpu().numpy()):
 						Writer.writerow([int(predEntry.argmax() == yEntry.argmax())])
-
-def getMPIWorldSize():
-	return int(os.environ['SLURM_NNODES'])		
+	
 
 def main(epochs, version, classifier, indicesToPredict, modelString):
 	world_size = getMPIWorldSize()
 	loader = Loader(world_size=world_size, epochs = epochs, version = version, classifier=classifier, indicesToPredict = indicesToPredict)
-	fabric = Fabric(accelerator="gpu", devices=1, num_nodes=world_size)
-	fabric.launch()
 	numberOfModels = 0
 
 	for modelName in models:
@@ -197,10 +206,24 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 		loader.modelName = modelName
 		trainDataLoader, valDataLoader, testDataLoader, test_data = loader.getDataLoaders(num_workers = 20)
 		model = loader.loadModel(trainDataLoader)
-		trainer = pl.Trainer(max_epochs=epochs, accelerator='gpu', devices=1, precision="16-mixed")
-		trainer.fit(model, trainDataLoader, valDataLoader)
-		loader.evaluater(testDataLoader, test_data, model)
-		torch.save(model, os.path.join("models",f"{modelName}_{version}.m"))
+		lightnModel = lightnModelClass(model)
+		early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=0.00, patience=10, verbose=False, mode="min", stopping_threshold = 1e-6)
+		#StochasticWeightAveraging(swa_lrs=1e-2) faster but a bit less good
+		trainer = pl.Trainer(max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=[early_stop_callback])
+		
+		#Create a Tuner
+		tuner = Tuner(trainer)
+		# finds learning rate automatically
+		# sets ightnModel.lr or ightnModel.learning_rate to that learning rate
+		tuner.lr_find(lightnModel, trainDataLoader, valDataLoader, max_lr = 4e-2, early_stop_threshold = 4)
+		# Auto-scale batch size by growing it exponentially (default)
+		# tuner.scale_batch_size(lightnModel) implement train data Loader
+
+		trainer.fit(lightnModel, trainDataLoader, valDataLoader)
+		trainer.save_checkpoint(os.path.join("models",f"{modelName}_{version}.ckpt"))
+		lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"), model = model)
+		loader.evaluater(testDataLoader, test_data, lightnModel)
+		torch.save(lightnModel.state_dict(), os.path.join("models",f"{modelName}_{version}.m"))
 		numberOfModels += 1
 
 	if numberOfModels == 0: raise Exception("No model fits the required String.")
