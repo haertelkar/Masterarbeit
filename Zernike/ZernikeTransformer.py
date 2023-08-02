@@ -10,6 +10,20 @@ try:
     from ZernikePolynomials import Zernike, imagePath
 except ModuleNotFoundError:
     from Zernike.ZernikePolynomials import Zernike
+from mpi4py import MPI
+
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+worldsize = comm.Get_size()
+
+def splitForEachRank(arr, size):
+     arrs = []
+     while len(arr) > size:
+         pice = arr[:size]
+         arrs.append(pice)
+         arr   = arr[size:]
+     arrs.append(arr)
+     return arrs
 
 def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMoments = 40, leave = True):
     oldDir = os.getcwd() 
@@ -38,10 +52,9 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
                 if ".npy" not in fileName: raise Exception(f"{fileName} is not a valid filename")
                 imageFileNames.append(fileName)
 
-        shutil.copy(os.path.join(imgPath, "labels.csv"), os.path.join(f"measurements_{testOrTrain}", "labels.csv"))
-        # for fileName in tqdm(imageFileNames, desc= "Going through files", total = len(imageFileNames), leave = leave):
-        #     ZernikeObject.zernikeTransform(testOrTrain, fileName)
-        Parallel(n_jobs=20)(delayed(ZernikeObject.zernikeTransform)(testOrTrain, fileName) for fileName in imageFileNames)
+        if rank == 0: shutil.copy(os.path.join(imgPath, "labels.csv"), os.path.join(f"measurements_{testOrTrain}", "labels.csv"))
+        for cnt, fileNames in enumerate(tqdm(splitForEachRank(imageFileNames, 20), desc= "Going through files", total = len(imageFileNames)//20, leave = leave)):
+            if cnt%worldsize == rank: Parallel(n_jobs=20)(delayed(ZernikeObject.zernikeTransform)(testOrTrain, fileName) for fileName in fileNames)
 
     os.chdir(oldDir)
 
