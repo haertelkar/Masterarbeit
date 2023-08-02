@@ -53,7 +53,7 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
                 imageFileNames.append(fileName)
 
         if rank == 0: shutil.copy(os.path.join(imgPath, "labels.csv"), os.path.join(f"measurements_{testOrTrain}", "labels.csv"))
-        for cnt, fileNames in enumerate(tqdm(splitForEachRank(imageFileNames, 20), desc= "Going through files", total = len(imageFileNames)//20, leave = leave)):
+        for cnt, fileNames in enumerate(tqdm(splitForEachRank(imageFileNames, 20), desc= f"Going through files in measurements_{testOrTrain}", total = len(imageFileNames)//20, leave = leave)):
             if cnt%worldsize == rank: Parallel(n_jobs=20)(delayed(ZernikeObject.zernikeTransform)(testOrTrain, fileName) for fileName in fileNames)
 
     os.chdir(oldDir)
