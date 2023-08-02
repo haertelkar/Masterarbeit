@@ -3,7 +3,7 @@ import csv
 import numpy as np
 import os
 from rowsIndexToHeader import headerToRowsIndex
-from train import ptychographicData
+from datasets import ptychographicData
 import pandas
 
 def raiseExcep(header, index):
