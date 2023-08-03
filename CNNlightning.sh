@@ -14,4 +14,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun python3 lightningTrain.py -v 11x11CTuner150EvenMoreTiles -e 150 -i 4,7 -m ormal
+srun python3 lightningTrain.py -v 11x11C -e 150 -i 4,7 -m ull

@@ -4,7 +4,7 @@
 
 #SBATCH --time=30:00:00   # walltime
 #SBATCH --ntasks=40   # number of processor cores (i.e. tasks)
-#SBATCH --nodes=10   # number of nodes
+#SBATCH --nodes=20   # number of nodes
 #SBATCH -J "tileSimulation"   # job name
 #SBATCH --mail-user=haertelk@physik.hu-berlin.de   # email address
 
@@ -14,6 +14,6 @@
 
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
 for i in {1..40}; do
-    srun -N 1 -n 1 python3 SimulateMoreComplexTiled.py -it 4 -id $i$RANDOM &
+    srun -N 1 -n 1 python3 SimulateMoreComplexTiled.py -it 10 -id $i$RANDOM &
 done
 wait
