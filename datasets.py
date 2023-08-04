@@ -11,6 +11,7 @@ from torch.utils.data import random_split, DataLoader
 
 class ptychographicDataLightning(pl.LightningDataModule):
 	def __init__(self, model_name, batch_size = 8, num_workers = 20, classifier = False, indicesToPredict = None):
+		super().__init__()
 		self.batch_size = batch_size
 		self.num_workers = num_workers
 		self.model_name = model_name
@@ -20,24 +21,20 @@ class ptychographicDataLightning(pl.LightningDataModule):
 		self.VAL_SPLIT = 1 - self.TRAIN_SPLIT
 		self.classifier = classifier
 		self.indicesToPredict = indicesToPredict
-	def prepare_data(self) -> None:
-		
+		self.setupDone = False
+		self.prepare_data_per_node = False
+
+	def setup(self, stage = None) -> None:
+		if self.setupDone: return
 		folderName = None
-		if self.modelName == "FullPixelGridML" or self.modelName == "unet":	folderName = "FullPixelGridML"
-		if self.modelName == "ZernikeNormal" or self.modelName == "ZernikeBottleneck" or self.modelName == "ZernikeComplex": folderName = "Zernike"
+		if self.model_name == "FullPixelGridML" or self.model_name == "unet":	folderName = "FullPixelGridML"
+		if self.model_name == "ZernikeNormal" or self.model_name == "ZernikeBottleneck" or self.model_name == "ZernikeComplex": folderName = "Zernike"
 
 		self.trainAndVal_dataset = ptychographicData(
 					os.path.abspath(os.path.join(folderName,"measurements_train","labels.csv")), 
 					os.path.abspath(os.path.join(folderName,"measurements_train")), transform=torch.as_tensor, 
 					target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
-				)
-
-		self.test_dataset = ptychographicData(
-					os.path.abspath(os.path.join(folderName,"measurements_test","labels.csv")), 
-					os.path.abspath(os.path.join(folderName,"measurements_test")), transform=torch.as_tensor,
-					target_transform=torch.as_tensor, scalingFactors = self.trainAndVal_dataset.scalingFactors, 
-					shift = self.trainAndVal_dataset.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
-				)
+				)		
 		
 		numTrainSamples = int(len(self.trainAndVal_dataset) * self.TRAIN_SPLIT)
 		numValSamples = int(len(self.trainAndVal_dataset) * self.VAL_SPLIT)
@@ -45,8 +42,16 @@ class ptychographicDataLightning(pl.LightningDataModule):
 		(self.train_dataset, self.val_dataset) = random_split(self.trainAndVal_dataset,
 			[numTrainSamples, numValSamples],
 			generator=torch.Generator().manual_seed(42))
+		
+		self.test_dataset = ptychographicData(
+					os.path.abspath(os.path.join(folderName,"measurements_test","labels.csv")), 
+					os.path.abspath(os.path.join(folderName,"measurements_test")), transform=torch.as_tensor,
+					target_transform=torch.as_tensor, scalingFactors = self.trainAndVal_dataset.scalingFactors, 
+					shift = self.trainAndVal_dataset.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
+				)
 		# initialize the train, validation, and test data loaders
 		warnings.filterwarnings("ignore", ".*This DataLoader will create 20 worker processes in total. Our suggested max number of worker in current system is 10.*") #this is an incorrect warning as we have 20 cores
+		self.setupDone = True
 	
 	def train_dataloader(self) -> TRAIN_DATALOADERS:
 		return DataLoader(self.train_dataset, shuffle=True, batch_size=self.BATCH_SIZE, num_workers= self.num_workers, pin_memory=True)
