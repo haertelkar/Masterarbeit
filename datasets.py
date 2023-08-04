@@ -10,12 +10,12 @@ import lightning.pytorch as pl
 from torch.utils.data import random_split, DataLoader
 
 class ptychographicDataLightning(pl.LightningDataModule):
-	def __init__(self, model_name, batch_size = 8, num_workers = 20, classifier = False, indicesToPredict = None):
+	def __init__(self, model_name, batch_size = 256, num_workers = 20, classifier = False, indicesToPredict = None):
 		super().__init__()
 		self.batch_size = batch_size
 		self.num_workers = num_workers
 		self.model_name = model_name
-		self.BATCH_SIZE = 256
+		self.BATCH_SIZE = batch_size
 		# define the train and val splits
 		self.TRAIN_SPLIT = 0.75
 		self.VAL_SPLIT = 1 - self.TRAIN_SPLIT
