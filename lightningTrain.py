@@ -155,7 +155,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 		#Create a Tuner
 		tuner = Tuner(trainer)
 		# Auto-scale batch size by growing it exponentially (default)
-		tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader) 
+		if world_size == 1: tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader) 
 		# finds learning rate automatically
 		# sets ightnModel.lr or ightnModel.learning_rate to that learning rate
 		tuner.lr_find(lightnModel, datamodule = lightnDataLoader, max_lr = 4e-2, early_stop_threshold = 4)
