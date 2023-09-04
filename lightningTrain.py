@@ -149,15 +149,13 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 		model = loadModel(lightnDataLoader.val_dataloader(), modelName)
 		lightnModel = lightnModelClass(model)
 		early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=0.00, patience=10, verbose=False, mode="min", stopping_threshold = 1e-6)
-		#StochasticWeightAveraging(swa_lrs=1e-2) faster but a bit less good
-		trainer = pl.Trainer(logger=TensorBoardLogger("tb_logs", name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=[early_stop_callback])
-		#trainer.validate(model = lightnModel, module = lightnDataLoader, verbose = False)
+		swa = StochasticWeightAveraging(swa_lrs=1e-2) #faster but a bit less good
+		trainer = pl.Trainer(logger=TensorBoardLogger("tb_logs", name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=[early_stop_callback, swa])
 		#Create a Tuner
 		tuner = Tuner(trainer)
-		# Auto-scale batch size by growing it exponentially (default)
+		# Auto-scale batch size by growing it exponentially
 		if world_size == 1: tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader) 
 		# finds learning rate automatically
-		# sets ightnModel.lr or ightnModel.learning_rate to that learning rate
 		tuner.lr_find(lightnModel, datamodule = lightnDataLoader, max_lr = 4e-2, early_stop_threshold = 4)
 
 

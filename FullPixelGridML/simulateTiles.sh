@@ -14,6 +14,7 @@
 
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
 for i in {1..40}; do
-    srun -N 1 -n 1 python3 SimulateMoreComplexTiled.py -it 10 -id $i$RANDOM &
+    srun -N 1 -n 1 python3 SimulateMostComplexTiled.py -it 100 -id $i$RANDOM &
 done
 wait
+echo 'finished tileSimulate.sh'

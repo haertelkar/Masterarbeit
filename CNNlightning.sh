@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # SLURM SUBMIT SCRIPT
-#SBATCH --nodes=1               
+#SBATCH --nodes=1              
 #SBATCH --ntasks-per-node=1    
 #SBATCH --cpus-per-task=10
 #SBATCH --time=24:00:00
@@ -14,4 +14,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun python3 lightningTrain.py -v 11x11C -e 150 -i 4,7 -m ull
+srun python3 lightningTrain.py -v withRotationsMoreData -e 300 -i 4,7 -m ull
