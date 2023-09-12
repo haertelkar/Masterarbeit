@@ -44,7 +44,7 @@ def moveAndRotateAtomsAndOrthogonalize(atoms:Atoms, xPos, yPos, zPos, ortho = Tr
     atoms.positions += np.array([xPos, yPos, zPos])[None,:]
     atoms.rotate("x", randint(0,360))
     atoms.rotate("y", randint(0,360))
-    atoms.rotate("z", randint(0,360))
+    #atoms.rotate("z", randint(0,360))
     if ortho: atoms = orthogonalize_cell(atoms, max_repetitions=10)
     return atoms
 
@@ -156,15 +156,18 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Atoms:
 
 @njit
 def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:float, yPos:float):
-    xyDistances = (atomPositions - np.expand_dims(np.array([xPos, yPos, 0]),0))[:,0:2]
-    xyDistances = xyDistances[:,0] + xyDistances[:,1] * 1j
-    xyDistanceSortedIndices = np.absolute(xyDistances).argsort() 
+    Distances = (atomPositions - np.expand_dims(np.array([xPos, yPos, 0]),0))[:,0:2]
+    Distances = Distances[:,0] + Distances[:,1] * 1j
+    DistanceSortedIndices = np.absolute(Distances).argsort() 
 
-    while len(xyDistanceSortedIndices) < 3: #if less than three atoms, just append the closest one again
-        xyDistanceSortedIndices = np.concatenate((xyDistanceSortedIndices,xyDistanceSortedIndices))
+    # DistancesSqu = np.array(Distances)**2
+    # DistanceSortedIndices = DistancesSqu.sum(axis=1).argsort()
+
+    while len(DistanceSortedIndices) < 3: #if less than three atoms, just append the closest one again
+        DistanceSortedIndices = np.concatenate((DistanceSortedIndices,DistanceSortedIndices))
     
-    atomNumbers = atomicNumbers[xyDistanceSortedIndices[:3]]
-    xPositions, yPositions = atomPositions[xyDistanceSortedIndices[:3]].transpose()[:2]
+    atomNumbers = atomicNumbers[DistanceSortedIndices[:3]]
+    xPositions, yPositions = atomPositions[DistanceSortedIndices[:3]].transpose()[:2]
     return atomNumbers, xPositions, yPositions
 
 def createSmallTiles(array2D, xDim: int, yDim: int):
