@@ -41,10 +41,10 @@ def moveAndRotateAtomsAndOrthogonalize(atoms:Atoms, xPos, yPos, zPos, ortho = Tr
     xPos = random()*xlen/3 + xlen/3 if xPos is None else xPos
     yPos = random()*ylen/3 + ylen/3 if yPos is None else yPos
     zPos = 0 if zPos is None else zPos
-    atoms.positions += np.array([xPos, yPos, zPos])[None,:]
-    atoms.rotate("x", randint(0,360))
+    atoms.positions += np.array([xPos, yPos, zPos])[None,:]    
+    # atoms.rotate("x", randint(0,360))
     atoms.rotate("y", randint(0,360))
-    #atoms.rotate("z", randint(0,360))
+    # atoms.rotate("z", randint(0,360))
     if ortho: atoms = orthogonalize_cell(atoms, max_repetitions=10)
     return atoms
 

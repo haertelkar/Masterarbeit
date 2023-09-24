@@ -14,4 +14,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun python3 lightningTrain.py -v withRotationsMoreData -e 300 -i 4,7 -m ull
+srun python3 lightningTrain.py -v onlyYRotation -e 300 -i 4,7 -m ull
