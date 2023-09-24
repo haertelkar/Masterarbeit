@@ -4,14 +4,33 @@ from tqdm import tqdm
 
 def cleanUp(directory = "", printEmptiedDirs = False):
     emptyDirs = set()
+    measurementDirs = ["measurements_test","measurements_train"]
+    zmD = [os.path.join("Zernike",d) for d in measurementDirs]
+    fmD = [os.path.join("FullPixelGridML",d) for d in measurementDirs]
+    measurementDirs+= zmD + fmD
+    currentMainDir = os.path.join(os.getcwd(),directory)
+    for dir in measurementDirs:
+        dirFull = os.path.join(currentMainDir, dir)
+        if os.path.exists(dirFull):
+            for filename in tqdm(os.listdir(dirFull), desc = f"deleting {dirFull}", leave = False):
+                if ".npy" in filename or ".csv" in filename:
+                    os.remove(os.path.join(dirFull, filename))
+                    emptyDirs.add(dirFull)
+    
 
-    for dirpath, dirnames, filenames in tqdm(os.walk(os.path.join(os.getcwd(),directory)), desc = "Going through folders",disable= not printEmptiedDirs):
-        if "measurements" not in dirpath:
-            continue
-        for filename in tqdm(filenames, desc = f"deleting {dirpath}", leave = False):
-            if ".npy" in filename or ".csv" in filename:
-                os.remove(os.path.join(dirpath, filename))
-                emptyDirs.add(dirpath)
+
+    # for dirpath, dirnames, filenames in tqdm(os.walk(), desc = "Going through folders",disable= not printEmptiedDirs):
+    #     print(dirpath[dirpath.find("Masterarbeit"):].count(os.sep))
+    #     print(dirpath[dirpath.find("Masterarbeit"):])
+    #     if dirpath[dirpath.find("Masterarbeit"):].count(os.sep)>2:
+    #         continue 
+    #     if "measurements" not in dirpath:
+    #         continue
+        
+    #     for filename in tqdm(filenames, desc = f"deleting {dirpath}", leave = False):
+    #         if ".npy" in filename or ".csv" in filename:
+    #             os.remove(os.path.join(dirpath, filename))
+    #             emptyDirs.add(dirpath)
 
     if printEmptiedDirs:
         print("Following directories were emptied:")
