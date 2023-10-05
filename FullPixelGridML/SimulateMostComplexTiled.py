@@ -42,9 +42,9 @@ def moveAndRotateAtomsAndOrthogonalize(atoms:Atoms, xPos, yPos, zPos, ortho = Tr
     yPos = random()*ylen/3 + ylen/3 if yPos is None else yPos
     zPos = 0 if zPos is None else zPos
     atoms.positions += np.array([xPos, yPos, zPos])[None,:]    
-    # atoms.rotate("x", randint(0,360))
+    atoms.rotate("x", randint(0,360))
     atoms.rotate("y", randint(0,360))
-    # atoms.rotate("z", randint(0,360))
+    atoms.rotate("z", randint(0,360))
     if ortho: atoms = orthogonalize_cell(atoms, max_repetitions=10)
     return atoms
 
@@ -316,17 +316,21 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("-id", "--id", type=str, required=False, default= "",help="version number")
     ap.add_argument("-it", "--iterations", type=int, required=False, default= 5,help="number of iterations")
+    ap.add_argument("-t", "--trainOrTest", type=str, required = False, default="traintest", help="specify train or test if you want to limit to just one")
     args = vars(ap.parse_args())
 
 
     XDIMTILES = 11
     YDIMTILES = 11
-
+    testDivider = 1
     for trainOrTest in ["train", "test"]:
-        for i in tqdm(range(args["iterations"]), disable=True):
+        if trainOrTest not in args["trainOrTest"]:
+            continue
+        for i in tqdm(int(range(args["iterations"]*testDivider)), disable=True):
             print(f"PID {os.getpid()} on step {i+1} at {datetime.datetime.now()}")
             rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, 20, processID=args["id"], silence=True)
             writeAllRows(rows=rows, trainOrTest=trainOrTest,processID=args["id"])
+        testDivider = 0.25
     print(f"PID {os.getpid()} done.")
 
         
