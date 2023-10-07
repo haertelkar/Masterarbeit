@@ -239,6 +239,36 @@ def generateDiffractionArray():
 
         return nameStruct, gridSampling, atomStruct, measurement_thick
 
+def createDifPatternPositions():
+    ''' returns the following positions as (x,y)
+            
+        0   1   2   3   4   5   6   7   8   9  10
+    +---+---+---+---+---+---+---+---+---+---+---+
+    0 | X |   |   |   |   | X |   |   |   |   | X |
+    +---+---+---+---+---+---+---+---+---+---+---+
+    1 |   |   |   |   |   |   |   |   |   |   |   |
+    +---+---+---+---+---+---+---+---+---+---+---+
+    2 |   |   |   |   |   |   |   |   |   |   |   |
+    +---+---+---+---+---+---+---+---+---+---+---+
+    3 |   |   |   |   |   |   |   |   |   |   |   |
+    +---+---+---+---+---+---+---+---+---+---+---+
+    4 |   |   |   |   |   |   |   |   |   |   |   |
+    +---+---+---+---+---+---+---+---+---+---+---+
+    5 | X |   |   |   |   | X |   |   |   |   | X |
+    +---+---+---+---+---+---+---+---+---+---+---+
+    6 |   |   |   |   |   |   |   |   |   |   |   |
+    +---+---+---+---+---+---+---+---+---+---+---+
+    7 |   |   |   |   |   |   |   |   |   |   |   |
+    +---+---+---+---+---+---+---+---+---+---+---+
+    8 |   |   |   |   |   |   |   |   |   |   |   |
+    +---+---+---+---+---+---+---+---+---+---+---+
+    9 |   |   |   |   |   |   |   |   |   |   |   |
+    +---+---+---+---+---+---+---+---+---+---+---+
+    10 | X |   |   |   |   | X |   |   |   |   | X |
+    +---+---+---+---+---+---+---+---+---+---+---+
+        '''
+    return [(x,y) for y in [0,5,10] for x in [0,5,10]]
+
 def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, processID = "", silence = False):
     rows = []
     for nameStruct, gridSampling, atomStruct, measurement_thick in (generateDiffractionArray() for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}")):
@@ -258,20 +288,11 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, proc
             yAtomRel = yPositionsAtoms - yPos
             difPatterns = []
             
-            difPatterns.append(difPatternArray[3,3])
-            difPatterns.append(difPatternArray[3,7])
-            difPatterns.append(difPatternArray[7,3]) 
-            difPatterns.append(difPatternArray[7,7])
-            difPatterns.append(difPatternArray[5,5])
-            difPatterns.append(difPatternArray[0,0]) # new
-            difPatterns.append(difPatternArray[10,10]) # new
-            difPatterns.append(difPatternArray[10,0]) #new
-            difPatterns.append(difPatternArray[0,10]) # new
+            difPatternPositions = createDifPatternPositions()
 
-            # for x in range(difPatternArray.shape[0]):
-            #     for y in range(difPatternArray.shape[1]):
-            #         difPatterns.append(difPatternArray[x][y])
-            #difPatterns = np.array(difPatterns)
+            for posx, posy in difPatternPositions:
+                difPatterns.append(difPatternArray[posx,posy])
+
             for cnt, difPattern in enumerate(difPatterns):
                 difPatterns[cnt] = cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR)
             fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{xPos}_{yPos}_{np.array2string(atomNumbers)}_{np.array2string(xAtomRel)}_{np.array2string(yAtomRel)}.npy")
@@ -326,7 +347,8 @@ if __name__ == "__main__":
     for trainOrTest in ["train", "test"]:
         if trainOrTest not in args["trainOrTest"]:
             continue
-        for i in tqdm(int(range(args["iterations"]*testDivider)), disable=True):
+        for i in tqdm(range(args["iterations"]*testDivider), disable=True):
+            i = int(i)
             print(f"PID {os.getpid()} on step {i+1} at {datetime.datetime.now()}")
             rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, 20, processID=args["id"], silence=True)
             writeAllRows(rows=rows, trainOrTest=trainOrTest,processID=args["id"])
