@@ -345,7 +345,7 @@ if __name__ == "__main__":
             continue
         for i in tqdm(range(max(int(args["iterations"]*testDivider),1)), disable=True):
             print(f"PID {os.getpid()} on step {i+1} at {datetime.datetime.now()}")
-            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, 20, processID=args["id"], silence=False)
+            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, 20, processID=args["id"], silence=True)
             writeAllRows(rows=rows, trainOrTest=trainOrTest,processID=args["id"])
         testDivider = 0.25
     print(f"PID {os.getpid()} done.")
