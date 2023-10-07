@@ -1,3 +1,4 @@
+from typing import Tuple
 from ase import Atoms
 from ase.visualize import view
 from ase.io import read
@@ -82,6 +83,9 @@ def multiPillars(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), 
 def grapheneC(xPos = None, yPos = None, zPos = None) -> Atoms:
     grapheneC = graphene(a=2.46,  # Lattice constant (in Angstrom)
                               size=(1, 1, 1))  # Number of unit cells in each direction
+    num_cells_x = 3  # Number of unit cells in the x-direction
+    num_cells_y = 3  # Number of unit cells in the y-direction
+    grapheneC *= (num_cells_x, num_cells_y, 1)
     grapheneC = moveAndRotateAtomsAndOrthogonalize(grapheneC, xPos, yPos, zPos)
     return grapheneC
 
@@ -115,11 +119,11 @@ def WSe2(xPos = None, yPos = None, zPos = None):
     wse2 = moveAndRotateAtomsAndOrthogonalize(wse2, xPos, yPos, zPos)
     return wse2
 
-def StructureUnknown(struct):
+def StructureUnknown(**kwargs):
 
-    raise Exception(f"Structure {struct} Unknown")
+    raise Exception(f"Structure unknown")
 
-def createStructure(specificStructure : str = "random", **kwargs) -> Atoms:
+def createStructure(specificStructure : str = "random", **kwargs) -> Tuple[str, Atoms]:
     """ Creates a specified structure. If structure is unknown an Exception will be thrown. Default is "random" which randomly picks a structure
 
 
@@ -133,7 +137,7 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Atoms:
     """
 
     structureFunctions = {
-        "graphene" : grapheneC,
+        "graphene" : grapheneC, 
         "MoS2" : MoS2,
         "Si" : Si,
         "GaAs" : GaAs,
@@ -147,12 +151,12 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Atoms:
     if specificStructure == "random":
         nameStruct = choice(list(structureFunctions.keys()))
         #tqdm.write(nameStruct)
-        struct = structureFunctions.get(nameStruct)(**kwargs)
+        struct = structureFunctions.get(nameStruct, StructureUnknown)(**kwargs)
         return nameStruct, struct
     else:
         nameStruct = specificStructure
         #tqdm.write(nameStruct)
-        struct = structureFunctions.get(specificStructure(**kwargs), StructureUnknown(specificStructure))
+        struct = structureFunctions.get(specificStructure, StructureUnknown)(**kwargs)
         return nameStruct, struct 
 
 @njit
@@ -171,33 +175,33 @@ def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:f
     xPositions, yPositions = atomPositions[DistanceSortedIndices[:3]].transpose()[:2]
     return atomNumbers, xPositions, yPositions
 
-def createSmallTiles(array2D, xDim: int, yDim: int):
-    """Creates small 2d tiles from bigger array. The size of the small tiles is given by (xDim, yDim). Any overhang is discarded.
+# def createSmallTiles(array2D, xDim: int, yDim: int):
+#     """Creates small 2d tiles from bigger array. The size of the small tiles is given by (xDim, yDim). Any overhang is discarded.
 
-    Args:
-        array2D (2D nested iterable): input Array
-        xDim (int): x dimension of tiles
-        yDim (int): y dimension of tiles
+#     Args:
+#         array2D (2D nested iterable): input Array
+#         xDim (int): x dimension of tiles
+#         yDim (int): y dimension of tiles
 
-    Raises:
-        Exception: xDim and yDim should be smaller than the shape of the array
+#     Raises:
+#         Exception: xDim and yDim should be smaller than the shape of the array
 
-    Yields:
-        same type as array2D: Smaller tiles
-    """
-    if array2D.shape[0] < xDim or array2D.shape[1] < yDim:
-        raise Exception("Tiling dimension are larger than original array.")
-    x_ = np.arange(array2D.shape[0]) // xDim #indexes every position to belong to one particular tile
-    y_ = np.arange(array2D.shape[1]) // yDim #same in y direction
-    indicesOfTilesInX = np.unique(x_)
-    indicesOfTilesInY = np.unique(y_)
-    #skip the last row/line when less pixel than xDim or yDim
-    if len(array2D[x_ == indicesOfTilesInX[-1]]) < xDim:
-        indicesOfTilesInX = indicesOfTilesInX[:-1]
-    if len(array2D[:,y_ == indicesOfTilesInY[-1]]) < yDim:
-        indicesOfTilesInY = indicesOfTilesInY[:-1]
-    for x, y in zip(indicesOfTilesInX, indicesOfTilesInY):
-        yield x, y, array2D[x_ == x][:, y_ == y]
+#     Yields:
+#         same type as array2D: Smaller tiles
+#     """
+#     if array2D.shape[0] < xDim or array2D.shape[1] < yDim:
+#         raise Exception("Tiling dimension are larger than original array.")
+#     x_ = np.arange(array2D.shape[0]) // xDim #indexes every position to belong to one particular tile
+#     y_ = np.arange(array2D.shape[1]) // yDim #same in y direction
+#     indicesOfTilesInX = np.unique(x_)
+#     indicesOfTilesInY = np.unique(y_)
+#     #skip the last row/line when less pixel than xDim or yDim
+#     if len(array2D[x_ == indicesOfTilesInX[-1]]) < xDim:
+#         indicesOfTilesInX = indicesOfTilesInX[:-1]
+#     if len(array2D[:,y_ == indicesOfTilesInY[-1]]) < yDim:
+#         indicesOfTilesInY = indicesOfTilesInY[:-1]
+#     for x, y in zip(indicesOfTilesInX, indicesOfTilesInY):
+#         yield x, y, array2D[x_ == x][:, y_ == y]
 
 @njit
 def findAtomsInTile(xPos:float, yPos:float, xRealLength:float, yRealLength:float, atomPositions:np.ndarray):
@@ -240,65 +244,56 @@ def generateDiffractionArray():
 
         return nameStruct, gridSampling, atomStruct, measurement_thick
 
-def createDifPatternPositions():
-    ''' returns the following positions as (x,y)
-            
-        0   1   2   3   4   5   6   7   8   9  10
-    +---+---+---+---+---+---+---+---+---+---+---+
-    0 | X |   |   |   |   | X |   |   |   |   | X |
-    +---+---+---+---+---+---+---+---+---+---+---+
-    1 |   |   |   |   |   |   |   |   |   |   |   |
-    +---+---+---+---+---+---+---+---+---+---+---+
-    2 |   |   |   |   |   |   |   |   |   |   |   |
-    +---+---+---+---+---+---+---+---+---+---+---+
-    3 |   |   |   |   |   |   |   |   |   |   |   |
-    +---+---+---+---+---+---+---+---+---+---+---+
-    4 |   |   |   |   |   |   |   |   |   |   |   |
-    +---+---+---+---+---+---+---+---+---+---+---+
-    5 | X |   |   |   |   | X |   |   |   |   | X |
-    +---+---+---+---+---+---+---+---+---+---+---+
-    6 |   |   |   |   |   |   |   |   |   |   |   |
-    +---+---+---+---+---+---+---+---+---+---+---+
-    7 |   |   |   |   |   |   |   |   |   |   |   |
-    +---+---+---+---+---+---+---+---+---+---+---+
-    8 |   |   |   |   |   |   |   |   |   |   |   |
-    +---+---+---+---+---+---+---+---+---+---+---+
-    9 |   |   |   |   |   |   |   |   |   |   |   |
-    +---+---+---+---+---+---+---+---+---+---+---+
-    10 | X |   |   |   |   | X |   |   |   |   | X |
-    +---+---+---+---+---+---+---+---+---+---+---+
-        '''
-    return [(x,y) for y in [0,5,10] for x in [0,5,10]]
+def createAllXYCoordinates(yMaxCoord, xMaxCoord):
+    return [(x,y) for y in np.arange(yMaxCoord) for x in np.arange(xMaxCoord)]
 
 def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, processID = "", silence = False):
     rows = []
-    for nameStruct, gridSampling, atomStruct, measurement_thick in (generateDiffractionArray() for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}")):
+    xStepSize = (XDIMTILES - 1)//2
+    yStepSize = (YDIMTILES - 1)//2
+    for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick) in enumerate((generateDiffractionArray() for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))):
+        fileID = str(cnt) + processID
+        atomNumbers, xPositionsAtoms, yPositionsAtoms = None,None,None
         if len(atomStruct.positions) <= 3:
             atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(),atomStruct.get_atomic_numbers(), 0, 0)
     
         xRealLength = XDIMTILES * gridSampling[0]
         yRealLength = YDIMTILES * gridSampling[1]
 
-        for xCNT, yCNT, difPatternArray in tqdm(createSmallTiles(measurement_thick.array, XDIMTILES, YDIMTILES), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}", total= len(measurement_thick.array), disable=silence):
+        xMaxCNT, yMaxCNT = np.shape(measurement_thick.array)[:2]
+        xMaxCoord = (xMaxCNT-1)//xStepSize - 2
+        yMaxCoord = (yMaxCNT-1)//yStepSize - 2
+
+        if xMaxCoord < 1 or yMaxCoord < 1:
+            raise Exception(f"xMaxCoord : {xMaxCoord}, yMaxCoord : {yMaxCoord}, struct {nameStruct}, np.shape(measurement_thick.array)[:2] : {np.shape(measurement_thick.array)[:2]}")
+
+        difPatternsAllPositions = np.zeros((xMaxCoord, yMaxCoord, 9, 50, 50))
+        fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{fileID}.npy")
+        for xCoord, yCoord in tqdm(createAllXYCoordinates(yMaxCoord,xMaxCoord), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}", total= len(measurement_thick.array), disable=silence):
+            xCNT = xStepSize * xCoord
+            yCNT = yStepSize * yCoord
+
+            difPatternsOnePosition = (measurement_thick.array[xCNT:xCNT + 2*xStepSize + 1 :xStepSize,yCNT :yCNT + 2*yStepSize + 1:yStepSize]).copy() 
+
+            difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
+
             xPos = xCNT * gridSampling[0]
             yPos = yCNT * gridSampling[1]
-            #findAtomsInTile(xPos, yPos, xRealLength, yRealLength, atomStruct.get_positions())
+
             if len(atomStruct.positions) > 3:
                 atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPos + xRealLength/2, yPos + yRealLength/2)
+            
             xAtomRel = xPositionsAtoms - xPos
             yAtomRel = yPositionsAtoms - yPos
-            difPatterns = []
+
+            difPatternsOnePositionResized = []
+
+            for cnt, difPattern in enumerate(difPatternsOnePosition):
+                difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR))  # type: ignore
+            difPatternsAllPositions[xCoord][yCoord] = np.array(difPatternsOnePositionResized)
             
-            difPatternPositions = createDifPatternPositions()
-
-            for posx, posy in difPatternPositions:
-                difPatterns.append(difPatternArray[posx,posy])
-
-            for cnt, difPattern in enumerate(difPatterns):
-                difPatterns[cnt] = cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR)
-            fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{xPos}_{yPos}_{np.array2string(atomNumbers)}_{np.array2string(xAtomRel)}_{np.array2string(yAtomRel)}.npy")
-            np.save(fileName, np.array(difPatterns))
-            rows.append([fileName.split(os.sep)[-1]] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])
+            rows.append([fileName.split(os.sep)[-1] + f"[{xCoord}][{yCoord}]"] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])
+        np.save(fileName, np.array(difPatternsAllPositions))
     return rows
                 
 
@@ -337,7 +332,7 @@ if __name__ == "__main__":
     import datetime
     ap = argparse.ArgumentParser()
     ap.add_argument("-id", "--id", type=str, required=False, default= "",help="version number")
-    ap.add_argument("-it", "--iterations", type=int, required=False, default= 5,help="number of iterations")
+    ap.add_argument("-it", "--iterations", type=int, required=False, default= 1,help="number of iterations")
     ap.add_argument("-t", "--trainOrTest", type=str, required = False, default="traintest", help="specify train or test if you want to limit to just one")
     args = vars(ap.parse_args())
 
@@ -348,10 +343,9 @@ if __name__ == "__main__":
     for trainOrTest in ["train", "test"]:
         if trainOrTest not in args["trainOrTest"]:
             continue
-        for i in tqdm(range(args["iterations"]*testDivider), disable=True):
-            i = int(i)
+        for i in tqdm(range(max(int(args["iterations"]*testDivider),1)), disable=True):
             print(f"PID {os.getpid()} on step {i+1} at {datetime.datetime.now()}")
-            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, 20, processID=args["id"], silence=True)
+            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, 20, processID=args["id"], silence=False)
             writeAllRows(rows=rows, trainOrTest=trainOrTest,processID=args["id"])
         testDivider = 0.25
     print(f"PID {os.getpid()} done.")
