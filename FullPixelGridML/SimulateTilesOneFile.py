@@ -26,6 +26,7 @@ import os
 from numba import njit
 from ase import Atoms
 from ase.build import molecule, bulk
+from time import time
 import faulthandler
 import signal
 from itertools import combinations
@@ -268,7 +269,7 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, proc
             raise Exception(f"xMaxCoord : {xMaxCoord}, yMaxCoord : {yMaxCoord}, struct {nameStruct}, np.shape(measurement_thick.array)[:2] : {np.shape(measurement_thick.array)[:2]}")
 
         difPatternsAllPositions = np.zeros((xMaxCoord, yMaxCoord, 9, 50, 50))
-        fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{fileID}.npy")
+        fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{fileID}_{time()}.npy")
         for xCoord, yCoord in tqdm(createAllXYCoordinates(yMaxCoord,xMaxCoord), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}", total= len(measurement_thick.array), disable=silence):
             xCNT = xStepSize * xCoord
             yCNT = yStepSize * yCoord
