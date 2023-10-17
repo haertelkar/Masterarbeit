@@ -22,7 +22,7 @@ def returnFullRowContent(fullRowIndices, fullRow, startInd, endInd):
 def grabFileNames():
     #only using it to grab file names, doesn't matter if it is Zernike or not
     test_data = ptychographicData(
-                    os.path.abspath(os.path.join("Zernike", "measurements_test","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_test"))
+                    os.path.abspath(os.path.join("FullPixelGridML", "measurements_test","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_test"))
                 ) 
     fileNames = test_data.img_labels.iloc[:, 0]
     return fileNames
@@ -105,17 +105,17 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
         for cnt, ds in enumerate(zip(distance,distancePredictionDelta)):
             distanceToBeAccurate = 0.2
             
-            for struct in set(structures):
-                d,dDelta = ds
-                d = d[np.array(structures) == struct]
-                dDelta = dDelta[np.array(structures) == struct]
-                plt.scatter(d, dDelta, label = struct)
-                #print(f"Distance between atom nr.{cnt} and scan position less than {distanceToBeAccurate} in {100*len(d[np.array(dDelta) < distanceToBeAccurate])/len(d):.2f}% of cases for {struct}")
+            # for struct in set(structures):
+            #     d,dDelta = ds
+            #     d = d[np.array(structures) == struct]
+            #     dDelta = dDelta[np.array(structures) == struct]
+            #     plt.scatter(d, dDelta, label = struct)
+            #     #print(f"Distance between atom nr.{cnt} and scan position less than {distanceToBeAccurate} in {100*len(d[np.array(dDelta) < distanceToBeAccurate])/len(d):.2f}% of cases for {struct}")
             d,dDelta = ds
-            # plt.scatter(d, dDelta)
+            plt.scatter(d, dDelta)
             plt.xlabel(f"Distance between atom nr.{cnt} and scan position")
             plt.ylabel("Delta between distance prediction and actual distance")
-            plt.legend()
+            # plt.legend()
             plt.savefig(os.path.join("DeltaToDistance", file + f"distanceToAccuracyCNN_atom{cnt}_labeled.png"))
             plt.close()
 
