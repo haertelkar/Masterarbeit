@@ -18,13 +18,14 @@ rank = comm.Get_rank()
 worldsize = comm.Get_size()
 
 def splitForEachRank(arr, size):
-     arrs = []
-     while len(arr) > size:
-         pice = arr[:size]
-         arrs.append(pice)
-         arr   = arr[size:]
-     arrs.append(arr)
-     return arrs
+    arr = np.array(list(arr))
+    arrs = []
+    while len(arr) > size:
+        pice = arr[:size]
+        arrs.append(pice)
+        arr   = arr[size:]
+    arrs.append(arr)
+    return arrs
 
 def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMoments = 40, leave = True):
     oldDir = os.getcwd() 
