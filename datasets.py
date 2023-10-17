@@ -113,8 +113,8 @@ class ptychographicData(Dataset):
 	def getImageOrZernike(self, idx):
 		fileNameWithCoords = str(self.img_labels.iloc[idx, 0])
 		fileName, xCoords, yCoords = fileNameWithCoords.split("[")
-		xCoords = xCoords[:-1]
-		yCoords = yCoords[:-1]
+		xCoords = int(xCoords[:-1])
+		yCoords = int(yCoords[:-1])
 		img_path = os.path.join(self.img_dir, fileName)
 		imageOrZernikeMoments = np.load(img_path).astype('float32')[xCoords,yCoords]		
 		if self.scalerZernike == 1 or len(imageOrZernikeMoments.shape) == 2: #only set once for Zernike
