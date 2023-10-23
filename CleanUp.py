@@ -14,7 +14,7 @@ def cleanUp(directory = "", printEmptiedDirs = False):
         if not os.path.exists(dirFull):
             continue
         for filename in tqdm(os.listdir(dirFull), desc = f"deleting content {dirFull}", leave = False):
-            if ".npy" in filename or ".csv" in filename:
+            if ".npy" in filename or ".csv" in filename or ".hdf5" in filename or ".h5" in filename:
                 os.remove(os.path.join(dirFull, filename))
                 emptyDirs.add(dirFull)
     
