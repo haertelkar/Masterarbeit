@@ -30,6 +30,7 @@ from time import time
 import faulthandler
 import signal
 from itertools import combinations
+import h5py
 faulthandler.register(signal.SIGUSR1.value)
 # from hanging_threads import start_monitoring
 # monitoring_thread = start_monitoring(seconds_frozen=60, test_interval=100)
@@ -161,7 +162,7 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Tuple[str, 
         return nameStruct, struct 
 
 @njit
-def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:float, yPos:float):
+def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:float, yPos:float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     Distances = (atomPositions - np.expand_dims(np.array([xPos, yPos, 0]),0))[:,0:2]
     Distances = Distances[:,0] + Distances[:,1] * 1j
     DistanceSortedIndices = np.absolute(Distances).argsort() 
@@ -248,63 +249,63 @@ def generateDiffractionArray():
 def createAllXYCoordinates(yMaxCoord, xMaxCoord):
     return [(x,y) for y in np.arange(yMaxCoord) for x in np.arange(xMaxCoord)]
 
-def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, processID = "", silence = False):
+def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, timeStamp, processID = 99999, silence = False):
     rows = []
     xStepSize = (XDIMTILES - 1)//2
     yStepSize = (YDIMTILES - 1)//2
-    for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick) in enumerate((generateDiffractionArray() for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))):
-        fileID = str(cnt) + processID
-        atomNumbers, xPositionsAtoms, yPositionsAtoms = None,None,None
-        if len(atomStruct.positions) <= 3:
-            atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(),atomStruct.get_atomic_numbers(), 0, 0)
-    
-        xRealLength = XDIMTILES * gridSampling[0]
-        yRealLength = YDIMTILES * gridSampling[1]
+    with h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w') as file:
+        for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick) in enumerate((generateDiffractionArray() for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))):
+            datasetStructID = f"{cnt}{processID}{timeStamp}" 
+            atomNumbers, xPositionsAtoms, yPositionsAtoms = None,None,None
+            if len(atomStruct.positions) <= 3:
+                atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(),atomStruct.get_atomic_numbers(), 0, 0)
+        
+            xRealLength = XDIMTILES * gridSampling[0]
+            yRealLength = YDIMTILES * gridSampling[1]
 
-        xMaxCNT, yMaxCNT = np.shape(measurement_thick.array)[:2]
-        xMaxCoord = (xMaxCNT-1)//xStepSize - 2
-        yMaxCoord = (yMaxCNT-1)//yStepSize - 2
+            xMaxCNT, yMaxCNT = np.shape(measurement_thick.array)[:2] # type: ignore
+            xMaxCoord = (xMaxCNT-1)//xStepSize - 2
+            yMaxCoord = (yMaxCNT-1)//yStepSize - 2
 
-        if xMaxCoord < 1 or yMaxCoord < 1:
-            raise Exception(f"xMaxCoord : {xMaxCoord}, yMaxCoord : {yMaxCoord}, struct {nameStruct}, np.shape(measurement_thick.array)[:2] : {np.shape(measurement_thick.array)[:2]}")
+            if xMaxCoord < 1 or yMaxCoord < 1:
+                raise Exception(f"xMaxCoord : {xMaxCoord}, yMaxCoord : {yMaxCoord}, struct {nameStruct}, np.shape(measurement_thick.array)[:2] : {np.shape(measurement_thick.array)[:2]}") # type: ignore
 
-        difPatternsAllPositions = np.zeros((xMaxCoord, yMaxCoord, 9, 50, 50))
-        fileName = os.path.join(f"measurements_{trainOrTest}",f"{nameStruct}_{fileID}_{time()}.npy")
-        for xCoord, yCoord in tqdm(createAllXYCoordinates(yMaxCoord,xMaxCoord), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}", total= len(measurement_thick.array), disable=silence):
-            xCNT = xStepSize * xCoord
-            yCNT = yStepSize * yCoord
+            difPatternsAllPositions = np.zeros((xMaxCoord, yMaxCoord, 9, 50, 50))
+            for xCoord, yCoord in tqdm(createAllXYCoordinates(yMaxCoord,xMaxCoord), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}", total= len(measurement_thick.array), disable=silence): # type: ignore
+                xCNT = xStepSize * xCoord
+                yCNT = yStepSize * yCoord
 
-            difPatternsOnePosition = (measurement_thick.array[xCNT:xCNT + 2*xStepSize + 1 :xStepSize,yCNT :yCNT + 2*yStepSize + 1:yStepSize]).copy() 
+                difPatternsOnePosition = (measurement_thick.array[xCNT:xCNT + 2*xStepSize + 1 :xStepSize,yCNT :yCNT + 2*yStepSize + 1:yStepSize]).copy()  # type: ignore
 
-            difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
+                difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
 
-            xPos = xCNT * gridSampling[0]
-            yPos = yCNT * gridSampling[1]
+                xPos = xCNT * gridSampling[0]
+                yPos = yCNT * gridSampling[1]
 
-            if len(atomStruct.positions) > 3:
-                atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPos + xRealLength/2, yPos + yRealLength/2)
-            
-            xAtomRel = xPositionsAtoms - xPos
-            yAtomRel = yPositionsAtoms - yPos
+                if len(atomStruct.positions) > 3:
+                    atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPos + xRealLength/2, yPos + yRealLength/2)
+                
+                xAtomRel = xPositionsAtoms - xPos
+                yAtomRel = yPositionsAtoms - yPos
 
-            difPatternsOnePositionResized = []
+                difPatternsOnePositionResized = []
 
-            for cnt, difPattern in enumerate(difPatternsOnePosition):
-                difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR))  # type: ignore
-            difPatternsAllPositions[xCoord][yCoord] = np.array(difPatternsOnePositionResized)
-            
-            rows.append([fileName.split(os.sep)[-1] + f"[{xCoord}][{yCoord}]"] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])
-        np.save(fileName, np.array(difPatternsAllPositions))
+                for cnt, difPattern in enumerate(difPatternsOnePosition):
+                    difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR))  # type: ignore
+                difPatternsAllPositions[xCoord][yCoord] = np.array(difPatternsOnePositionResized)
+                rows.append([f"{datasetStructID}[{xCoord}][{yCoord}]"] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])
+            datasetStruct = file.create_dataset(f"{datasetStructID}",data = difPatternsAllPositions, compression="gzip")
+            datasetStruct[:] = difPatternsAllPositions
     return rows
                 
 
-def createTopLine(trainOrTest, processID = ""):
-    with open(os.path.join(f'measurements_{trainOrTest}',f'labels{processID}.csv'), 'w+', newline='') as csvfile:
+def createTopLine(csvFilePath):
+    with open(csvFilePath, 'w+', newline='') as csvfile:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         Writer.writerow(["fileName", "element1", "element2", "element3", "xAtomRel1", "xAtomRel2", "xAtomRel3", "yAtomRel1", "yAtomRel2", "yAtomRel3"])
         Writer = None
 
-def writeAllRows(rows, trainOrTest, processID = "", createTopRow = None):
+def writeAllRows(rows, trainOrTest, processID = "", createTopRow = None, timeStamp = 0):
     """
     Writes the given rows to a CSV file.
 
@@ -318,9 +319,10 @@ def writeAllRows(rows, trainOrTest, processID = "", createTopRow = None):
     Returns:
         None
     """
-    if createTopRow is None: createTopRow = not os.path.exists(os.path.join(f'measurements_{trainOrTest}',f'labels{processID}.csv'))
-    if createTopRow: createTopLine(trainOrTest,processID=processID)
-    with open(os.path.join(f'measurements_{trainOrTest}',f'labels{processID}.csv'), 'a', newline='') as csvfile:
+    csvFilePath = os.path.join(f'measurements_{trainOrTest}',f'labels_{processID}_{timeStamp}.csv')
+    if createTopRow is None: createTopRow = not os.path.exists(csvFilePath)
+    if createTopRow: createTopLine(csvFilePath)
+    with open(csvFilePath, 'a', newline='') as csvfile:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         for row in rows:
             Writer.writerow(row)
@@ -346,8 +348,9 @@ if __name__ == "__main__":
             continue
         for i in tqdm(range(max(int(args["iterations"]*testDivider),1)), disable=True):
             print(f"PID {os.getpid()} on step {i+1} at {datetime.datetime.now()}")
-            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, 20, processID=args["id"], silence=True)
-            writeAllRows(rows=rows, trainOrTest=trainOrTest,processID=args["id"])
+            timeStamp = time()
+            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, 20, timeStamp, processID=args["id"], silence=True)
+            writeAllRows(rows=rows, trainOrTest=trainOrTest,processID=args["id"], timeStamp = timeStamp)
         testDivider = 0.25
     print(f"PID {os.getpid()} done.")
 
