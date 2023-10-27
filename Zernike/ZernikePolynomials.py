@@ -2,9 +2,7 @@ import numpy as np
 from scipy.special import factorial
 import matplotlib.pyplot as plt
 import os
-
-def imagePath(testOrTrain):
-    return os.path.join("..","FullPixelGridML",f"measurements_{testOrTrain}")
+import h5py
 
 def seperateFileNameAndCoords(fileNameAndCoords : str):
     try:
@@ -38,14 +36,8 @@ class Zernike(object):
         self.dx = 1/self.maxR
         self.dy = self.dx
 
-    def zernikeTransform(self, testOrTrain, fileName):
-        try:
-            images = np.load(os.path.join(imagePath(testOrTrain), fileName))
-        except ValueError as e:
-            raise Exception(f"{e}\nError in {fileName}")
-
+    def zernikeTransform(self, testOrTrain, fileName, images, zernikeTotalImages):
         momentsAllCoords = []
-
         for xCNT, lineOfGroupsOfPatterns in enumerate(images):
             momentsAllCoords.append([])
             for groupOfPatterns in lineOfGroupsOfPatterns:
@@ -54,8 +46,8 @@ class Zernike(object):
                     moments.append(self.calculateZernikeWeights(im)*1e3) #scaled up so it's more useful
                 moments = np.array(moments).flatten()
                 momentsAllCoords[xCNT].append(moments)
-            
-        np.save(os.path.join(f"measurements_{testOrTrain}", fileName), moments)
+        
+        zernikeTotalImages.create_dataset(fileName, data = momentsAllCoords, compression="gzip")
         # moments = zernike_moments(image, radius, 40) #modified zernike_moments so it doesn't output the abs values, otherwise directional analytics are not possible
 
     def calculateZernikeWeights(self, image):

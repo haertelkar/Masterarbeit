@@ -342,16 +342,16 @@ if __name__ == "__main__":
 
     XDIMTILES = 11
     YDIMTILES = 11
-    testDivider = 1
-    for trainOrTest in ["train", "test"]:
-        if trainOrTest not in args["trainOrTest"]:
-            continue
-        for i in tqdm(range(max(int(args["iterations"]*testDivider),1)), disable=True):
+    testDivider = {"train":1, "test":0.25}
+    for i in tqdm(range(max(args["iterations"],1)), disable=True):
+        for trainOrTest in ["train", "test"]:
+            if trainOrTest not in args["trainOrTest"]:
+                continue
             print(f"PID {os.getpid()} on step {i+1} at {datetime.datetime.now()}")
-            timeStamp = time()
-            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, 20, timeStamp, processID=args["id"], silence=True)
+            timeStamp = int(str(time()))
+            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, processID=args["id"], silence=True)
             writeAllRows(rows=rows, trainOrTest=trainOrTest,processID=args["id"], timeStamp = timeStamp)
-        testDivider = 0.25
+  
     print(f"PID {os.getpid()} done.")
 
         

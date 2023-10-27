@@ -7,6 +7,7 @@ from torch.utils.data import Dataset
 import torch
 import os
 import lightning.pytorch as pl
+import h5py
 from torch.utils.data import random_split, DataLoader
 
 class ptychographicDataLightning(pl.LightningDataModule):
@@ -29,7 +30,8 @@ class ptychographicDataLightning(pl.LightningDataModule):
 		folderName = None
 		if self.model_name == "FullPixelGridML" or self.model_name == "unet":	folderName = "FullPixelGridML"
 		if self.model_name == "ZernikeNormal" or self.model_name == "ZernikeBottleneck" or self.model_name == "ZernikeComplex": folderName = "Zernike"
-
+		else:
+			raise Exception(f"model name '{self.model_name}' unknown")
 		self.trainAndVal_dataset = ptychographicData(
 					os.path.abspath(os.path.join(folderName,"measurements_train","labels.csv")), 
 					os.path.abspath(os.path.join(folderName,"measurements_train")), transform=torch.as_tensor, 
@@ -74,6 +76,8 @@ class ptychographicData(Dataset):
 		self.classifier = classifier
 		self.scalingFactors = None
 		self.shift = None
+		self.dataPath = os.path.join(self.img_dir, "training_data.hdf5")
+		self.data = h5py.File(self.dataPath,'r')
 
 		assert(not(labelIndicesToPredict is 0))
 		if isinstance(labelIndicesToPredict, list):
@@ -111,12 +115,11 @@ class ptychographicData(Dataset):
 		return np.array(label)
 
 	def getImageOrZernike(self, idx):
-		fileNameWithCoords = str(self.img_labels.iloc[idx, 0])
-		fileName, xCoords, yCoords = fileNameWithCoords.split("[")
+		datasetStructIDWithCoords = str(self.img_labels.iloc[idx, 0])
+		datasetStructID, xCoords, yCoords = datasetStructIDWithCoords.split("[")
 		xCoords = int(xCoords[:-1])
 		yCoords = int(yCoords[:-1])
-		img_path = os.path.join(self.img_dir, fileName)
-		imageOrZernikeMoments = np.load(img_path).astype('float32')[xCoords,yCoords]		
+		imageOrZernikeMoments = np.array(self.data.get(datasetStructID)).astype('float32')[xCoords,yCoords]		
 		if self.scalerZernike == 1 or len(imageOrZernikeMoments.shape) == 2: #only set once for Zernike
 			self.scalerZernike = np.max(imageOrZernikeMoments)
 		imageOrZernikeMoments /= self.scalerZernike

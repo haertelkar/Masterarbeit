@@ -8,14 +8,18 @@ import matplotlib.pyplot as plt
 import shutil
 from joblib import Parallel, delayed
 try:
-    from ZernikePolynomials import Zernike, imagePath, seperateFileNameAndCoords
+    from ZernikePolynomials import Zernike, seperateFileNameAndCoords
 except ModuleNotFoundError:
     from Zernike.ZernikePolynomials import Zernike
-from mpi4py import MPI
+# from mpi4py import MPI
+import h5py
 
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-worldsize = comm.Get_size()
+# comm = MPI.COMM_WORLD
+# rank = comm.Get_rank()
+# worldsize = comm.Get_size()
+
+def imagePath(testOrTrain):
+    return os.path.join("..","FullPixelGridML",f"measurements_{testOrTrain}")
 
 def splitForEachRank(arr, size):
     arr = np.array(list(arr))
@@ -53,18 +57,14 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
             for cnt, row in enumerate(Reader):
                 fileNameWithCoords = row[0]
                 if ".npy" not in fileNameWithCoords: raise Exception(f"{fileNameWithCoords} is not a valid filename")
-                xCoord, yCoord, fileName = seperateFileNameAndCoords(fileNameWithCoords)
+                _, _, fileName = seperateFileNameAndCoords(fileNameWithCoords)
                 imageFileNames.add(fileName)
 
-        if rank == 0: shutil.copy(os.path.join(imgPath, "labels.csv"), os.path.join(f"measurements_{testOrTrain}", "labels.csv"))
-        for cnt, fileNames in enumerate(tqdm(splitForEachRank(imageFileNames, 20), desc= f"Going through files in measurements_{testOrTrain}", total = len(imageFileNames)//20, leave = leave)):
-            if cnt%worldsize == rank: Parallel(n_jobs=20)(delayed(ZernikeObject.zernikeTransform)(testOrTrain, fileName) for fileName in fileNames)
-        # if rank == 0:
-        #     pattern = r'\.npy\[\d\]\[\d\]\.npy$'
-
-        #     for fileName in tqdm(os.listdir(f"measurements_{testOrTrain}"),desc= f"Consolidating files in measurements_{testOrTrain}", leave = leave):
-        #         if not re.match(pattern, fileName):
-        #             continue
+        shutil.copy(os.path.join(imgPath, "labels.csv"), os.path.join(f"measurements_{testOrTrain}", "labels.csv"))
+        with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages, h5py.File(os.path.join(f"measurements_{testOrTrain}", "training_data.hdf5"), 'w') as zernikeTotalImages:
+            for fileName in enumerate(tqdm(imageFileNames, desc= f"Going through files in measurements_{testOrTrain}", total = len(imageFileNames), leave = leave)):
+                images = np.array(totalImages[fileName])
+                ZernikeObject.zernikeTransform(testOrTrain, fileName, images, zernikeTotalImages)
                 
     os.chdir(oldDir)
 
