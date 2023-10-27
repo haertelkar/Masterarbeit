@@ -39,7 +39,7 @@ for testOrTrain in ["train", "test"]:
         df = pd.concat([df, data], axis = 0)
     df.to_csv(os.path.join(f"measurements_{testOrTrain}","labels.csv"), index= False)
 
-    print("Successfully deleted {cntCor} deleted files.")
+    print(f"Successfully deleted {cntCor} deleted files.")
     for fileToDelete in filesToDelete:
         os.remove(os.path.join(f"measurements_{testOrTrain}", fileToDelete))
 
