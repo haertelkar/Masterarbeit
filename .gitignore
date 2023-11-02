@@ -181,3 +181,4 @@ stdout.txt
 **.yaml
 **.pool*
 **.ckpt
+.vscode/settings.json

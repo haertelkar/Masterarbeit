@@ -36,7 +36,7 @@ class Zernike(object):
         self.dx = 1/self.maxR
         self.dy = self.dx
 
-    def zernikeTransform(self, testOrTrain, fileName, images, zernikeTotalImages):
+    def zernikeTransform(self, fileName, images, zernikeTotalImages):
         momentsAllCoords = []
         for xCNT, lineOfGroupsOfPatterns in enumerate(images):
             momentsAllCoords.append([])

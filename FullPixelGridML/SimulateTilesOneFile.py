@@ -334,7 +334,7 @@ if __name__ == "__main__":
     import argparse
     import datetime
     ap = argparse.ArgumentParser()
-    ap.add_argument("-id", "--id", type=str, required=False, default= "",help="version number")
+    ap.add_argument("-id", "--id", type=str, required=False, default= "0",help="version number")
     ap.add_argument("-it", "--iterations", type=int, required=False, default= 1,help="number of iterations")
     ap.add_argument("-t", "--trainOrTest", type=str, required = False, default="traintest", help="specify train or test if you want to limit to just one")
     args = vars(ap.parse_args())
@@ -348,7 +348,7 @@ if __name__ == "__main__":
             if trainOrTest not in args["trainOrTest"]:
                 continue
             print(f"PID {os.getpid()} on step {i+1} at {datetime.datetime.now()}")
-            timeStamp = int(str(time()))
+            timeStamp = int(str(time()).replace('.', ''))
             rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, processID=args["id"], silence=True)
             writeAllRows(rows=rows, trainOrTest=trainOrTest,processID=args["id"], timeStamp = timeStamp)
   

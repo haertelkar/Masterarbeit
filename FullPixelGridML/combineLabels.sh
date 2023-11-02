@@ -5,7 +5,7 @@
 #SBATCH --time=30:00:00   # walltime
 #SBATCH --ntasks=1   # number of processor cores (i.e. tasks)
 #SBATCH --nodes=1   # number of nodes
-#SBATCH -J "tileSimulation"   # job name
+#SBATCH -J "combineLabels"   # job name
 #SBATCH --mail-user=haertelk@physik.hu-berlin.de   # email address
 
 #SBATCH --mail-type=END
