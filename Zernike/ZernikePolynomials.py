@@ -132,21 +132,21 @@ class Zernike(object):
         assert(not (rVector[rValuesInput > self.maxR]).any())
         return rVector
     
-    def ZernikePolynomialRadialSimple(self, n:int, m:int, rValuesInput = None) -> np.ndarray:
-        assert(n>=m>=0)
-        assert((n-m)%2 == 0)
-        radialPart = np.zeros_like(rValuesInput)
-        for k in range(int((n-m)/2)+1):
-            sumTerm = (-1)**k
-            sumTerm *= factorial(n-k)
-            sumTerm *= (rValuesInput/self.maxR)**(n-2*k)
-            sumTerm /= factorial(k)
-            sumTerm /= factorial((n+m)/2-k)
-            sumTerm /= factorial((n-m)/2-k)
-            radialPart += sumTerm
-        radialPart[rValuesInput > self.maxR] = 0
-        normalizationFactor = np.sqrt(2*(n+1)) if m else np.sqrt(n+1)
-        return radialPart * normalizationFactor
+    # def ZernikePolynomialRadialSimple(self, n:int, m:int, rValuesInput = None) -> np.ndarray:
+    #     assert(n>=m>=0)
+    #     assert((n-m)%2 == 0)
+    #     radialPart = np.zeros_like(rValuesInput)
+    #     for k in range(int((n-m)/2)+1):
+    #         sumTerm = (-1)**k
+    #         sumTerm *= factorial(n-k)
+    #         sumTerm *= (rValuesInput/self.maxR)**(n-2*k)
+    #         sumTerm /= factorial(k)
+    #         sumTerm /= factorial((n+m)/2-k)
+    #         sumTerm /= factorial((n-m)/2-k)
+    #         radialPart += sumTerm
+    #     radialPart[rValuesInput > self.maxR] = 0
+    #     normalizationFactor = np.sqrt(2*(n+1)) if m else np.sqrt(n+1)
+    #     return radialPart * normalizationFactor
     
     def OSAANSIIndexToMNIndex(self, OSAANSIIndex:int):
         n = int((np.sqrt(8 * OSAANSIIndex + 1) - 1) / 2)

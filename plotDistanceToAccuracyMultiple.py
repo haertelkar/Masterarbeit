@@ -22,7 +22,7 @@ def returnFullRowContent(fullRowIndices, fullRow, startInd, endInd):
 def grabFileNames():
     #only using it to grab file names, doesn't matter if it is Zernike or not
     test_data = ptychographicData(
-                    os.path.abspath(os.path.join("FullPixelGridML", "measurements_test","labels.csv")), os.path.abspath(os.path.join("Zernike", "measurements_test"))
+                    os.path.abspath(os.path.join("FullPixelGridML", "measurements_test","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML", "measurements_test"))
                 ) 
     fileNames = test_data.img_labels.iloc[:, 0]
     return fileNames

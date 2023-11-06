@@ -270,14 +270,17 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
             if xMaxCoord < 1 or yMaxCoord < 1:
                 raise Exception(f"xMaxCoord : {xMaxCoord}, yMaxCoord : {yMaxCoord}, struct {nameStruct}, np.shape(measurement_thick.array)[:2] : {np.shape(measurement_thick.array)[:2]}") # type: ignore
 
-            difPatternsAllPositions = np.zeros((xMaxCoord, yMaxCoord, 9, 50, 50))
+            difPatternsAllPositions = np.zeros((xMaxCoord, yMaxCoord, 121, 50, 50))
             for xCoord, yCoord in tqdm(createAllXYCoordinates(yMaxCoord,xMaxCoord), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}", total= len(measurement_thick.array), disable=silence): # type: ignore
                 xCNT = xStepSize * xCoord
                 yCNT = yStepSize * yCoord
 
-                difPatternsOnePosition = (measurement_thick.array[xCNT:xCNT + 2*xStepSize + 1 :xStepSize,yCNT :yCNT + 2*yStepSize + 1:yStepSize]).copy()  # type: ignore
-
+                #use nine positions (old) -> difPatternsAllPositons has to be a different shape (9, 50, 50)
+                #difPatternsOnePosition = (measurement_thick.array[xCNT:xCNT + 2*xStepSize + 1 :xStepSize,yCNT :yCNT + 2*yStepSize + 1:yStepSize]).copy()  # type: ignore
+                #use all positions
+                difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + 2*xStepSize + 1, yCNT :yCNT + 2*yStepSize + 1].copy()
                 difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
+                difPatternsOnePosition[np.random.choice(difPatternsOnePosition.shape[0], randint(5,15))] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
 
                 xPos = xCNT * gridSampling[0]
                 yPos = yCNT * gridSampling[1]
