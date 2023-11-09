@@ -28,6 +28,9 @@ def combineLabelsAndCSV(workingDir):
                                 h5fr.copy(obj, h5fw)
                     except OSError as e:
                         filesToIgnore.append(file)
+                    except Exception as e:
+                        print(f"Problem in {file}")
+                        raise Exception(e)
 
         
                 
