@@ -16,7 +16,6 @@ import lightning.pytorch as pl
 from lightning.pytorch.callbacks import StochasticWeightAveraging
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.tuner.tuning import Tuner
-from lightning.pytorch.strategies import DDPStrategy, DeepSpeedStrategy
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from torch import nn
 from lightning.pytorch.loggers import TensorBoardLogger
@@ -77,33 +76,36 @@ def loadModel(trainDataLoader, modelName) -> nn.Module:
 			numChannels=numChannels,
 			classes=len(trainLabels[0]))
 		
-	if modelName == "unet":
+	elif modelName == "unet":
 		from FullPixelGridML.unet import unet
 		print("[INFO] initializing the unet model...")
 		model = unet(
 			numChannels=numChannels,
 			classes=len(trainLabels[0]))
 
-	if modelName == "ZernikeBottleneck":
+	elif modelName == "ZernikeBottleneck":
 		from Zernike.znnBottleneck import znnBottleneck
 		print("[INFO] initializing the znnBottleneck model...")
 		model = znnBottleneck(
 			inFeatures = len(trainFeatures[0]),
 			outFeatures=len(trainLabels[0]))
 
-	if modelName == "ZernikeNormal":
+	elif modelName == "ZernikeNormal":
 		from Zernike.znn import znn
 		print("[INFO] initializing the znn model...")
 		model = znn(
 			inFeatures = len(trainFeatures[0]),
 			outFeatures=len(trainLabels[0]))
 		
-	if modelName == "ZernikeComplex":
+	elif modelName == "ZernikeComplex":
 		from Zernike.znnMoreComplex import znn
 		print("[INFO] initializing the znnComplex model...")
 		model = znn(
 			inFeatures = len(trainFeatures[0]),
 			outFeatures=len(trainLabels[0]))
+		
+	else:
+		raise Exception(f"{modelName} is not a known model")
 	
 	return model
 
@@ -156,7 +158,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 		# Auto-scale batch size by growing it exponentially
 		if world_size == 1: tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader) 
 		# finds learning rate automatically
-		tuner.lr_find(lightnModel, datamodule = lightnDataLoader, max_lr = 4e-2, early_stop_threshold = 4)
+		tuner.lr_find(lightnModel, datamodule = lightnDataLoader, max_lr = 1e-2, early_stop_threshold = 4)
 
 
 		trainer.fit(lightnModel, datamodule = lightnDataLoader)
