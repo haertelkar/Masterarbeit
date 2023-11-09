@@ -11,7 +11,7 @@ import h5py
 from torch.utils.data import random_split, DataLoader
 
 class ptychographicDataLightning(pl.LightningDataModule):
-	def __init__(self, model_name, batch_size = 256, num_workers = 20, classifier = False, indicesToPredict = None):
+	def __init__(self, model_name, batch_size = 256, num_workers = 0, classifier = False, indicesToPredict = None):
 		super().__init__()
 		self.batch_size = batch_size
 		self.num_workers = num_workers
