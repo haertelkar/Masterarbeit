@@ -92,15 +92,16 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
             totalNumberOfFiles = len(imageFileNames)
             imageFileNames = imageFileNames.difference(fileNamesDone)
             for cnt, fileName in enumerate(tqdm(imageFileNames, desc= f"Going through files in measurements_{testOrTrain}", total = totalNumberOfFiles, initial=len(fileNamesDone), leave = leave, disable = (rank != 0))):
-                if cnt%worldsize == rank:
-                    tqdm.write(f"rank: {rank}\nfileName: {fileName} \nram usage: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss}")
-                    with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
-                        images = np.array(totalImages[fileName])
-                    ZernikeObject.zernikeTransform(fileName, images, zernikeTotalImages)
-                    images = None
-                    gc.collect()
-                    with open(os.path.join(f"measurements_{testOrTrain}",zernikeProgressFileName), "a+") as progressFile:
-                        progressFile.write(f"{fileName}\n")
+                if cnt%worldsize != rank:
+                    continue
+                tqdm.write(f"rank: {rank}\nfileName: {fileName} \nram usage: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss}")
+                with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
+                    images = np.array(totalImages[fileName])
+                ZernikeObject.zernikeTransform(fileName, images, zernikeTotalImages)
+                images = None
+                gc.collect()
+                with open(os.path.join(f"measurements_{testOrTrain}",zernikeProgressFileName), "a+") as progressFile:
+                    progressFile.write(f"{fileName}\n")
 
 
     os.chdir(oldDir)
