@@ -24,8 +24,11 @@ def combineLabelsAndCSV(workingDir):
                     try:
                         if "training_data.hdf5" != file: filesToDelete.append(file)
                         with h5py.File(os.path.join(*[workingDir, f"measurements_{testOrTrain}",file]),'r') as h5fr:
-                            for obj in tqdm(h5fr.keys(), desc = f"Going through file", leave = False):        
-                                h5fr.copy(obj, h5fw)
+                            for obj in tqdm(h5fr.keys(), desc = f"Going through file", leave = False):  
+                                try:      
+                                    h5fr.copy(obj, h5fw)
+                                except RuntimeError as e:
+                                    print(f"Warning in {file}\n{e}\n\n IGNORED FOR NOW")
                     except OSError as e:
                         filesToIgnore.append(file)
                     except Exception as e:

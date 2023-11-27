@@ -43,7 +43,10 @@ class Zernike(object):
             for groupOfPatterns in lineOfGroupsOfPatterns:
                 moments = []
                 for im in groupOfPatterns:
-                    moments.append(self.calculateZernikeWeights(im)*1e3) #scaled up so it's more useful
+                    if not np.any(im):
+                        moments.append(np.zeros(len(self.basis)))
+                    else:
+                        moments.append(self.calculateZernikeWeights(im)*1e3) #scaled up so it's more useful
                 moments = np.array(moments).flatten()
                 momentsAllCoords[xCNT].append(moments)
         

@@ -81,16 +81,15 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
                 if ZernikeObject is None:
                     radius = radius or int(len(image)/2)
                     ZernikeObject = Zernike(radius, image.shape[-1], noOfMoments)
-                    
                 for cnt, row in enumerate(Reader):
                     fileNameWithCoords = row[0]
                     _, _, fileName = seperateFileNameAndCoords(fileNameWithCoords)
                     imageFileNames.add(fileName)
 
             if rank == 0: shutil.copy(os.path.join(imgPath, "labels.csv"), os.path.join(f"measurements_{testOrTrain}", "labels.csv"))
-            shutil.copy(os.path.join(imgPath, "labels.csv"), os.path.join(f"measurements_{testOrTrain}", "labels.csv"))
             totalNumberOfFiles = len(imageFileNames)
             imageFileNames = imageFileNames.difference(fileNamesDone)
+            imageFileNames = comm.bcast(imageFileNames, root=0)
             for cnt, fileName in enumerate(tqdm(imageFileNames, desc= f"Going through files in measurements_{testOrTrain}", total = totalNumberOfFiles, initial=len(fileNamesDone), leave = leave, disable = (rank != 0))):
                 if cnt%worldsize != rank:
                     continue
