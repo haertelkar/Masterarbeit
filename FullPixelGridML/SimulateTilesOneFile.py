@@ -253,6 +253,7 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
     rows = []
     xStepSize = (XDIMTILES - 1)//2
     yStepSize = (YDIMTILES - 1)//2
+    allTiles = XDIMTILES * YDIMTILES
     with h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w') as file:
         for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick) in enumerate((generateDiffractionArray() for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))):
             datasetStructID = f"{cnt}{processID}{timeStamp}" 
@@ -280,7 +281,7 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
                 #use all positions
                 difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + 2*xStepSize + 1, yCNT :yCNT + 2*yStepSize + 1].copy()
                 difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
-                difPatternsOnePosition[np.random.choice(difPatternsOnePosition.shape[0], randint(5,15))] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
+                difPatternsOnePosition[np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - 5,allTiles - 15))] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
 
                 xPos = xCNT * gridSampling[0]
                 yPos = yCNT * gridSampling[1]
