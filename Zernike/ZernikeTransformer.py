@@ -11,12 +11,24 @@ import matplotlib.pyplot as plt
 import shutil
 from joblib import Parallel, delayed
 try:
-    from ZernikePolynomials import Zernike, seperateFileNameAndCoords
+    from ZernikePolynomials import Zernike
 except ModuleNotFoundError:
-    from Zernike.ZernikePolynomials import Zernike, seperateFileNameAndCoords
+    from Zernike.ZernikePolynomials import Zernike
 from mpi4py import MPI
 import h5py
 import sys
+
+
+def seperateFileNameAndCoords(fileNameAndCoords : str):
+    try:
+        fileName, xCoord, yCoord = fileNameAndCoords.split(r"[")
+    except AttributeError as e:
+        raise Exception(f"{e}\n The entry {fileNameAndCoords} could not be seperated in fileName, xCoord, yCoord")
+    except ValueError as e:
+        raise Exception(f"{e}\n The entry {fileNameAndCoords} could not be seperated in fileName, xCoord, yCoord")
+    xCoord = int(xCoord[:-1])
+    yCoord = int(yCoord[:-1])
+    return xCoord, yCoord, fileName
 
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -67,29 +79,29 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
         with h5py.File(os.path.join(f"measurements_{testOrTrain}", zernikeHdf5FileName), 'w') as zernikeTotalImages:
             imgPath = imagePath(testOrTrain)
             imageFileNames = set()
-            with open(os.path.join(imgPath, 'labels.csv'), 'r', newline='') as labelsFullPixelGrid:
-                Reader = csv.reader(labelsFullPixelGrid, delimiter=',', quotechar='|')
-                for cnt, row in enumerate(Reader):
-                    if cnt == 0: continue #skips the header line 
-                    firstEntry = row #reads out first row
-                    break
-                fileNameWithCoords = firstEntry[0]
-                xCoord, yCoord, fileName = seperateFileNameAndCoords(fileNameWithCoords)
-                imageFileNames.add(fileName)
-                with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
-                    image = np.array(totalImages[fileName])[xCoord, yCoord]
-                if ZernikeObject is None:
-                    radius = radius or int(len(image)/2)
-                    ZernikeObject = Zernike(radius, image.shape[-1], noOfMoments)
-                for cnt, row in enumerate(Reader):
-                    fileNameWithCoords = row[0]
-                    _, _, fileName = seperateFileNameAndCoords(fileNameWithCoords)
-                    imageFileNames.add(fileName)
+            if rank == 0:
+                with open(os.path.join(imgPath, 'labels.csv'), 'r', newline='') as labelsFullPixelGrid:
+                    Reader = csv.reader(labelsFullPixelGrid, delimiter=',', quotechar='|')
+                    for cnt, row in enumerate(Reader):
+                        if cnt == 0: continue #skips the header line 
+                        fileNameWithCoords = row[0]
+                        _, _, fileName = seperateFileNameAndCoords(fileNameWithCoords)
+                        imageFileNames.add(fileName)
 
-            if rank == 0: shutil.copy(os.path.join(imgPath, "labels.csv"), os.path.join(f"measurements_{testOrTrain}", "labels.csv"))
-            totalNumberOfFiles = len(imageFileNames)
-            imageFileNames = imageFileNames.difference(fileNamesDone)
+            if rank == 0: 
+                shutil.copy(os.path.join(imgPath, "labels.csv"), os.path.join(f"measurements_{testOrTrain}", "labels.csv"))
+                imageFileNames = imageFileNames.difference(fileNamesDone)
+            else:
+                imageFileNames = None
             imageFileNames = comm.bcast(imageFileNames, root=0)
+            totalNumberOfFiles = len(imageFileNames)
+            with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
+                randomFileName = imageFileNames.pop()
+                imageFileNames.add(randomFileName)
+                image = np.array(totalImages[randomFileName])[0, 0] #this image always exists so it is easy to just use it
+            if ZernikeObject is None:
+                radius = radius or int(len(image)/2)
+                ZernikeObject = Zernike(radius, image.shape[-1], noOfMoments)
             for cnt, fileName in enumerate(tqdm(imageFileNames, desc= f"Going through files in measurements_{testOrTrain}", total = totalNumberOfFiles, initial=len(fileNamesDone), leave = leave, disable = (rank != 0))):
                 if cnt%worldsize != rank:
                     continue

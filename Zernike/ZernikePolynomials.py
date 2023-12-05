@@ -4,18 +4,6 @@ import matplotlib.pyplot as plt
 import os
 import h5py
 
-def seperateFileNameAndCoords(fileNameAndCoords : str):
-    try:
-        fileName, xCoord, yCoord = fileNameAndCoords.split(r"[")
-    except AttributeError as e:
-        raise Exception(f"{e}\n The entry {fileNameAndCoords} could not be seperated in fileName, xCoord, yCoord")
-    except ValueError as e:
-        raise Exception(f"{e}\n The entry {fileNameAndCoords} could not be seperated in fileName, xCoord, yCoord")
-    xCoord = int(xCoord[:-1])
-    yCoord = int(yCoord[:-1])
-    return xCoord, yCoord, fileName
-
-
 class Zernike(object):
     def __init__(self,maxR, pixelsDim, numberOfOSAANSIMoments:int):
         self.maxR = maxR + 0.5
@@ -37,10 +25,11 @@ class Zernike(object):
         self.dy = self.dx
 
     def zernikeTransform(self, fileName, images, zernikeTotalImages):
-        momentsAllCoords = []
-        for xCNT, lineOfGroupsOfPatterns in enumerate(images):
-            momentsAllCoords.append([])
-            for groupOfPatterns in lineOfGroupsOfPatterns:
+        shapeOfZernikeMoments = list(np.shape(images))[:-2]
+        shapeOfZernikeMoments[-1] = len(self.basis) * shapeOfZernikeMoments[-1]
+        momentsAllCoords = np.zeros(shapeOfZernikeMoments)
+        for xCNT, lineOfGroupsOfPatterns in enumerate(images): #X Coord
+            for yCNT, groupOfPatterns in enumerate(lineOfGroupsOfPatterns): #Y Coord
                 moments = []
                 for im in groupOfPatterns:
                     if not np.any(im):
@@ -48,7 +37,8 @@ class Zernike(object):
                     else:
                         moments.append(self.calculateZernikeWeights(im)*1e3) #scaled up so it's more useful
                 moments = np.array(moments).flatten()
-                momentsAllCoords[xCNT].append(moments)
+                momentsAllCoords[xCNT,yCNT] = moments
+
         
         zernikeTotalImages.create_dataset(fileName, data = momentsAllCoords, compression="gzip")
         # moments = zernike_moments(image, radius, 40) #modified zernike_moments so it doesn't output the abs values, otherwise directional analytics are not possible
