@@ -19,6 +19,7 @@ from lightning.pytorch.tuner.tuning import Tuner
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from torch import nn
 from lightning.pytorch.loggers import TensorBoardLogger
+from lightning.pytorch.plugins.environments import SLURMEnvironment as SLURMEnvironment
 
 faulthandler.register(signal.SIGUSR1.value)
 
@@ -152,16 +153,24 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 		lightnModel = lightnModelClass(model)
 		early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=0.00, patience=10, verbose=False, mode="min", stopping_threshold = 1e-6)
 		swa = StochasticWeightAveraging(swa_lrs=1e-2) #faster but a bit less good
-		trainer = pl.Trainer(logger=TensorBoardLogger("tb_logs", name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=[early_stop_callback, swa])
-		#Create a Tuner
-		tuner = Tuner(trainer)
-		# Auto-scale batch size by growing it exponentially
-		if world_size == 1: tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader) 
-		# finds learning rate automatically
-		tuner.lr_find(lightnModel, datamodule = lightnDataLoader, max_lr = 1e-2, early_stop_threshold = 4)
-
-
-		trainer.fit(lightnModel, datamodule = lightnDataLoader)
+		chkpPath = os.path.join("checkpoints",f"{modelName}_{version}")
+		if not os.path.exists(chkpPath):
+			os.makedirs(chkpPath)
+			checkPointExists = False
+		else:
+			print("loading from checkpoint")
+			checkPointExists = True
+		trainer = pl.Trainer(plugins=[SLURMEnvironment(requeue_signal=signal.SIGHUP)],logger=TensorBoardLogger("tb_logs", name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=[early_stop_callback, swa], default_root_dir=chkpPath)
+		if checkPointExists:
+			trainer.fit(lightnModel, datamodule = lightnDataLoader, ckpt_path="last")
+		else:
+			#Create a Tuner
+			tuner = Tuner(trainer)
+			# Auto-scale batch size by growing it exponentially
+			if world_size == 1: tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader) 
+			# finds learning rate automatically
+			tuner.lr_find(lightnModel, datamodule = lightnDataLoader, max_lr = 1e-2, early_stop_threshold = 4)
+			trainer.fit(lightnModel, datamodule = lightnDataLoader)
 		trainer.save_checkpoint(os.path.join("models",f"{modelName}_{version}.ckpt"))
 		lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"), model = model)
 		evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, lightnModel, indicesToPredict, modelName, version, classifier)
@@ -180,7 +189,7 @@ if __name__ == '__main__':
 	help="number of epochs")
 	ap.add_argument("-m" ,"--models", type=str, required=False, help = "only use models with this String in their name")
 	ap.add_argument("-c" ,"--classifier", type=int, required=False, default=0, help = "Use if the model is to be a classfier. Choose the label index to be classified")
-	ap.add_argument("-i" ,"--indices", type=str, required=False, default="all", help = "specify indices of labels to predict (eg. '1, 2,5'). Default is all.")
+	ap.add_argument("-i" ,"--indices", type=str, required=False, default="all", help = "specify indices of labels to predict (eg. '1, 2, 5'). Default is all.")
 	args = vars(ap.parse_args())
 
 
