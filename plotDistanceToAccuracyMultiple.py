@@ -6,11 +6,11 @@ from rowsIndexToHeader import headerToRowsIndex
 from datasets import ptychographicData
 import pandas
 
-def raiseExcep(header, index):
-    if index > 0:
+def raiseExcep(header, index, file):
+    if index >= 0:
         return index
     else:
-        raise Exception(f"header '{header}' unknown")
+        raise Exception(f"header '{header}' unknown in '{file}'")
     
 def returnFullRowContent(fullRowIndices, fullRow, startInd, endInd):
     returnlist = []
@@ -56,7 +56,7 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
                 for header in row:
                     index = headerToRowsIndex.get(header, -1) - 1
                     if header not in knownHeaders:
-                        fullRowIndices.append(raiseExcep(header,index))
+                        fullRowIndices.append(raiseExcep(header,index, file))
                         knownHeaders.append(header)
                     else:
                         fullRowIndices.append(index + 9) #+9 because the first 9 columns are to be skipped 
