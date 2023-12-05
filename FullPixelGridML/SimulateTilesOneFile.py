@@ -281,7 +281,7 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
                 #use all positions
                 difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + 2*xStepSize + 1, yCNT :yCNT + 2*yStepSize + 1].copy()
                 difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
-                difPatternsOnePosition[np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - 5,allTiles - 15))] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
+                difPatternsOnePosition[np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - 15,allTiles - 5))] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
 
                 xPos = xCNT * gridSampling[0]
                 yPos = yCNT * gridSampling[1]
