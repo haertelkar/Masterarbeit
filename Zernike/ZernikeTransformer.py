@@ -91,13 +91,13 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
             if rank == 0: 
                 shutil.copy(os.path.join(imgPath, "labels.csv"), os.path.join(f"measurements_{testOrTrain}", "labels.csv"))
                 imageFileNames = imageFileNames.difference(fileNamesDone)
+                imageFileNames = list(imageFileNames)
             else:
                 imageFileNames = None
             imageFileNames = comm.bcast(imageFileNames, root=0)
             totalNumberOfFiles = len(imageFileNames)
             with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
-                randomFileName = imageFileNames.pop()
-                imageFileNames.add(randomFileName)
+                randomFileName = imageFileNames[0]
                 image = np.array(totalImages[randomFileName])[0, 0] #this image always exists so it is easy to just use it
             if ZernikeObject is None:
                 radius = radius or int(len(image)/2)

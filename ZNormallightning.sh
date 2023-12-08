@@ -14,4 +14,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun python3 lightningTrain.py -v OneFileMoreData -e 300 -m ormal 
+srun python3 lightningTrain.py -v OneFileAllPosFix -e 300 -m ormal 
