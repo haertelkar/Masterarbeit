@@ -3,14 +3,15 @@ from ase import Atoms
 from ase.visualize import view
 from ase.io import read
 from ase.build import surface, mx2, graphene
-from abtem.potentials import Potential
+from ase.geometry import get_distances
+# from abtem.potentials import Potential
 import matplotlib.pyplot as plt
 from abtem.waves import Probe
 import numpy as np
 from abtem.measure import block_zeroth_order_spot, Measurement
 from abtem.scan import GridScan
 from abtem.detect import PixelatedDetector
-from random import random, randint, choice
+from random import random, randint, choice, uniform
 from abtem.reconstruct import MultislicePtychographicOperator, RegularizedPtychographicOperator
 from abtem import Potential, FrozenPhonons, Probe, CTF
 from abtem.detect import AnnularDetector, PixelatedDetector
@@ -41,7 +42,7 @@ print(f"Calculating on {device}")
 xlen = ylen = 5
 
 
-def moveAndRotateAtomsAndOrthogonalize(atoms:Atoms, xPos, yPos, zPos, ortho = True) -> Atoms:
+def moveAndRotateAtomsAndOrthogonalize(atoms, xPos, yPos, zPos, ortho = True) -> Atoms:
     xPos = random()*xlen/3 + xlen/3 if xPos is None else xPos
     yPos = random()*ylen/3 + ylen/3 if yPos is None else yPos
     zPos = 0 if zPos is None else zPos
@@ -50,7 +51,7 @@ def moveAndRotateAtomsAndOrthogonalize(atoms:Atoms, xPos, yPos, zPos, ortho = Tr
     atoms.rotate("y", randint(0,360))
     atoms.rotate("z", randint(0,360))
     if ortho: atoms = orthogonalize_cell(atoms, max_repetitions=10)
-    return atoms
+    return atoms # type: ignore
 
 def createAtomPillar(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), xAtomShift = 0, yAtomShift = 0, element = None) -> Atoms:
     kindsOfElements = {6:0, 14:1, 74:2}
@@ -101,25 +102,77 @@ def Si(xPos = None, yPos = None, zPos = None):
     silicon = moveAndRotateAtomsAndOrthogonalize(silicon , xPos, yPos, zPos)
     return silicon
 
+def copperFCC(xPos=None, yPos=None, zPos=None) -> Atoms:
+    copper = bulk('Cu', 'fcc', a=3.615, cubic=True)  # Copper FCC structure with lattice parameter
+    copper = moveAndRotateAtomsAndOrthogonalize(copper, xPos, yPos, zPos)
+    return copper
+
+def ironBCC(xPos=None, yPos=None, zPos=None) -> Atoms:
+    iron = bulk('Fe', 'bcc', a=2.866, cubic=True)  # Iron BCC structure with lattice parameter
+    iron = moveAndRotateAtomsAndOrthogonalize(iron, xPos, yPos, zPos)
+    return iron
+
 def GaAs(xPos = None, yPos = None, zPos = None):
     gaas = bulk('GaAs', 'zincblende', a=5.65, cubic=True)
     gaas = moveAndRotateAtomsAndOrthogonalize(gaas , xPos, yPos, zPos)
     return gaas
 
 def SrTiO3(xPos = None, yPos = None, zPos = None):
-    srtio3 = read('structures/SrTiO3.cif')
+    try:
+        srtio3 = read('structures/SrTiO3.cif')
+    except FileNotFoundError:
+        srtio3 = read('FullPixelGridML/structures/SrTiO3.cif')
     srtio3 = moveAndRotateAtomsAndOrthogonalize(srtio3, xPos, yPos, zPos)
     return srtio3
 
 def MAPbI3(xPos = None, yPos = None, zPos = None):
-    mapi = read('structures/H6PbCI3N.cif')
+    try:
+        mapi = read('structures/H6PbCI3N.cif')
+    except FileNotFoundError:
+        mapi = read('FullPixelGridML/structures/H6PbCI3N.cif')
     mapi = moveAndRotateAtomsAndOrthogonalize(mapi, xPos, yPos, zPos)
     return mapi
 
 def WSe2(xPos = None, yPos = None, zPos = None):
-    wse2 = read('structures/WSe2.cif')
+    try:
+        wse2 = read('structures/WSe2.cif')
+    except FileNotFoundError:
+         wse2 = read('FullPixelGridML/structures/WSe2.cif')
     wse2 = moveAndRotateAtomsAndOrthogonalize(wse2, xPos, yPos, zPos)
     return wse2
+
+def create_random_pillars2(element='C', num_pillars=None, max_atoms_per_pillar=None, 
+                          box_size=(10, 10, 10), min_distance=1.0):
+    
+    kindsOfElements = {6:0, 14:1, 74:2}
+    element = choice(list(kindsOfElements.keys())) if element is None else element
+
+    if num_pillars is None:
+        num_pillars = randint(1, 5)  # Random number of pillars, e.g., between 1 and 5
+
+    if max_atoms_per_pillar is None:
+        max_atoms_per_pillar = randint(5, 20)  # Random max number of atoms per pillar
+
+    atoms = Atoms()
+    for _ in range(num_pillars):
+        num_atoms = randint(1, max_atoms_per_pillar)
+        positions = []
+        for i in range(num_atoms):
+            while True:
+                # Random position within the box
+                pos = np.array([uniform(0, box_size[0]),
+                                uniform(0, box_size[1]),
+                                i * min_distance])  # Stack atoms along z-axis
+                if i == 0 or min(get_distances(pos, np.array(positions))[1]) >= min_distance:
+                    positions.append(pos)
+                    break
+        pillar = Atoms([element] * len(positions), positions=positions)
+        atoms += pillar
+
+    atoms.set_cell(box_size)
+    atoms.set_pbc([True, True, False])  # Periodic boundary conditions in x and y directions
+
+    return atoms
 
 def StructureUnknown(**kwargs):
 
@@ -148,6 +201,9 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Tuple[str, 
         "WSe2" : WSe2,
         "atomPillar" : createAtomPillar,
         "multiPillar" : multiPillars,
+        "copperFCC" : copperFCC,
+        "ironBCC" : ironBCC,
+        "multiPillar2" : create_random_pillars2
     }
 
     if specificStructure == "random":
@@ -176,34 +232,6 @@ def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:f
     atomNumbers = atomicNumbers[DistanceSortedIndices[:3]]
     xPositions, yPositions = atomPositions[DistanceSortedIndices[:3]].transpose()[:2]
     return atomNumbers, xPositions, yPositions
-
-# def createSmallTiles(array2D, xDim: int, yDim: int):
-#     """Creates small 2d tiles from bigger array. The size of the small tiles is given by (xDim, yDim). Any overhang is discarded.
-
-#     Args:
-#         array2D (2D nested iterable): input Array
-#         xDim (int): x dimension of tiles
-#         yDim (int): y dimension of tiles
-
-#     Raises:
-#         Exception: xDim and yDim should be smaller than the shape of the array
-
-#     Yields:
-#         same type as array2D: Smaller tiles
-#     """
-#     if array2D.shape[0] < xDim or array2D.shape[1] < yDim:
-#         raise Exception("Tiling dimension are larger than original array.")
-#     x_ = np.arange(array2D.shape[0]) // xDim #indexes every position to belong to one particular tile
-#     y_ = np.arange(array2D.shape[1]) // yDim #same in y direction
-#     indicesOfTilesInX = np.unique(x_)
-#     indicesOfTilesInY = np.unique(y_)
-#     #skip the last row/line when less pixel than xDim or yDim
-#     if len(array2D[x_ == indicesOfTilesInX[-1]]) < xDim:
-#         indicesOfTilesInX = indicesOfTilesInX[:-1]
-#     if len(array2D[:,y_ == indicesOfTilesInY[-1]]) < yDim:
-#         indicesOfTilesInY = indicesOfTilesInY[:-1]
-#     for x, y in zip(indicesOfTilesInX, indicesOfTilesInY):
-#         yield x, y, array2D[x_ == x][:, y_ == y]
 
 @njit
 def findAtomsInTile(xPos:float, yPos:float, xRealLength:float, yRealLength:float, atomPositions:np.ndarray):
@@ -244,7 +272,7 @@ def generateDiffractionArray():
         )
         measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick, pbar = False)
 
-        return nameStruct, gridSampling, atomStruct, measurement_thick
+        return nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick
 
 def createAllXYCoordinates(yMaxCoord, xMaxCoord):
     return [(x,y) for y in np.arange(yMaxCoord) for x in np.arange(xMaxCoord)]
@@ -255,9 +283,9 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
     yStepSize = (YDIMTILES - 1)//2
     allTiles = XDIMTILES * YDIMTILES
     with h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w') as file:
-        for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick) in enumerate((generateDiffractionArray() for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))):
+        for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick, _) in enumerate((generateDiffractionArray() for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))):
             datasetStructID = f"{cnt}{processID}{timeStamp}" 
-            atomNumbers, xPositionsAtoms, yPositionsAtoms = None,None,None
+            atomNumbers, xPositionsAtoms, yPositionsAtoms = [],None,None
             if len(atomStruct.positions) <= 3:
                 atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(),atomStruct.get_atomic_numbers(), 0, 0)
         
@@ -279,7 +307,7 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
                 #use nine positions (old) -> difPatternsAllPositons has to be a different shape (9, 50, 50)
                 #difPatternsOnePosition = (measurement_thick.array[xCNT:xCNT + 2*xStepSize + 1 :xStepSize,yCNT :yCNT + 2*yStepSize + 1:yStepSize]).copy()  # type: ignore
                 #use all positions
-                difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + 2*xStepSize + 1, yCNT :yCNT + 2*yStepSize + 1].copy()
+                difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + 2*xStepSize + 1, yCNT :yCNT + 2*yStepSize + 1].copy() # type: ignore
                 difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
                 difPatternsOnePosition[np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - 15,allTiles - 5))] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
 
