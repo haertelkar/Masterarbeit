@@ -26,7 +26,7 @@ import warnings
 import os
 from numba import njit
 from ase import Atoms
-from ase.build import molecule, bulk
+from ase.build import molecule, bulk, surface
 from time import time
 import faulthandler
 import signal
@@ -65,8 +65,9 @@ def createAtomPillar(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,1
     for atomBefore in range(zAtoms-1):
         positions += [positions[atomBefore] + np.array([xAtomShift, yAtomShift, 1])]
     atomPillar = Atoms(numbers = [element] * zAtoms , positions=positions, cell = [xlen, ylen, zAtoms,90,90,90])
-    atomPillar = moveAndRotateAtomsAndOrthogonalize(atomPillar, xPos, yPos, zPos, ortho=False)
-    return atomPillar
+    atomPillar_101 = surface(atomPillar, (1, 0, 1), 5, periodic=True)
+    atomPillar_slab = moveAndRotateAtomsAndOrthogonalize(atomPillar_101, xPos, yPos, zPos, ortho=True)
+    return atomPillar_slab
 
 #BROKEN #TODO use poisson disk
 def multiPillars(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), xAtomShift = 0, yAtomShift = 0, element = None, numberOfRandomAtomPillars = 3) -> Atoms:
@@ -80,50 +81,55 @@ def multiPillars(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), 
         yPos += 1 + random()*2 
         xPos += 1 + random()*2
         atomPillar.extend(createAtomPillar(xPos = xPos, yPos = yPos, zPos = zPos))
-    atomPillar = moveAndRotateAtomsAndOrthogonalize(atomPillar, xPos, yPos, zPos, ortho=True)
-    return atomPillar
+    atomPillar_011 = surface(atomPillar, (0, 1, 1), 5, periodic=True)
+    atomPillar_slab = moveAndRotateAtomsAndOrthogonalize(atomPillar_011, xPos, yPos, zPos, ortho=True)
+    return atomPillar_slab
 
 def grapheneC(xPos = None, yPos = None, zPos = None) -> Atoms:
     grapheneC = graphene(a=2.46,  # Lattice constant (in Angstrom)
                               size=(1, 1, 1))  # Number of unit cells in each direction
-    num_cells_x = 3  # Number of unit cells in the x-direction
-    num_cells_y = 3  # Number of unit cells in the y-direction
-    grapheneC *= (num_cells_x, num_cells_y, 1)
-    grapheneC = moveAndRotateAtomsAndOrthogonalize(grapheneC, xPos, yPos, zPos)
-    return grapheneC
+    grapheneC_101 = surface(grapheneC, (1, 0, 1), 5, periodic=True)
+    grapheneC_slab = moveAndRotateAtomsAndOrthogonalize(grapheneC_101, xPos, yPos, zPos)
+    return grapheneC_slab
 
 def MoS2(xPos = None, yPos = None, zPos = None) -> Atoms:
     molybdenum_sulfur = mx2(formula='MoS2', kind='2H', a=3.18, thickness=3.19, size=(1, 1, 1), vacuum=None)
-    molybdenum_sulfur = moveAndRotateAtomsAndOrthogonalize(molybdenum_sulfur, xPos, yPos, zPos)
-    return molybdenum_sulfur
+    molybdenum_sulfur_011 = surface(molybdenum_sulfur, (0, 1, 1), 5, periodic=True)
+    molybdenum_sulfur_slab = moveAndRotateAtomsAndOrthogonalize(molybdenum_sulfur_011, xPos, yPos, zPos)
+    return molybdenum_sulfur_slab
 
 def Si(xPos = None, yPos = None, zPos = None):
     silicon = bulk('Si', 'diamond', a=5.43, cubic=True)
-    silicon = moveAndRotateAtomsAndOrthogonalize(silicon , xPos, yPos, zPos)
-    return silicon
+    silicon_011 = surface(silicon, (0, 1, 1), 5, periodic=True)
+    silicon_slab = moveAndRotateAtomsAndOrthogonalize(silicon_011, xPos, yPos, zPos)
+    return silicon_slab
 
 def copperFCC(xPos=None, yPos=None, zPos=None) -> Atoms:
     copper = bulk('Cu', 'fcc', a=3.615, cubic=True)  # Copper FCC structure with lattice parameter
-    copper = moveAndRotateAtomsAndOrthogonalize(copper, xPos, yPos, zPos)
-    return copper
+    copper_111 = surface(copper, (1, 1, 1), 5, periodic=True)
+    copper_slab = moveAndRotateAtomsAndOrthogonalize(copper_111, xPos, yPos, zPos)
+    return copper_slab
 
 def ironBCC(xPos=None, yPos=None, zPos=None) -> Atoms:
     iron = bulk('Fe', 'bcc', a=2.866, cubic=True)  # Iron BCC structure with lattice parameter
-    iron = moveAndRotateAtomsAndOrthogonalize(iron, xPos, yPos, zPos)
-    return iron
+    iron_111 = surface(iron, (1, 1, 1), 5, periodic=True)
+    iron_slab = moveAndRotateAtomsAndOrthogonalize(iron_111, xPos, yPos, zPos)
+    return iron_slab
 
 def GaAs(xPos = None, yPos = None, zPos = None):
     gaas = bulk('GaAs', 'zincblende', a=5.65, cubic=True)
-    gaas = moveAndRotateAtomsAndOrthogonalize(gaas , xPos, yPos, zPos)
-    return gaas
+    gaas_110 = surface(gaas, (1, 1, 0), 5, periodic=True)
+    gaas_slab = moveAndRotateAtomsAndOrthogonalize(gaas_110, xPos, yPos, zPos)
+    return gaas_slab
 
 def SrTiO3(xPos = None, yPos = None, zPos = None):
     try:
         srtio3 = read('structures/SrTiO3.cif')
     except FileNotFoundError:
         srtio3 = read('FullPixelGridML/structures/SrTiO3.cif')
-    srtio3 = moveAndRotateAtomsAndOrthogonalize(srtio3, xPos, yPos, zPos)
-    return srtio3
+    srtio3_110 = surface(srtio3, (1, 1, 0), 5, periodic=True)
+    srtio3_slab = moveAndRotateAtomsAndOrthogonalize(srtio3_110, xPos, yPos, zPos)
+    return srtio3_slab
 
 def MAPbI3(xPos = None, yPos = None, zPos = None):
     try:
@@ -141,38 +147,38 @@ def WSe2(xPos = None, yPos = None, zPos = None):
     wse2 = moveAndRotateAtomsAndOrthogonalize(wse2, xPos, yPos, zPos)
     return wse2
 
-def create_random_pillars2(element='C', num_pillars=None, max_atoms_per_pillar=None, 
-                          box_size=(10, 10, 10), min_distance=1.0):
+# def create_random_pillars2(element='C', num_pillars=None, max_atoms_per_pillar=None, 
+#                           box_size=(10, 10, 10), min_distance=1.0):
     
-    kindsOfElements = {6:0, 14:1, 74:2}
-    element = choice(list(kindsOfElements.keys())) if element is None else element
+#     kindsOfElements = {6:0, 14:1, 74:2}
+#     element = choice(list(kindsOfElements.keys())) if element is None else element
 
-    if num_pillars is None:
-        num_pillars = randint(1, 5)  # Random number of pillars, e.g., between 1 and 5
+#     if num_pillars is None:
+#         num_pillars = randint(1, 5)  # Random number of pillars, e.g., between 1 and 5
 
-    if max_atoms_per_pillar is None:
-        max_atoms_per_pillar = randint(5, 20)  # Random max number of atoms per pillar
+#     if max_atoms_per_pillar is None:
+#         max_atoms_per_pillar = randint(5, 20)  # Random max number of atoms per pillar
 
-    atoms = Atoms()
-    for _ in range(num_pillars):
-        num_atoms = randint(1, max_atoms_per_pillar)
-        positions = []
-        for i in range(num_atoms):
-            while True:
-                # Random position within the box
-                pos = np.array([uniform(0, box_size[0]),
-                                uniform(0, box_size[1]),
-                                i * min_distance])  # Stack atoms along z-axis
-                if i == 0 or min(get_distances(pos, np.array(positions))[1]) >= min_distance:
-                    positions.append(pos)
-                    break
-        pillar = Atoms([element] * len(positions), positions=positions)
-        atoms += pillar
+#     atoms = Atoms()
+#     for _ in range(num_pillars):
+#         num_atoms = randint(1, max_atoms_per_pillar)
+#         positions = []
+#         for i in range(num_atoms):
+#             while True:
+#                 # Random position within the box
+#                 pos = np.array([uniform(0, box_size[0]),
+#                                 uniform(0, box_size[1]),
+#                                 i * min_distance])  # Stack atoms along z-axis
+#                 if i == 0 or min(get_distances(pos, np.array(positions))[1]) >= min_distance:
+#                     positions.append(pos)
+#                     break
+#         pillar = Atoms([element] * len(positions), positions=positions)
+#         atoms += pillar
 
-    atoms.set_cell(box_size)
-    atoms.set_pbc([True, True, False])  # Periodic boundary conditions in x and y directions
+#     atoms.set_cell(box_size)
+#     atoms.set_pbc([True, True, False])  # Periodic boundary conditions in x and y directions
 
-    return atoms
+#     return atoms
 
 def StructureUnknown(**kwargs):
 
@@ -202,10 +208,10 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Tuple[str, 
         "atomPillar" : createAtomPillar,
         "multiPillar" : multiPillars,
         "copperFCC" : copperFCC,
-        "ironBCC" : ironBCC,
-        "multiPillar2" : create_random_pillars2
+        "ironBCC" : ironBCC
     }
-
+    #TODO: add more structures
+    #TODO: use surface (see Download/ex2.py)
     if specificStructure == "random":
         nameStruct = choice(list(structureFunctions.keys()))
         #tqdm.write(nameStruct)
@@ -262,10 +268,11 @@ def generateDiffractionArray():
         raise(e)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        probe = Probe(semiangle_cutoff=24, energy=200e3, device=device)
+        conv_angle = 33
+        probe = Probe(semiangle_cutoff=conv_angle, energy=60e3, device=device)
         probe.match_grid(potential_thick)
 
-        pixelated_detector = PixelatedDetector(max_angle=100)
+        pixelated_detector = PixelatedDetector(max_angle=100, resample = "uniform")
         gridSampling = (0.2,0.2)
         gridscan = GridScan(
             start = (0, 0), end = potential_thick.extent, sampling=gridSampling
@@ -304,9 +311,6 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
                 xCNT = xStepSize * xCoord
                 yCNT = yStepSize * yCoord
 
-                #use nine positions (old) -> difPatternsAllPositons has to be a different shape (9, 50, 50)
-                #difPatternsOnePosition = (measurement_thick.array[xCNT:xCNT + 2*xStepSize + 1 :xStepSize,yCNT :yCNT + 2*yStepSize + 1:yStepSize]).copy()  # type: ignore
-                #use all positions
                 difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + 2*xStepSize + 1, yCNT :yCNT + 2*yStepSize + 1].copy() # type: ignore
                 difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
                 difPatternsOnePosition[np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - 15,allTiles - 5))] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
