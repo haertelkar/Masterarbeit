@@ -1,4 +1,9 @@
+import glob
+import os
+import shutil
+import struct
 from abtem.reconstruct import MultislicePtychographicOperator, RegularizedPtychographicOperator
+import cv2
 from matplotlib import pyplot as plt
 from FullPixelGridML.SimulateTilesOneFile import generateDiffractionArray
 import numpy as np
@@ -6,57 +11,188 @@ from ase.io import write
 from ase.visualize.plot import plot_atoms
 from abtem.measure import Measurement
 
+def replace_line_in_file(file_path, line_number, text):
+
+    """
+
+    Replaces a specific line in a file with the given text.
+
+
+
+    :param file_path: Path to the file where the line needs to be replaced.
+
+    :param line_number: The line number (starting from 1) that needs to be replaced.
+
+    :param text: The new text that will replace the existing line.
+
+    """
+
+    try:
+
+        # Read the file contents
+
+        with open(file_path, 'r') as file:
+
+            lines = file.readlines()
+
+
+
+        # Check if the specified line number is within the file's line count
+
+        if line_number > len(lines) or line_number < 1:
+
+            raise ValueError("Line number is out of range.")
+
+
+
+        # Replace the specified line
+
+        lines[line_number - 1] = text + '\n'
+
+
+
+        # Write back the modified content
+
+        with open(file_path, 'w') as file:
+
+            file.writelines(lines)
+
+
+
+    except FileNotFoundError:
+
+        print(f"The file {file_path} was not found.")
+
+    except IOError:
+
+        print("An error occurred while reading or writing the file.")
+
+    except Exception as e:
+
+        print(f"An error occurred: {e}")
+
+def cutEverythingBelowLine(textFile : str, line:int):
+    """Get rid of everything below a certain line in a text file. Keeps the specified line.
+
+    Args:
+        textFile (str): _description_
+        line (int): _description_
+    """
+    with open(textFile, 'r') as f:
+        lines = f.readlines()
+    with open(textFile, 'w') as f:
+        for i in range(len(lines)):
+            if i < line:
+                f.write(lines[i])
+            else:
+                break
+
+def writeParamsCNF(ScanX,ScanY, beamPositions, conv_angle_in_mrad= 33, energy = 60e3):
+    CBEDDim = 50
+    probeDim = int(np.ceil(np.sqrt(2)*3*CBEDDim/2))
+    theta = conv_angle_in_mrad/1000
+    hTimescDividedBye = 1.239841984e-6
+    wavelength = hTimescDividedBye/energy
+    dBF = np.sqrt(2)*CBEDDim
+    realSpacePixelSize = dBF/(2*theta) * wavelength * 1/probeDim
+
+    try:
+        os.remove('Params.cnf')
+        print("Old Params.cnf found. Replacing with new file.")
+    except FileNotFoundError:
+        print("Params.cnf not found. Creating new file.")
+        pass
+    shutil.copyfile('Params copy.cnf', 'Params.cnf') 
+    cutEverythingBelowLine('Params.cnf', 65)
+    with open('Params.cnf', 'a') as f:
+        for i in range(len(beamPositions)):
+            f.write(f"beam_position:   {beamPositions[i][0]:.4e} {beamPositions[i][1]:.4e}\n")
+    conv_angle = conv_angle_in_mrad / 1000
+    replace_line_in_file('Params.cnf', 5, f"E0: {energy:.0e}        #Acceleration voltage")
+    replace_line_in_file('Params.cnf', 28, f"ObjAp:         {conv_angle}    #Aperture angle in Rad")
+    replace_line_in_file('Params.cnf', 32, f"ProbeDim:  {probeDim}  #Probe dimension")
+    replace_line_in_file('Params.cnf', 33, f"PixelSize: {realSpacePixelSize} #Real space pixel size")
+    replace_line_in_file('Params.cnf', 44, f"ScanX:   {ScanX}     #Number of steps in X-direction")
+    replace_line_in_file('Params.cnf', 45, f"ScanY:   {ScanY}     #Number of steps in Y-direction")
+    replace_line_in_file('Params.cnf', 46, f"batchSize: {min(ScanX,ScanY)}  #Number of CBEDs that are processed in parallel")
+
+    
+
+
+
 nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick = generateDiffractionArray()
+measurementArray = np.zeros((measurement_thick.array.shape[0],measurement_thick.array.shape[1],50,50))
 
-write('testAtomStruct.png', atomStruct)
-print(len(potential_thick))
+realPositions = np.zeros((measurementArray.shape[0],measurementArray.shape[1]), dtype = object)   
+for i in range(measurementArray.shape[0]): 
+    for j in range(measurementArray.shape[1]):
+        realPositions[i,j] = (i*0.2*1e-10,j*0.2*1e-10)
+for i in range(measurementArray.shape[0]):
+    for j in range(measurementArray.shape[1]):
+        measurementArray[i,j,:,:] = cv2.resize(np.array(measurement_thick.array[i,j,:,:]), dsize=(50, 50), interpolation=cv2.INTER_LINEAR)
+        measurementArray[i,j,:,:] = measurementArray[i,j,:,:]/(np.sum(measurementArray[i,j,:,:])+1e-10)
 
-measurementArray = np.copy(measurement_thick)
-measurementArray[np.random.choice(measurementArray.shape[0], 20), np.random.choice(measurementArray.shape[0], 20), :, :] = np.zeros_like(measurementArray[0,0])
+#remove ROP clutter
+for filename in glob.glob('Probe*.bin'):
+    os.remove(filename)
+for filename in glob.glob('Potential*.bin'):
+    os.remove(filename)
+for filename in glob.glob('Positions*.txt'):
+    os.remove(filename)
+        
+
+writeParamsCNF(measurementArray.shape[0],measurementArray.shape[1], realPositions.flatten())
+size = measurementArray.shape[0] * measurementArray.shape[1] * measurementArray.shape[2] * measurementArray.shape[3]
+#Normalize data - required for ROP
+measurementArray /= (np.sum(measurementArray)/(measurementArray.shape[0] * measurementArray.shape[1]))
+#Convert to binary format
+measurementArray = np.ravel(measurementArray)
+measurementArray = struct.pack(size * 'f', *measurementArray)
+file = open("testMeasurement.bin", 'wb')
+file.write(measurementArray)
+file.close()
+
+# measurementArray.astype('float').flatten().tofile("testMeasurement.bin")
+
+
+
+
+
+
+
+
+
+
+
+# write('testAtomStruct.png', atomStruct)
+# print(len(potential_thick))
+
+# randomizedXPositions = np.random.choice(measurement_thick.shape[0], int(min(measurement_thick.shape[0],measurement_thick.shape[1]) * 0.3), replace = True)
+# randomizedYPositions = np.random.choice(measurement_thick.shape[1], int(min(measurement_thick.shape[0],measurement_thick.shape[1]) * 0.3), replace = True)
+
+# realPositionsSparse = np.ravel(realPositions[randomizedXPositions, randomizedYPositions])
+
+# measurementArraySparse = np.copy(measurement_thick)
+# measurementArraySparse = np.ravel(measurement_thick[randomizedXPositions, randomizedYPositions,:,:])
+
+
 
 multislice_reconstruction_ptycho_operator = RegularizedPtychographicOperator(
     measurement_thick,
     scan_step_sizes = 0.2,
-    semiangle_cutoff=24,
-    energy=200e3,
+    semiangle_cutoff=33,
+    energy=60e3,
     #num_slices=10,
     device="gpu",
     #slice_thicknesses=0.2
 ).preprocess()
 
 mspie_objects, mspie_probes, rpie_positions, mspie_sse = multislice_reconstruction_ptycho_operator.reconstruct(
-    max_iterations=5, return_iterations=True, random_seed=1, verbose=True
+    max_iterations=20, return_iterations=True, random_seed=1, verbose=True
 )
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
-
-mspie_objects[-1].angle().interpolate(potential_thick.sampling).show(ax=ax2) #[-1][0]
-
-fig.tight_layout()
-
-plt.savefig("test.pdf")
+mspie_objects[-1].angle().interpolate(potential_thick.sampling).show()
+plt.tight_layout()
+plt.savefig("testStructureFullRec.png")
 plt.close()
 
-m = Measurement(measurementArray, measurement_thick.calibrations, measurement_thick.units)
-
-multislice_reconstruction_ptycho_operator = RegularizedPtychographicOperator(
-    m,
-    scan_step_sizes = 0.2,
-    semiangle_cutoff=24,
-    energy=200e3,
-    #num_slices=10,
-    #device="gpu",
-    #slice_thicknesses=0.2
-).preprocess()
-
-mspie_objects, mspie_probes, rpie_positions, mspie_sse = multislice_reconstruction_ptycho_operator.reconstruct(
-    max_iterations=40, return_iterations=True, random_seed=1, verbose=True
-)
-
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(8, 4))
-
-mspie_objects[-1].angle().interpolate(potential_thick.sampling).show(ax=ax2) #[-1][0]
-
-fig.tight_layout()
-
-plt.savefig("sparseTest.pdf")
