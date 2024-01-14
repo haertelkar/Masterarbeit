@@ -65,7 +65,7 @@ def createAtomPillar(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,1
     for atomBefore in range(zAtoms-1):
         positions += [positions[atomBefore] + np.array([xAtomShift, yAtomShift, 1])]
     atomPillar = Atoms(numbers = [element] * zAtoms , positions=positions, cell = [xlen, ylen, zAtoms,90,90,90])
-    atomPillar_101 = surface(atomPillar, (1, 0, 1), 5, periodic=True)
+    atomPillar_101 = surface(atomPillar, indices=(1, 0, 1), layers=2, periodic=True)
     atomPillar_slab = moveAndRotateAtomsAndOrthogonalize(atomPillar_101, xPos, yPos, zPos, ortho=True)
     return atomPillar_slab
 
@@ -81,44 +81,59 @@ def multiPillars(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), 
         yPos += 1 + random()*2 
         xPos += 1 + random()*2
         atomPillar.extend(createAtomPillar(xPos = xPos, yPos = yPos, zPos = zPos))
-    atomPillar_011 = surface(atomPillar, (0, 1, 1), 5, periodic=True)
+    atomPillar_011 = surface(atomPillar, indices=(0, 1, 1), layers=2, periodic=True)
     atomPillar_slab = moveAndRotateAtomsAndOrthogonalize(atomPillar_011, xPos, yPos, zPos, ortho=True)
     return atomPillar_slab
 
 def grapheneC(xPos = None, yPos = None, zPos = None) -> Atoms:
     grapheneC = graphene(a=2.46,  # Lattice constant (in Angstrom)
                               size=(1, 1, 1))  # Number of unit cells in each direction
-    grapheneC_101 = surface(grapheneC, (1, 0, 1), 5, periodic=True)
+    grapheneC_101 = surface(grapheneC, indices=(1, 0, 1), layers=2, periodic=True)
     grapheneC_slab = moveAndRotateAtomsAndOrthogonalize(grapheneC_101, xPos, yPos, zPos)
     return grapheneC_slab
 
 def MoS2(xPos = None, yPos = None, zPos = None) -> Atoms:
-    molybdenum_sulfur = mx2(formula='MoS2', kind='2H', a=3.18, thickness=3.19, size=(1, 1, 1), vacuum=None)
-    molybdenum_sulfur_011 = surface(molybdenum_sulfur, (0, 1, 1), 5, periodic=True)
+    try:
+        molybdenum_sulfur = read('structures/MoS2.cif')
+    except FileNotFoundError:
+        molybdenum_sulfur = read('FullPixelGridML/structures/MoS2.cif')
+    molybdenum_sulfur_011 = surface(molybdenum_sulfur, indices=(0, 1, 1), layers=2, periodic=True)
     molybdenum_sulfur_slab = moveAndRotateAtomsAndOrthogonalize(molybdenum_sulfur_011, xPos, yPos, zPos)
     return molybdenum_sulfur_slab
 
 def Si(xPos = None, yPos = None, zPos = None):
-    silicon = bulk('Si', 'diamond', a=5.43, cubic=True)
-    silicon_011 = surface(silicon, (0, 1, 1), 5, periodic=True)
+    try:
+        silicon = read('structures/Si.cif')
+    except FileNotFoundError:
+        silicon = read('FullPixelGridML/structures/Si.cif')
+    silicon_011 = surface(silicon, indices=(0, 1, 1), layers=2, periodic=True)
     silicon_slab = moveAndRotateAtomsAndOrthogonalize(silicon_011, xPos, yPos, zPos)
     return silicon_slab
 
-def copperFCC(xPos=None, yPos=None, zPos=None) -> Atoms:
-    copper = bulk('Cu', 'fcc', a=3.615, cubic=True)  # Copper FCC structure with lattice parameter
-    copper_111 = surface(copper, (1, 1, 1), 5, periodic=True)
+def copper(xPos=None, yPos=None, zPos=None) -> Atoms:
+    try:
+        copper = read('structures/Cu.cif')
+    except FileNotFoundError:
+        copper = read('FullPixelGridML/structures/Cu.cif')
+    copper_111 = surface(copper, indices=(1, 1, 1), layers=2, periodic=True)
     copper_slab = moveAndRotateAtomsAndOrthogonalize(copper_111, xPos, yPos, zPos)
     return copper_slab
 
-def ironBCC(xPos=None, yPos=None, zPos=None) -> Atoms:
-    iron = bulk('Fe', 'bcc', a=2.866, cubic=True)  # Iron BCC structure with lattice parameter
-    iron_111 = surface(iron, (1, 1, 1), 5, periodic=True)
+def iron(xPos=None, yPos=None, zPos=None) -> Atoms:
+    try:
+        iron = read('structures/Fe.cif')
+    except FileNotFoundError:
+        iron = read('FullPixelGridML/structures/Fe.cif')
+    iron_111 = surface(iron, indices=(1, 1, 1), layers=2, periodic=True)
     iron_slab = moveAndRotateAtomsAndOrthogonalize(iron_111, xPos, yPos, zPos)
     return iron_slab
 
 def GaAs(xPos = None, yPos = None, zPos = None):
-    gaas = bulk('GaAs', 'zincblende', a=5.65, cubic=True)
-    gaas_110 = surface(gaas, (1, 1, 0), 5, periodic=True)
+    try:
+        gaas = read('structures/GaAs.cif')
+    except FileNotFoundError:
+        gaas = read('FullPixelGridML/structures/GaAs.cif')
+    gaas_110 = surface(gaas, indices=(1, 1, 0), layers=2, periodic=True)
     gaas_slab = moveAndRotateAtomsAndOrthogonalize(gaas_110, xPos, yPos, zPos)
     return gaas_slab
 
@@ -127,7 +142,7 @@ def SrTiO3(xPos = None, yPos = None, zPos = None):
         srtio3 = read('structures/SrTiO3.cif')
     except FileNotFoundError:
         srtio3 = read('FullPixelGridML/structures/SrTiO3.cif')
-    srtio3_110 = surface(srtio3, (1, 1, 0), 5, periodic=True)
+    srtio3_110 = surface(srtio3, indices=(1, 1, 0), layers= 5, periodic=True)
     srtio3_slab = moveAndRotateAtomsAndOrthogonalize(srtio3_110, xPos, yPos, zPos)
     return srtio3_slab
 
@@ -136,49 +151,18 @@ def MAPbI3(xPos = None, yPos = None, zPos = None):
         mapi = read('structures/H6PbCI3N.cif')
     except FileNotFoundError:
         mapi = read('FullPixelGridML/structures/H6PbCI3N.cif')
-    mapi = moveAndRotateAtomsAndOrthogonalize(mapi, xPos, yPos, zPos)
-    return mapi
+    mapi_110 = surface(mapi, indices=(1, 1, 0), layers=2, periodic=True)
+    mapi_slab = moveAndRotateAtomsAndOrthogonalize(mapi_110, xPos, yPos, zPos)
+    return mapi_slab
 
 def WSe2(xPos = None, yPos = None, zPos = None):
     try:
         wse2 = read('structures/WSe2.cif')
     except FileNotFoundError:
-         wse2 = read('FullPixelGridML/structures/WSe2.cif')
-    wse2 = moveAndRotateAtomsAndOrthogonalize(wse2, xPos, yPos, zPos)
-    return wse2
-
-# def create_random_pillars2(element='C', num_pillars=None, max_atoms_per_pillar=None, 
-#                           box_size=(10, 10, 10), min_distance=1.0):
-    
-#     kindsOfElements = {6:0, 14:1, 74:2}
-#     element = choice(list(kindsOfElements.keys())) if element is None else element
-
-#     if num_pillars is None:
-#         num_pillars = randint(1, 5)  # Random number of pillars, e.g., between 1 and 5
-
-#     if max_atoms_per_pillar is None:
-#         max_atoms_per_pillar = randint(5, 20)  # Random max number of atoms per pillar
-
-#     atoms = Atoms()
-#     for _ in range(num_pillars):
-#         num_atoms = randint(1, max_atoms_per_pillar)
-#         positions = []
-#         for i in range(num_atoms):
-#             while True:
-#                 # Random position within the box
-#                 pos = np.array([uniform(0, box_size[0]),
-#                                 uniform(0, box_size[1]),
-#                                 i * min_distance])  # Stack atoms along z-axis
-#                 if i == 0 or min(get_distances(pos, np.array(positions))[1]) >= min_distance:
-#                     positions.append(pos)
-#                     break
-#         pillar = Atoms([element] * len(positions), positions=positions)
-#         atoms += pillar
-
-#     atoms.set_cell(box_size)
-#     atoms.set_pbc([True, True, False])  # Periodic boundary conditions in x and y directions
-
-#     return atoms
+        wse2 = read('FullPixelGridML/structures/WSe2.cif')
+    wse2_110 = surface(wse2, indices=(1, 1, 0), layers=2, periodic=True)
+    wse2_slab = moveAndRotateAtomsAndOrthogonalize(wse2_110, xPos, yPos, zPos)
+    return wse2_slab
 
 def StructureUnknown(**kwargs):
 
@@ -207,8 +191,8 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Tuple[str, 
         "WSe2" : WSe2,
         "atomPillar" : createAtomPillar,
         "multiPillar" : multiPillars,
-        "copperFCC" : copperFCC,
-        "ironBCC" : ironBCC
+        "copper" : copper,
+        "iron" : iron
     }
     #TODO: add more structures
     #TODO: use surface (see Download/ex2.py)
@@ -253,7 +237,7 @@ def findAtomsInTile(xPos:float, yPos:float, xRealLength:float, yRealLength:float
 
     return xPositions, yPositions
 
-def generateDiffractionArray():
+def generateDiffractionArray(conv_angle = 33, energy = 60e3):
 
     nameStruct, atomStruct = createStructure()
     try:
@@ -268,8 +252,7 @@ def generateDiffractionArray():
         raise(e)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        conv_angle = 33
-        probe = Probe(semiangle_cutoff=conv_angle, energy=60e3, device=device)
+        probe = Probe(semiangle_cutoff=conv_angle, energy=energy, device=device)
         probe.match_grid(potential_thick)
 
         pixelated_detector = PixelatedDetector(max_angle=100, resample = "uniform")
