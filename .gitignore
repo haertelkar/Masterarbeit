@@ -182,3 +182,11 @@ stdout.txt
 **.pool*
 **.ckpt
 .vscode/settings.json
+Params.cnf
+Positions*.txt
+Potential*.bin
+Probe*.bin
+ErrorFunction.bin
+L1Norm.bin
+Measurements_model.bin
+testMeasurements.bin
