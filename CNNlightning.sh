@@ -6,6 +6,7 @@
 #SBATCH --cpus-per-task=10
 #SBATCH --time=24:00:00
 #SBATCH --signal=SIGUSR1@90
+#SBATCH -J "CNN"   # job name
 
 # Debugging flags (optional)
 export NCCL_DEBUG=INFO
