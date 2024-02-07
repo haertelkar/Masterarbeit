@@ -87,14 +87,14 @@ def cutEverythingBelowLine(textFile : str, line:int):
             else:
                 break
 
-def writeParamsCNF(ScanX,ScanY, beamPositions, conv_angle_in_mrad= 33, energy = 60e3):
-    CBEDDim = 50
+def writeParamsCNF(ScanX,ScanY, beamPositions, diameterBFD, conv_angle_in_mrad= 33, energy = 60e3, CBEDDim=50):
     probeDim = int(np.ceil(np.sqrt(2)*3*CBEDDim/2))
-    theta = conv_angle_in_mrad/1000
-    hTimescDividedBye = 1.239841984e-6
-    wavelength = hTimescDividedBye/energy
-    dBF = np.sqrt(2)*CBEDDim
-    realSpacePixelSize = dBF/(2*theta) * wavelength * 1/probeDim
+    theta_in_mrad = conv_angle_in_mrad
+    h_times_c_dividedBy_keV_in_A = 12.4
+    wavelength_in_A = h_times_c_dividedBy_keV_in_A/np.sqrt(2*511*energy/1000+(energy/1000)**2) #de Broglie wavelength
+    reciprocalPixelSize =  2*(theta_in_mrad/1000)/(diameterBFD * wavelength_in_A ) #in 1/A
+    realSpacePixelSize_in_A = 1/probeDim/reciprocalPixelSize #in Angstrom
+    objectDim = 100*(int(probeDim/100) + 2)
 
     try:
         os.remove('Params.cnf')
@@ -110,18 +110,22 @@ def writeParamsCNF(ScanX,ScanY, beamPositions, conv_angle_in_mrad= 33, energy = 
     conv_angle = conv_angle_in_mrad / 1000
     replace_line_in_file('Params.cnf', 5, f"E0: {energy:.0e}        #Acceleration voltage")
     replace_line_in_file('Params.cnf', 28, f"ObjAp:         {conv_angle}    #Aperture angle in Rad")
+    replace_line_in_file('Params.cnf', 31, f"ObjectDim:  {objectDim}  #Object dimension")
     replace_line_in_file('Params.cnf', 32, f"ProbeDim:  {probeDim}  #Probe dimension")
-    replace_line_in_file('Params.cnf', 33, f"PixelSize: {realSpacePixelSize} #Real space pixel size")
+    replace_line_in_file('Params.cnf', 33, f"PixelSize: {realSpacePixelSize_in_A:.6}e-10 #Real space pixel size")
+    replace_line_in_file('Params.cnf', 37, f"CBEDDim:  {CBEDDim}  #CBED dimension")
     replace_line_in_file('Params.cnf', 44, f"ScanX:   {ScanX}     #Number of steps in X-direction")
     replace_line_in_file('Params.cnf', 45, f"ScanY:   {ScanY}     #Number of steps in Y-direction")
     replace_line_in_file('Params.cnf', 46, f"batchSize: {min(ScanX,ScanY)}  #Number of CBEDs that are processed in parallel")
 
-    
 
+energy = 60e3
+conv_angle_in_mrad = 33
 
-
-nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick = generateDiffractionArray()
-measurementArray = np.zeros((measurement_thick.array.shape[0],measurement_thick.array.shape[1],50,50))
+nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick = generateDiffractionArray(conv_angle= conv_angle_in_mrad, energy=energy,structure="MarcelsEx", pbar = True, start=[2, 0], end=[25, 15])
+assert(measurement_thick.array.shape[2] == measurement_thick.array.shape[3])
+CBEDDim = measurement_thick.array.shape[2]
+measurementArray = np.zeros((measurement_thick.array.shape[0],measurement_thick.array.shape[1],CBEDDim,CBEDDim))
 
 realPositions = np.zeros((measurementArray.shape[0],measurementArray.shape[1]), dtype = object)   
 for i in range(measurementArray.shape[0]): 
@@ -129,8 +133,27 @@ for i in range(measurementArray.shape[0]):
         realPositions[i,j] = (i*0.2*1e-10,j*0.2*1e-10)
 for i in range(measurementArray.shape[0]):
     for j in range(measurementArray.shape[1]):
-        measurementArray[i,j,:,:] = cv2.resize(np.array(measurement_thick.array[i,j,:,:]), dsize=(50, 50), interpolation=cv2.INTER_LINEAR)
-        measurementArray[i,j,:,:] = measurementArray[i,j,:,:]/(np.sum(measurementArray[i,j,:,:])+1e-10)
+        measurementArray[i,j,:,:] = measurement_thick.array[i,j,:,:]
+        brightFieldDisk = np.zeros_like(measurement_thick.array[i,j,:,:])
+        brightFieldDisk[measurementArray[i,j,:,:] > np.max(measurementArray[i,j,:,:])*0.05] = 1
+        
+        #measurementArray[i,j,:,:] = measurementArray[i,j,:,:]/(np.sum(measurementArray[i,j,:,:])+1e-10) 
+bfdArea = np.sum(brightFieldDisk)
+diameterBFD = np.sqrt(bfdArea/np.pi) * 2
+# leftEdge = CBEDDim
+# rightEdge = 0
+# for row in brightFieldDisk:
+#     for i in range(len(row)):
+#         if row[i] == 1 and i < leftEdge:
+#             leftEdge = i
+#         if i < len(row) - 1 and row[i+1] == 0 and row[i] == 1 and i > rightEdge:
+#             rightEdge = i
+
+# if rightEdge < leftEdge:
+#     raise Exception("rightEdge < leftEdge")
+    
+# diameterBFD = rightEdge - leftEdge
+print(f"diameter of the bfd in pixels: {diameterBFD}")
 
 #remove ROP clutter
 for filename in glob.glob('Probe*.bin'):
@@ -139,9 +162,11 @@ for filename in glob.glob('Potential*.bin'):
     os.remove(filename)
 for filename in glob.glob('Positions*.txt'):
     os.remove(filename)
+for filename in glob.glob('Potential*.png'):
+    os.remove(filename)
         
 
-writeParamsCNF(measurementArray.shape[0],measurementArray.shape[1], realPositions.flatten())
+writeParamsCNF(measurementArray.shape[1],measurementArray.shape[0], realPositions.flatten(), diameterBFD, conv_angle_in_mrad = conv_angle_in_mrad, energy=energy, CBEDDim=CBEDDim)
 size = measurementArray.shape[0] * measurementArray.shape[1] * measurementArray.shape[2] * measurementArray.shape[3]
 #Normalize data - required for ROP
 measurementArray /= (np.sum(measurementArray)/(measurementArray.shape[0] * measurementArray.shape[1]))
@@ -180,11 +205,11 @@ file.close()
 multislice_reconstruction_ptycho_operator = RegularizedPtychographicOperator(
     measurement_thick,
     scan_step_sizes = 0.2,
-    semiangle_cutoff=33,
-    energy=60e3,
+    semiangle_cutoff=conv_angle_in_mrad,
+    energy=energy,
     #num_slices=10,
     device="gpu",
-    #slice_thicknesses=0.2
+    #slice_thicknesses=1
 ).preprocess()
 
 mspie_objects, mspie_probes, rpie_positions, mspie_sse = multislice_reconstruction_ptycho_operator.reconstruct(
