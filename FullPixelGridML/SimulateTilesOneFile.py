@@ -32,6 +32,7 @@ import faulthandler
 import signal
 from itertools import combinations
 import h5py
+from ase.build import nanotube
 faulthandler.register(signal.SIGUSR1.value)
 # from hanging_threads import start_monitoring
 # monitoring_thread = start_monitoring(seconds_frozen=60, test_interval=100)
@@ -85,10 +86,21 @@ def multiPillars(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), 
     atomPillar_slab = moveAndRotateAtomsAndOrthogonalize(atomPillar_011, xPos, yPos, zPos, ortho=True)
     return atomPillar_slab
 
+def MarcelsEx(xPos = None, yPos = None, zPos = None):
+    cnt1 = nanotube(10, 4, length=4)
+    cnt2 = nanotube(21, 0, length=6)
+    double_walled_cnt =  cnt1 + cnt2
+    double_walled_cnt.rotate(-90, 'x', rotate_cell=True)
+    double_walled_cnt.center(vacuum=5, axis=(0,1))
+    orthogonal_atoms = moveAndRotateAtomsAndOrthogonalize(double_walled_cnt,xPos, yPos, zPos, ortho=True)
+    return orthogonal_atoms
+
 def grapheneC(xPos = None, yPos = None, zPos = None) -> Atoms:
-    grapheneC = graphene(a=2.46,  # Lattice constant (in Angstrom)
-                              size=(1, 1, 1))  # Number of unit cells in each direction
-    grapheneC_101 = surface(grapheneC, indices=(1, 0, 1), layers=2, periodic=True)
+    try:
+        grapheneC = read('structures/graphene.cif')
+    except FileNotFoundError:
+        grapheneC = read('FullPixelGridML/structures/graphene.cif')
+    grapheneC_101 = surface(grapheneC, indices=(1, 0, 1), layers=5, periodic=True)
     grapheneC_slab = moveAndRotateAtomsAndOrthogonalize(grapheneC_101, xPos, yPos, zPos)
     return grapheneC_slab
 
@@ -192,7 +204,8 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Tuple[str, 
         "atomPillar" : createAtomPillar,
         "multiPillar" : multiPillars,
         "copper" : copper,
-        "iron" : iron
+        "iron" : iron,
+        "MarcelsEx" : MarcelsEx,
     }
     #TODO: add more structures
     #TODO: use surface (see Download/ex2.py)
@@ -237,14 +250,13 @@ def findAtomsInTile(xPos:float, yPos:float, xRealLength:float, yRealLength:float
 
     return xPositions, yPositions
 
-def generateDiffractionArray(conv_angle = 33, energy = 60e3):
+def generateDiffractionArray(conv_angle = 33, energy = 60e3, structure = "random", pbar = False, start = (0,0), end = (-1,-1)):
 
-    nameStruct, atomStruct = createStructure()
+    nameStruct, atomStruct = createStructure(specificStructure= structure)
     try:
         potential_thick = Potential(
             atomStruct,
-            sampling=0.02,
-            parametrization="kirkland",
+            sampling=0.05,
             device=device
         )
     except Exception as e:
@@ -255,12 +267,17 @@ def generateDiffractionArray(conv_angle = 33, energy = 60e3):
         probe = Probe(semiangle_cutoff=conv_angle, energy=energy, device=device)
         probe.match_grid(potential_thick)
 
-        pixelated_detector = PixelatedDetector(max_angle=100, resample = "uniform")
+        pixelated_detector = PixelatedDetector(max_angle=100,resample = "uniform")
         gridSampling = (0.2,0.2)
+        if end == (-1,-1):
+            end = potential_thick.extent
         gridscan = GridScan(
-            start = (0, 0), end = potential_thick.extent, sampling=gridSampling
+            start = start, end = end, sampling=gridSampling
         )
-        measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick, pbar = False)
+        measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick, pbar = pbar)
+        plt.imsave("difPattern.png", measurement_thick.array[0,0])
+        #TODO: add noise
+        #TODO: give angle, conv_angle, energy, real pixelsize to ai
 
         return nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick
 
