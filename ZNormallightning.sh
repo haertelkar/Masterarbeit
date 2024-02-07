@@ -5,6 +5,7 @@
 #SBATCH --ntasks-per-node=1    
 #SBATCH --cpus-per-task=10
 #SBATCH --time=24:00:00
+#SBATCH -J "ZNN"   # job name
 
 # Debugging flags (optional)
 export NCCL_DEBUG=INFO
@@ -14,4 +15,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun python3 lightningTrain.py -v OneFileAllPosFix -e 300 -m ormal 
+srun python3 lightningTrain.py -v OneFileAllPosFixR20N20 -e 300 -m ormal 
