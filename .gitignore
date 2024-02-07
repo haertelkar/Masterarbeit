@@ -192,3 +192,8 @@ Measurements_model.bin
 testMeasurements.bin
 ROP
 testMeasurement.bin
+testBFDdiam.py
+MarcelEx/*
+old*Params*copy.cnf
+Params*copy.cnf
+ParamsMar.cnf
