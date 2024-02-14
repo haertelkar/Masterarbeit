@@ -98,10 +98,10 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
             totalNumberOfFiles = len(imageFileNames)
             with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
                 randomFileName = imageFileNames[0]
-                image = np.array(totalImages[randomFileName])[0, 0] #this image always exists so it is easy to just use it
+                imageDim = np.array(totalImages[randomFileName]).shape[2] #this image always exists so it is easy to just use it
             if ZernikeObject is None:
-                radius = radius or int(len(image)/2)
-                ZernikeObject = Zernike(radius, image.shape[-1], noOfMoments)
+                radius = int(imageDim/2)
+                ZernikeObject = Zernike(radius, noOfMoments)
             for cnt, fileName in enumerate(tqdm(imageFileNames, desc= f"Going through files in measurements_{testOrTrain}", total = totalNumberOfFiles, initial=len(fileNamesDone), leave = leave, disable = (rank != 0))):
                 if cnt%worldsize != rank:
                     continue

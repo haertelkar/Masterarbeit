@@ -15,6 +15,9 @@ class Zernike(object):
         self.resultVectorLength = 0 
         for n in range(self.numberOfOSAANSIMoments + 1):
             for mShifted in range(2*n+1):
+                m = mShifted - n
+                if (n-m)%2 != 0:
+                    continue
                 self.resultVectorLength += 1
 
     def zernikeTransform(self, fileName, images, zernikeTotalImages):
@@ -31,6 +34,7 @@ class Zernike(object):
                         self.dimToBasis[dim] = basisObject.basis
                     basis = self.dimToBasis[dim]
                     if not np.any(im):
+                        #most diffraction patterns are left empty, so this is a good optimization
                         moments.append(np.zeros(self.resultVectorLength))
                     else:
                         moments.append(self.calculateZernikeWeights(basis, im)*1e3) #scaled up so it's more useful
