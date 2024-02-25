@@ -220,6 +220,8 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Tuple[str, 
         struct = structureFunctions.get(specificStructure, StructureUnknown)(**kwargs)
         return nameStruct, struct 
 
+
+
 @njit
 def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:float, yPos:float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     Distances = (atomPositions - np.expand_dims(np.array([xPos, yPos, 0]),0))[:,0:2]
@@ -241,13 +243,6 @@ def findAtomsInTile(xPos:float, yPos:float, xRealLength:float, yRealLength:float
     xAtomPositions, yAtomPositions, _ = atomPositions.transpose()
     atomPosInside = atomPositions[(xPos <= xAtomPositions) * (xAtomPositions <= xPos + xRealLength) * (yPos <= yAtomPositions) * (yAtomPositions <= yPos + yRealLength)]
     xPositions, yPositions = atomPosInside.transpose()[:2]
-
-    if len(xPositions) == 0:
-        return np.array([-1,-1,-1]), np.array([-1,-1,-1])
-    while len(xPositions < 3):
-        xPositions = np.append(xPositions, xPositions[0])
-        yPositions = np.append(yPositions, yPositions[0])
-
     return xPositions, yPositions
 
 def generateDiffractionArray(conv_angle = 33, energy = 60e3, structure = "random", pbar = False, start = (0,0), end = (-1,-1)):
@@ -285,6 +280,28 @@ def generateDiffractionArray(conv_angle = 33, energy = 60e3, structure = "random
 def createAllXYCoordinates(yMaxCoord, xMaxCoord):
     return [(x,y) for y in np.arange(yMaxCoord) for x in np.arange(xMaxCoord)]
 
+
+def generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPos, yPos):
+    #generates row in labels.csv with relative distances of three closest atoms to the center of the diffraction pattern. Also saves the element predictions.
+    
+    if len(atomStruct.positions) > 3:
+        atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPos + xRealLength/2, yPos + yRealLength/2)
+                
+    xAtomRel = xPositionsAtoms - xPos
+    yAtomRel = yPositionsAtoms - yPos
+    rows.append([f"{datasetStructID}[{xCoord}][{yCoord}]"] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])
+    return rows
+
+def generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPos, yPos):
+    #Generates row in labels.csv with XDIMTILES*YDIMTILES pixels. Each pixel is one if an atom is in the pixel and zero if not.
+    pixelGrid = np.zeros((XDIMTILES, YDIMTILES))
+    xPositions, yPositions = findAtomsInTile(xPos, yPos, xRealLength, yRealLength, atomStruct.get_positions())
+    xPositions = (xPositions - xPos) // 0.2
+    yPositions = (yPositions - yPos) // 0.2
+    pixelGrid[xPositions, yPositions] = 1
+    rows.append([f"{datasetStructID}[{xCoord}][{yCoord}]"] + [str(pixel) for pixel in pixelGrid.flatten()])
+
+
 def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, timeStamp, processID = 99999, silence = False):
     rows = []
     xStepSize = (XDIMTILES - 1)//2
@@ -319,22 +336,17 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
                 xPos = xCNT * gridSampling[0]
                 yPos = yCNT * gridSampling[1]
 
-                if len(atomStruct.positions) > 3:
-                    atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPos + xRealLength/2, yPos + yRealLength/2)
+                rows = generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPos, yPos)
                 
-                xAtomRel = xPositionsAtoms - xPos
-                yAtomRel = yPositionsAtoms - yPos
-
                 difPatternsOnePositionResized = []
 
                 for cnt, difPattern in enumerate(difPatternsOnePosition):
                     difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR))  # type: ignore
                 difPatternsAllPositions[xCoord][yCoord] = np.array(difPatternsOnePositionResized)
-                rows.append([f"{datasetStructID}[{xCoord}][{yCoord}]"] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])
+                
             datasetStruct = file.create_dataset(f"{datasetStructID}",data = difPatternsAllPositions, compression="gzip")
             datasetStruct[:] = difPatternsAllPositions
-    return rows
-                
+    return rows            
 
 def createTopLine(csvFilePath):
     with open(csvFilePath, 'w+', newline='') as csvfile:
