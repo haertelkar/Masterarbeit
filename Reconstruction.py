@@ -5,11 +5,16 @@ import struct
 from abtem.reconstruct import MultislicePtychographicOperator, RegularizedPtychographicOperator
 import cv2
 from matplotlib import pyplot as plt
+import torch
+from tqdm import tqdm
 from FullPixelGridML.SimulateTilesOneFile import generateDiffractionArray
 import numpy as np
 from ase.io import write
 from ase.visualize.plot import plot_atoms
 from abtem.measure import Measurement
+from datasets import ptychographicDataLightning
+from torch import nn
+from lightningTrain import loadModel, lightnModelClass
 
 def replace_line_in_file(file_path, line_number, text):
 
@@ -118,7 +123,6 @@ def writeParamsCNF(ScanX,ScanY, beamPositions, diameterBFD, conv_angle_in_mrad= 
     replace_line_in_file('Params.cnf', 45, f"ScanY:   {ScanY}     #Number of steps in Y-direction")
     replace_line_in_file('Params.cnf', 46, f"batchSize: {min(ScanX,ScanY)}  #Number of CBEDs that are processed in parallel")
 
-
 energy = 60e3
 conv_angle_in_mrad = 33
 
@@ -136,7 +140,10 @@ for i in range(measurementArray.shape[0]):
         measurementArray[i,j,:,:] = measurement_thick.array[i,j,:,:]
         brightFieldDisk = np.zeros_like(measurement_thick.array[i,j,:,:])
         brightFieldDisk[measurementArray[i,j,:,:] > np.max(measurementArray[i,j,:,:])*0.05] = 1
-        
+
+assert(measurementArray.shape[0] > 11)
+assert(measurementArray.shape[1] > 11) 
+
         #measurementArray[i,j,:,:] = measurementArray[i,j,:,:]/(np.sum(measurementArray[i,j,:,:])+1e-10) 
 bfdArea = np.sum(brightFieldDisk)
 diameterBFD = np.sqrt(bfdArea/np.pi) * 2
@@ -168,13 +175,14 @@ for filename in glob.glob('Potential*.png'):
 
 writeParamsCNF(measurementArray.shape[1],measurementArray.shape[0], realPositions.flatten(), diameterBFD, conv_angle_in_mrad = conv_angle_in_mrad, energy=energy, CBEDDim=CBEDDim)
 size = measurementArray.shape[0] * measurementArray.shape[1] * measurementArray.shape[2] * measurementArray.shape[3]
+measurementArrayToFile = np.copy(measurementArray)
 #Normalize data - required for ROP
-measurementArray /= (np.sum(measurementArray)/(measurementArray.shape[0] * measurementArray.shape[1]))
+measurementArrayToFile /= (np.sum(measurementArrayToFile)/(measurementArrayToFile.shape[0] * measurementArrayToFile.shape[1]))
 #Convert to binary format
-measurementArray = np.ravel(measurementArray)
-measurementArray = struct.pack(size * 'f', *measurementArray)
+measurementArrayToFile = np.ravel(measurementArrayToFile)
+measurementArrayToFile = struct.pack(size * 'f', *measurementArrayToFile)
 file = open("testMeasurement.bin", 'wb')
-file.write(measurementArray)
+file.write(measurementArrayToFile)
 file.close()
 
 # measurementArray.astype('float').flatten().tofile("testMeasurement.bin")
@@ -217,7 +225,54 @@ mspie_objects, mspie_probes, rpie_positions, mspie_sse = multislice_reconstructi
 )
 
 mspie_objects[-1].angle().interpolate(potential_thick.sampling).show()
+
+lightnDataLoader = ptychographicDataLightning("ZernikeNormal", classifier = False, indicesToPredict = None)
+lightnDataLoader.setup()
+model = loadModel(lightnDataLoader.val_dataloader(), "ZernikeNormal")
+
+model = lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("models",f"ZernikeNormal_OneFileAllPosFixNewResults.ckpt"), model = model)
+model.eval()
+
+#initiate Zernike
+from Zernike.ZernikeTransformer import Zernike
+radius = int(CBEDDim/2)
+ZernikeObject = Zernike(radius, numberOfOSAANSIMoments= 10)
+
+def generateGroupOfPatterns(measurementArray):
+    for ij in range((measurementArray.shape[1]-11)*(measurementArray.shape[0]-11)):
+        i = ij//(measurementArray.shape[1]-11)
+        j = ij%(measurementArray.shape[1]-11)
+        difPatternsOnePosition = measurementArray[i:11+i,j:11+j,:,:]
+        yield np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
+
+#ZernikeTransform
+print("generating the zernike moments")
+momentsAllCoords = ZernikeObject.zernikeTransform(fileName = None, images = [generateGroupOfPatterns(measurementArray)], zernikeTotalImages = None, shapeOfMomentsAllCoords= np.array((1, (measurementArray.shape[0]-11)* (measurementArray.shape[1]-11), 11**2)))
+momentsAllCoords = momentsAllCoords[0]
+momentsAllCoords.reshape((measurementArray.shape[0]-11, measurementArray.shape[1]-11, momentsAllCoords.shape[-1]))
+
+# loop over the all positions and apply the model to the data
+Predictions = np.zeros((CBEDDim,CBEDDim))
+for i in tqdm(range(measurementArray.shape[0]-11), desc= "Going through all positions and predicting"):
+    for j in range(measurementArray.shape[1]-11):
+        pred = model(torch.tensor(momentsAllCoords[i,j,:]).float())
+        pred = pred.cpu().numpy()
+        pixelPosition = np.around(np.array((pred[3], pred[6]))/0.2) + np.array((i,j))
+        Predictions[pixelPosition] += 1
+
+# for all elements in the predictions array divide through coordinates
+for x in range(Predictions.shape[0]):
+    for y in range(Predictions.shape[1]):
+        xArea = min(11,x)
+        yArea = min(11,y)
+        Predictions[x,y] = Predictions[x,y]/(xArea*yArea)
+
+Predictions/=np.max(Predictions)
+
 plt.tight_layout()
 plt.savefig("testStructureFullRec.png")
+plt.imshow(Predictions)
+plt.imsave("Predictions.png", Predictions)
+plt.savefig("testStructureFullRec_WithPredictions.png")
 plt.close()
 
