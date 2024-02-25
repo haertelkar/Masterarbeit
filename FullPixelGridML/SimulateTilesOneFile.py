@@ -281,26 +281,26 @@ def createAllXYCoordinates(yMaxCoord, xMaxCoord):
     return [(x,y) for y in np.arange(yMaxCoord) for x in np.arange(xMaxCoord)]
 
 
-def generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPos, yPos):
+def generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPosTile, yPosTile):
     #generates row in labels.csv with relative distances of three closest atoms to the center of the diffraction pattern. Also saves the element predictions.
     
     if len(atomStruct.positions) > 3:
-        atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPos + xRealLength/2, yPos + yRealLength/2)
+        atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPosTile + xRealLength/2, yPosTile + yRealLength/2)
                 
-    xAtomRel = xPositionsAtoms - xPos
-    yAtomRel = yPositionsAtoms - yPos
+    xAtomRel = xPositionsAtoms - xPosTile
+    yAtomRel = yPositionsAtoms - yPosTile
     rows.append([f"{datasetStructID}[{xCoord}][{yCoord}]"] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])
     return rows
 
-def generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPos, yPos):
+def generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPosTile, yPosTile):
     #Generates row in labels.csv with XDIMTILES*YDIMTILES pixels. Each pixel is one if an atom is in the pixel and zero if not.
     pixelGrid = np.zeros((XDIMTILES, YDIMTILES))
-    xPositions, yPositions = findAtomsInTile(xPos, yPos, xRealLength, yRealLength, atomStruct.get_positions())
-    xPositions = (xPositions - xPos) // 0.2
-    yPositions = (yPositions - yPos) // 0.2
+    xPositions, yPositions = findAtomsInTile(xPosTile, yPosTile, xRealLength, yRealLength, atomStruct.get_positions())
+    xPositions = (xPositions - xPosTile) // 0.2
+    yPositions = (yPositions - yPosTile) // 0.2
     pixelGrid[xPositions, yPositions] = 1
     rows.append([f"{datasetStructID}[{xCoord}][{yCoord}]"] + [str(pixel) for pixel in pixelGrid.flatten()])
-
+    return rows
 
 def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, timeStamp, processID = 99999, silence = False):
     rows = []
@@ -333,11 +333,12 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
                 difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
                 difPatternsOnePosition[np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - 15,allTiles - 5))] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
 
-                xPos = xCNT * gridSampling[0]
-                yPos = yCNT * gridSampling[1]
+                xPosTile = xCNT * gridSampling[0]
+                yPosTile = yCNT * gridSampling[1]
 
-                rows = generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPos, yPos)
-                
+                #rows = generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPosTile, yPosTile)
+                rows = generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPosTile, yPosTile)
+
                 difPatternsOnePositionResized = []
 
                 for cnt, difPattern in enumerate(difPatternsOnePosition):
