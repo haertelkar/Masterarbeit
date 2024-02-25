@@ -20,10 +20,14 @@ class Zernike(object):
                     continue
                 self.resultVectorLength += 1
 
-    def zernikeTransform(self, fileName, images, zernikeTotalImages):
-        shapeOfZernikeMoments = list(np.shape(images))[:-2]
-        shapeOfZernikeMoments[-1] = self.resultVectorLength * shapeOfZernikeMoments[-1]
-        momentsAllCoords = np.zeros(shapeOfZernikeMoments)
+    def zernikeTransform(self, fileName, images, zernikeTotalImages, shapeOfMomentsAllCoords = None):
+        if shapeOfMomentsAllCoords is None: 
+            shapeOfZernikeMoments = list(np.shape(images))[:-2]
+            shapeOfZernikeMoments[-1] = self.resultVectorLength * shapeOfZernikeMoments[-1]
+            momentsAllCoords = np.zeros(shapeOfZernikeMoments)
+        else:
+            shapeOfMomentsAllCoords[-1] = self.resultVectorLength * shapeOfMomentsAllCoords[-1]
+            momentsAllCoords = np.zeros(shapeOfMomentsAllCoords)
         for xCNT, lineOfGroupsOfPatterns in enumerate(images): #X Coord
             for yCNT, groupOfPatterns in enumerate(lineOfGroupsOfPatterns): #Y Coord
                 moments = []
@@ -42,7 +46,11 @@ class Zernike(object):
                 momentsAllCoords[xCNT,yCNT] = moments
 
         
-        zernikeTotalImages.create_dataset(fileName, data = momentsAllCoords, compression="gzip")
+        if fileName is not None:
+            zernikeTotalImages.create_dataset(fileName, data = momentsAllCoords, compression="gzip")
+        else:
+            return momentsAllCoords
+        
     def calculateZernikeWeights(self, basis, image):
         #normFactor = np.pi #not used otherwise the weights are very small
         weights = np.sum(basis * image[None,:] * self.dx * self.dy , axis = (1,2))

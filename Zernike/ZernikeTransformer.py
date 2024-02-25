@@ -65,7 +65,7 @@ def readProgressAcrossAllRuns(path:str):
     return fileNamesDone
 
 
-def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMoments = 10, leave = True): #radius = 15 & noOfMoment = 10 tested works, noOfMoment = 40 optimal performance
+def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMoments = 10, leave = True): #radius set as image radius & noOfMoment = 10 tested works, noOfMoment = 40 optimal performance
     oldDir = os.getcwd() 
     os.chdir(pathToZernikeFolder)
     ZernikeObject = None
@@ -105,7 +105,7 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
             for cnt, fileName in enumerate(tqdm(imageFileNames, desc= f"Going through files in measurements_{testOrTrain}", total = totalNumberOfFiles, initial=len(fileNamesDone), leave = leave, disable = (rank != 0))):
                 if cnt%worldsize != rank:
                     continue
-                tqdm.write(f"rank: {rank}\nfileName: {fileName} \nram usage: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss}")
+                #tqdm.write(f"rank: {rank}\nfileName: {fileName} \nram usage: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss}")
                 with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
                     images = np.array(totalImages[fileName])
                 ZernikeObject.zernikeTransform(fileName, images, zernikeTotalImages)
