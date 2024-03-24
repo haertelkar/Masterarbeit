@@ -33,7 +33,9 @@ def combineLabelsAndCSV(workingDir):
                         filesToIgnore.append(file)
                     except Exception as e:
                         print(f"Problem in {file}")
-                        raise Exception(e)
+                        filesToIgnore.append(file)
+                        print(e)
+                        print("ignored for now")
 
         
                 
