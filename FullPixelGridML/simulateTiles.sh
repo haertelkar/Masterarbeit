@@ -2,7 +2,7 @@
 
 #Submit this script with: sbatch thefilename
 
-#SBATCH --time=30:00:00   # walltime
+#SBATCH --time=48:00:00   # walltime
 #SBATCH --ntasks=20   # number of processor cores (i.e. tasks)
 #SBATCH --nodes=10   # number of nodes
 #SBATCH -J "tileSimulation"   # job name
@@ -14,7 +14,7 @@
 
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
 for i in {1..20}; do
-    srun -N 1 -n 1 python3 SimulateTilesOneFile.py -it 100 -id $i$RANDOM &
+    srun -N 1 -n 1 python3 SimulateTilesOneFile.py -it 50 -id $i$RANDOM &
 done
 wait
 echo 'finished tileSimulate.sh'
