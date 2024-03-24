@@ -24,6 +24,25 @@ class znn(Module):
         self.fc4 = Linear(in_features=4000, out_features=1000)
 
         self.fc5 = Linear(in_features=1000, out_features=outFeatures)
+
+        # self.fc1 = Linear(in_features=inFeatures, out_features=200)
+        # self.relu = ReLU()
+
+        # self.fc15 = Linear(in_features=200, out_features=400)
+
+
+        # self.fc2 = Linear(in_features=400, out_features=800)
+
+
+        # self.fcmiddle = Linear(in_features=800, out_features=800)
+
+
+        # self.fc3 = Linear(in_features=800, out_features=400)
+
+
+        # self.fc4 = Linear(in_features=400, out_features=100)
+
+        # self.fc5 = Linear(in_features=100, out_features=outFeatures)
         
     def forward(self, x):
         x = self.fc1(x)

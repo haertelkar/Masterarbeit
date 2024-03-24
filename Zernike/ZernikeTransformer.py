@@ -65,7 +65,7 @@ def readProgressAcrossAllRuns(path:str):
     return fileNamesDone
 
 
-def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMoments = 10, leave = True): #radius set as image radius & noOfMoment = 10 tested works, noOfMoment = 40 optimal performance
+def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMoments = 10, leave = True): #radius set below & noOfMoment = 10 tested works, noOfMoment = 40 optimal performance
     oldDir = os.getcwd() 
     os.chdir(pathToZernikeFolder)
     ZernikeObject = None
@@ -85,10 +85,9 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
                     for cnt, row in enumerate(Reader):
                         if cnt == 0: continue #skips the header line 
                         fileNameWithCoords = row[0]
-                        _, _, fileName = seperateFileNameAndCoords(fileNameWithCoords)
-                        imageFileNames.add(fileName)
+                        _, _, imageFileName = seperateFileNameAndCoords(fileNameWithCoords)
+                        imageFileNames.add(imageFileName)
 
-            if rank == 0: 
                 shutil.copy(os.path.join(imgPath, "labels.csv"), os.path.join(f"measurements_{testOrTrain}", "labels.csv"))
                 imageFileNames = imageFileNames.difference(fileNamesDone)
                 imageFileNames = list(imageFileNames)
@@ -98,9 +97,11 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
             totalNumberOfFiles = len(imageFileNames)
             with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
                 randomFileName = imageFileNames[0]
-                imageDim = np.array(totalImages[randomFileName]).shape[2] #this image always exists so it is easy to just use it
+                randomImage = np.array(totalImages[randomFileName])[0,0] #this image always exists so it is easy to just use it
+                imageDim = randomImage.shape[0] 
             if ZernikeObject is None:
-                radius = int(imageDim/2)
+                diameterBFD = calc_diameter_bfd(randomImage)
+                radius = diameterBFD//2+1
                 ZernikeObject = Zernike(radius, noOfMoments)
             for cnt, fileName in enumerate(tqdm(imageFileNames, desc= f"Going through files in measurements_{testOrTrain}", total = totalNumberOfFiles, initial=len(fileNamesDone), leave = leave, disable = (rank != 0))):
                 if cnt%worldsize != rank:
@@ -114,8 +115,16 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 15, noOfMo
                 with open(os.path.join(f"measurements_{testOrTrain}",zernikeProgressFileName), "a+") as progressFile:
                     progressFile.write(f"{fileName}\n")
 
-
     os.chdir(oldDir)
+    comm.barrier()
+    print("Finished Zernike Transformations.")
+
+def calc_diameter_bfd(image):
+    brightFieldDisk = np.zeros_like(image)
+    brightFieldDisk[image > np.max(image)*0.05] = 1
+    bfdArea = np.sum(brightFieldDisk)
+    diameterBFD = np.sqrt(bfdArea/np.pi) * 2
+    return diameterBFD
 
 if __name__ == "__main__":
     zernikeTransformation()

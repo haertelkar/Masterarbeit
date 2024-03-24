@@ -4,8 +4,8 @@ import matplotlib
 matplotlib.use('Agg')
 
 ###Specify file Dimension and path
-Dimension = 200
-path = 'PotentialReal140.bin'
+Dimension = 400
+path = 'PotentialReal200.bin'
 ###Open file
 data = open(path, 'rb').read()
 ###Generate 2D array
