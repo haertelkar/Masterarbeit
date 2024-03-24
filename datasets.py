@@ -132,7 +132,7 @@ class ptychographicData(Dataset):
 	def createScaleAndShift(self, scalingFactors, shift):
 		dontShift = []
 		for index in rowsIndexToHeader.keys():
-			if "element" in rowsIndexToHeader[index]: #don't scale elements
+			if "element" or "pixel" in rowsIndexToHeader[index]: #don't scale elements
 				dontShift.append(index)
 
 		if self.classifier:
