@@ -20,12 +20,18 @@ from deepspeed.ops.adam import DeepSpeedCPUAdam
 from torch import nn
 from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.plugins.environments import SLURMEnvironment as SLURMEnvironment
+from lightning.pytorch.callbacks import ModelCheckpoint
+
+
 
 faulthandler.register(signal.SIGUSR1.value)
 
 
 def getMPIWorldSize():
-	return int(os.environ['SLURM_NNODES'])	
+	try:
+		return int(os.environ['SLURM_NNODES'])
+	except KeyError: #if not on a cluster
+		return 	1
 
 class lightnModelClass(pl.LightningModule):
 	def __init__(self, model, lr = getMPIWorldSize() * 4e-4):
@@ -40,14 +46,18 @@ class lightnModelClass(pl.LightningModule):
 		# training_step defines the train loop.
 		x, y = batch
 		y_hat = self.model(x)
-		loss = F.mse_loss(y_hat, y)
+		loss = self.lossFct(y_hat, y)
 		return loss
 	
+	def lossFct(self, y_hat, y):
+		
+		return F.mse_loss(y_hat, y)
+
 	def validation_step(self, batch, batch_idx):
 		# training_step defines the train loop.
 		x, y = batch
 		y_hat = self.model(x)
-		loss = F.mse_loss(y_hat, y)
+		loss = self.lossFct(y_hat, y)
 		self.log("val_loss", loss, sync_dist=True)
 		return loss
 
@@ -65,45 +75,50 @@ class lightnModelClass(pl.LightningModule):
 		test_loss = F.mse_loss(y_hat, y)
 		self.log("test_loss", test_loss)
 
-def loadModel(trainDataLoader, modelName) -> nn.Module:
+def loadModel(trainDataLoader = None, modelName = "ZernikeNormal", numChannels = 0, numLabels = 0) -> nn.Module:
 	# first element to access dimensions
-	trainFeatures, trainLabels = next(iter(trainDataLoader))
-	numChannels = trainFeatures.shape[1]		
+	if numChannels <= 0 and numLabels <= 0: 
+		trainFeatures, trainLabels = next(iter(trainDataLoader))
+		#first dim is batch size
+		numChannels = trainFeatures.shape[1]		
+		numLabels = trainLabels.shape[1]
+	elif numChannels <= 0 or numLabels <= 0:
+		raise Exception("Either numChannels or numLabels is not set correctly")
 
 	if modelName == "FullPixelGridML":
 		from FullPixelGridML.cnn import cnn
 		print("[INFO] initializing the cnn model...")
 		model = cnn(
 			numChannels=numChannels,
-			classes=len(trainLabels[0]))
+			classes=numLabels)
 		
 	elif modelName == "unet":
 		from FullPixelGridML.unet import unet
 		print("[INFO] initializing the unet model...")
 		model = unet(
 			numChannels=numChannels,
-			classes=len(trainLabels[0]))
+			classes=numLabels)
 
 	elif modelName == "ZernikeBottleneck":
 		from Zernike.znnBottleneck import znnBottleneck
 		print("[INFO] initializing the znnBottleneck model...")
 		model = znnBottleneck(
-			inFeatures = len(trainFeatures[0]),
-			outFeatures=len(trainLabels[0]))
+			inFeatures = numChannels,
+			outFeatures=numLabels)
 
 	elif modelName == "ZernikeNormal":
 		from Zernike.znn import znn
 		print("[INFO] initializing the znn model...")
 		model = znn(
-			inFeatures = len(trainFeatures[0]),
-			outFeatures=len(trainLabels[0]))
+			inFeatures = numChannels,
+			outFeatures=numLabels)
 		
 	elif modelName == "ZernikeComplex":
 		from Zernike.znnMoreComplex import znn
 		print("[INFO] initializing the znnComplex model...")
 		model = znn(
 			inFeatures = len(trainFeatures[0]),
-			outFeatures=len(trainLabels[0]))
+			outFeatures=numLabels)
 		
 	else:
 		raise Exception(f"{modelName} is not a known model")
@@ -141,6 +156,7 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 	
 
 def main(epochs, version, classifier, indicesToPredict, modelString):
+	print(f"Training model version {version} for {epochs} epochs.")
 	world_size = getMPIWorldSize()
 	numberOfModels = 0
 
@@ -160,14 +176,15 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 		else:
 			print("loading from checkpoint")
 			checkPointExists = True
-		trainer = pl.Trainer(plugins=[SLURMEnvironment(requeue_signal=signal.SIGHUP)],logger=TensorBoardLogger("tb_logs", name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=[early_stop_callback, swa], default_root_dir=chkpPath)
+		checkpoint_callback = ModelCheckpoint(dirpath=chkpPath, save_top_k=2, monitor="val_loss")
+		trainer = pl.Trainer(plugins=[SLURMEnvironment(requeue_signal=signal.SIGHUP)],logger=TensorBoardLogger("tb_logs", name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=[early_stop_callback, swa, checkpoint_callback])
 		if checkPointExists:
 			trainer.fit(lightnModel, datamodule = lightnDataLoader, ckpt_path="last")
 		else:
 			#Create a Tuner
 			tuner = Tuner(trainer)
 			# Auto-scale batch size by growing it exponentially
-			if world_size == 1: tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader) 
+			if world_size == 1: tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, max_trials= 19) 
 			# finds learning rate automatically
 			tuner.lr_find(lightnModel, datamodule = lightnDataLoader, max_lr = 1e-2, early_stop_threshold = 4)
 			trainer.fit(lightnModel, datamodule = lightnDataLoader)
