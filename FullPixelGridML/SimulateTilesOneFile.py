@@ -33,6 +33,7 @@ import signal
 from itertools import combinations
 import h5py
 from ase.build import nanotube
+from skimage.measure import block_reduce
 faulthandler.register(signal.SIGUSR1.value)
 # from hanging_threads import start_monitoring
 # monitoring_thread = start_monitoring(seconds_frozen=60, test_interval=100)
@@ -194,7 +195,7 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Tuple[str, 
     """
 
     structureFunctions = {
-        "graphene" : grapheneC, 
+        #"graphene" : grapheneC, 
         "MoS2" : MoS2,
         "Si" : Si,
         "GaAs" : GaAs,
@@ -219,31 +220,6 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Tuple[str, 
         #tqdm.write(nameStruct)
         struct = structureFunctions.get(specificStructure, StructureUnknown)(**kwargs)
         return nameStruct, struct 
-
-
-
-@njit
-def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:float, yPos:float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    Distances = (atomPositions - np.expand_dims(np.array([xPos, yPos, 0]),0))[:,0:2]
-    Distances = Distances[:,0] + Distances[:,1] * 1j
-    DistanceSortedIndices = np.absolute(Distances).argsort() 
-
-    # DistancesSqu = np.array(Distances)**2
-    # DistanceSortedIndices = DistancesSqu.sum(axis=1).argsort()
-
-    while len(DistanceSortedIndices) < 3: #if less than three atoms, just append the closest one again
-        DistanceSortedIndices = np.concatenate((DistanceSortedIndices,DistanceSortedIndices))
-    
-    atomNumbers = atomicNumbers[DistanceSortedIndices[:3]]
-    xPositions, yPositions = atomPositions[DistanceSortedIndices[:3]].transpose()[:2]
-    return atomNumbers, xPositions, yPositions
-
-@njit
-def findAtomsInTile(xPos:float, yPos:float, xRealLength:float, yRealLength:float, atomPositions:np.ndarray):
-    xAtomPositions, yAtomPositions, _ = atomPositions.transpose()
-    atomPosInside = atomPositions[(xPos <= xAtomPositions) * (xAtomPositions <= xPos + xRealLength) * (yPos <= yAtomPositions) * (yAtomPositions <= yPos + yRealLength)]
-    xPositions, yPositions = atomPosInside.transpose()[:2]
-    return xPositions, yPositions
 
 def generateDiffractionArray(conv_angle = 33, energy = 60e3, structure = "random", pbar = False, start = (0,0), end = (-1,-1)):
 
@@ -273,46 +249,72 @@ def generateDiffractionArray(conv_angle = 33, energy = 60e3, structure = "random
 
         plt.imsave("difPattern.png", measurement_thick.array[0,0])
         #TODO: add noise
-        #TODO: give angle, conv_angle, energy, real pixelsize to ai
+        #We dont give angle, conv_angle, energy, real pixelsize to ai because its the same for all training data. Can be done in future
 
         return nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick
+
+@njit
+def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:float, yPos:float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    Distances = (atomPositions - np.expand_dims(np.array([xPos, yPos, 0]),0))[:,0:2]
+    Distances = Distances[:,0] + Distances[:,1] * 1j
+    DistanceSortedIndices = np.absolute(Distances).argsort() 
+
+    # DistancesSqu = np.array(Distances)**2
+    # DistanceSortedIndices = DistancesSqu.sum(axis=1).argsort()
+
+    while len(DistanceSortedIndices) < 3: #if less than three atoms, just append the closest one again
+        DistanceSortedIndices = np.concatenate((DistanceSortedIndices,DistanceSortedIndices))
+    
+    atomNumbers = atomicNumbers[DistanceSortedIndices[:3]]
+    xPositions, yPositions = atomPositions[DistanceSortedIndices[:3]].transpose()[:2]
+    return atomNumbers, xPositions, yPositions
+
+@njit
+def findAtomsInTile(xPosTile:float, yPosTile:float, xRealLength:float, yRealLength:float, atomPositions:np.ndarray):
+    atomPositionsCopy = np.copy(atomPositions)
+    xAtomPositions, yAtomPositions, _ = atomPositionsCopy.transpose()
+    atomPosInside = atomPositions[(xPosTile <= xAtomPositions) * (xAtomPositions < xPosTile + xRealLength) * (yPosTile <= yAtomPositions) * (yAtomPositions < yPosTile + yRealLength)]
+    xPositions, yPositions, _ = atomPosInside.transpose()
+    return xPositions, yPositions
 
 def createAllXYCoordinates(yMaxCoord, xMaxCoord):
     return [(x,y) for y in np.arange(yMaxCoord) for x in np.arange(xMaxCoord)]
 
 
-def generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPosTile, yPosTile):
+def generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile):
     #generates row in labels.csv with relative distances of three closest atoms to the center of the diffraction pattern. Also saves the element predictions.
-    
-    if len(atomStruct.positions) > 3:
-        atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPosTile + xRealLength/2, yPosTile + yRealLength/2)
+    atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPosTile + xRealLength/2, yPosTile + yRealLength/2)
                 
     xAtomRel = xPositionsAtoms - xPosTile
     yAtomRel = yPositionsAtoms - yPosTile
-    rows.append([f"{datasetStructID}[{xCoord}][{yCoord}]"] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])
+    rows.append([f"{datasetStructID}[{xSteps}][{ySteps}]"] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])
     return rows
 
-def generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPosTile, yPosTile):
+def generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPosTile, yPosTile, maxPooling = 1):
     #Generates row in labels.csv with XDIMTILES*YDIMTILES pixels. Each pixel is one if an atom is in the pixel and zero if not.
-    pixelGrid = np.zeros((XDIMTILES, YDIMTILES))
+    pixelGrid = np.zeros((XDIMTILES, YDIMTILES), dtype = int)
     xPositions, yPositions = findAtomsInTile(xPosTile, yPosTile, xRealLength, yRealLength, atomStruct.get_positions())
-    xPositions = (xPositions - xPosTile) // 0.2
-    yPositions = (yPositions - yPosTile) // 0.2
-    pixelGrid[xPositions, yPositions] = 1
+    #integer division is good enough. Othewise we would have to use the real pixel size in findAtomsInTile to get the correct boundaries
+    xPositions = (xPositions - xPosTile) / (xRealLength/XDIMTILES)
+    yPositions = (yPositions - yPosTile) / (yRealLength/YDIMTILES)
+    xPositions = xPositions.astype(int)
+    yPositions = yPositions.astype(int)
+    #print the maxima of the x and y positions
+    for x,y in zip(xPositions, yPositions):
+        pixelGrid[x, y] = 1
+    if maxPooling > 1:
+        pixelGrid = block_reduce(pixelGrid, maxPooling, np.max)
     rows.append([f"{datasetStructID}[{xCoord}][{yCoord}]"] + [str(pixel) for pixel in pixelGrid.flatten()])
     return rows
 
-def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, timeStamp, processID = 99999, silence = False):
+def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, timeStamp, processID = 99999, silence = False, maxPooling = 1):
     rows = []
-    xStepSize = (XDIMTILES - 1)//2
-    yStepSize = (YDIMTILES - 1)//2
+    xStepSize = (XDIMTILES)//2
+    yStepSize = (YDIMTILES)//2
     allTiles = XDIMTILES * YDIMTILES
     with h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w') as file:
         for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick, _) in enumerate((generateDiffractionArray() for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))):
             datasetStructID = f"{cnt}{processID}{timeStamp}" 
-            atomNumbers, xPositionsAtoms, yPositionsAtoms = [],None,None
-            if len(atomStruct.positions) <= 3:
-                atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(),atomStruct.get_atomic_numbers(), 0, 0)
         
             xRealLength = XDIMTILES * gridSampling[0]
             yRealLength = YDIMTILES * gridSampling[1]
@@ -321,41 +323,48 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
             xMaxCoord = (xMaxCNT-1)//xStepSize - 2
             yMaxCoord = (yMaxCNT-1)//yStepSize - 2
 
-            if xMaxCoord < 1 or yMaxCoord < 1:
+            if xMaxCoord < 0 or yMaxCoord < 0:
                 raise Exception(f"xMaxCoord : {xMaxCoord}, yMaxCoord : {yMaxCoord}, struct {nameStruct}, np.shape(measurement_thick.array)[:2] : {np.shape(measurement_thick.array)[:2]}") # type: ignore
 
-            difPatternsAllPositions = np.zeros((xMaxCoord, yMaxCoord, 121, 50, 50))
-            for xCoord, yCoord in tqdm(createAllXYCoordinates(yMaxCoord,xMaxCoord), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}", total= len(measurement_thick.array), disable=silence): # type: ignore
-                xCNT = xStepSize * xCoord
-                yCNT = yStepSize * yCoord
+            difPatternsAllPositions = np.zeros((xMaxCoord, yMaxCoord, XDIMTILES*YDIMTILES, 50, 50))
+            for xSteps, ySteps in tqdm(createAllXYCoordinates(yMaxCoord,xMaxCoord), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}. Applying max pooling with factor {maxPooling}.", total= len(measurement_thick.array), disable=silence): # type: ignore
+                xCNT = xStepSize * xSteps
+                yCNT = yStepSize * ySteps
 
-                difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + 2*xStepSize + 1, yCNT :yCNT + 2*yStepSize + 1].copy() # type: ignore
+                difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + 2*xStepSize, yCNT :yCNT + 2*yStepSize].copy() # type: ignore
                 difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
-                difPatternsOnePosition[np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - 15,allTiles - 5))] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
+                randomIndicesToTurnToZeros = np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - int(0.4*allTiles),allTiles - int(0.05*allTiles)), replace = False)
+                difPatternsOnePosition[randomIndicesToTurnToZeros] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
 
                 xPosTile = xCNT * gridSampling[0]
                 yPosTile = yCNT * gridSampling[1]
 
-                #rows = generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPosTile, yPosTile)
-                rows = generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPosTile, yPosTile)
+                rows = generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile)
+                #rows = generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile, maxPooling = maxPooling)
 
                 difPatternsOnePositionResized = []
 
                 for cnt, difPattern in enumerate(difPatternsOnePosition):
                     difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR))  # type: ignore
-                difPatternsAllPositions[xCoord][yCoord] = np.array(difPatternsOnePositionResized)
+                difPatternsAllPositions[xSteps][ySteps] = np.array(difPatternsOnePositionResized)
                 
             datasetStruct = file.create_dataset(f"{datasetStructID}",data = difPatternsAllPositions, compression="gzip")
             datasetStruct[:] = difPatternsAllPositions
     return rows            
 
-def createTopLine(csvFilePath):
+def createTopLineRelative(csvFilePath):
     with open(csvFilePath, 'w+', newline='') as csvfile:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         Writer.writerow(["fileName", "element1", "element2", "element3", "xAtomRel1", "xAtomRel2", "xAtomRel3", "yAtomRel1", "yAtomRel2", "yAtomRel3"])
         Writer = None
 
-def writeAllRows(rows, trainOrTest, processID = "", createTopRow = None, timeStamp = 0):
+def createTopLinePixels(csvFilePath, XDIMTILES, YDIMTILES, maxPooling = 1):
+    with open(csvFilePath, 'w+', newline='') as csvfile:
+        Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        Writer.writerow(["fileName"]+ [f"pixelx{x}y{y}" for y in np.arange(XDIMTILES//maxPooling) for x in np.arange(YDIMTILES//maxPooling)])
+        Writer = None    
+
+def writeAllRows(rows, trainOrTest, XDIMTILES, YDIMTILES, processID = "", createTopRow = None, timeStamp = 0, maxPooling = 1):
     """
     Writes the given rows to a CSV file.
 
@@ -371,7 +380,8 @@ def writeAllRows(rows, trainOrTest, processID = "", createTopRow = None, timeSta
     """
     csvFilePath = os.path.join(f'measurements_{trainOrTest}',f'labels_{processID}_{timeStamp}.csv')
     if createTopRow is None: createTopRow = not os.path.exists(csvFilePath)
-    if createTopRow: createTopLine(csvFilePath)
+    if createTopRow: createTopLineRelative(csvFilePath)
+    #if createTopRow: createTopLinePixels(csvFilePath, XDIMTILES, YDIMTILES, maxPooling = maxPooling)
     with open(csvFilePath, 'a', newline='') as csvfile:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         for row in rows:
@@ -390,8 +400,10 @@ if __name__ == "__main__":
     args = vars(ap.parse_args())
 
 
-    XDIMTILES = 11
-    YDIMTILES = 11
+    XDIMTILES = 12
+    YDIMTILES = 12
+    maxPooling = 3
+    assert(XDIMTILES % maxPooling == 0)
     testDivider = {"train":1, "test":0.25}
     for i in tqdm(range(max(args["iterations"],1)), disable=True):
         for trainOrTest in ["train", "test"]:
@@ -399,8 +411,8 @@ if __name__ == "__main__":
                 continue
             print(f"PID {os.getpid()} on step {i+1} at {datetime.datetime.now()}")
             timeStamp = int(str(time()).replace('.', ''))
-            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, processID=args["id"], silence=True)
-            writeAllRows(rows=rows, trainOrTest=trainOrTest,processID=args["id"], timeStamp = timeStamp)
+            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, processID=args["id"], silence=True, maxPooling = maxPooling)
+            writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], timeStamp = timeStamp, maxPooling=maxPooling)
   
     print(f"PID {os.getpid()} done.")
 
