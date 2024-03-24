@@ -15,6 +15,9 @@ from abtem.measure import Measurement
 from datasets import ptychographicDataLightning
 from torch import nn
 from lightningTrain import loadModel, lightnModelClass
+from Zernike.ZernikeTransformer import Zernike, calc_diameter_bfd
+
+DIMTILES = 12
 
 def replace_line_in_file(file_path, line_number, text):
 
@@ -138,15 +141,12 @@ for i in range(measurementArray.shape[0]):
 for i in range(measurementArray.shape[0]):
     for j in range(measurementArray.shape[1]):
         measurementArray[i,j,:,:] = measurement_thick.array[i,j,:,:]
-        brightFieldDisk = np.zeros_like(measurement_thick.array[i,j,:,:])
-        brightFieldDisk[measurementArray[i,j,:,:] > np.max(measurementArray[i,j,:,:])*0.05] = 1
 
-assert(measurementArray.shape[0] > 11)
-assert(measurementArray.shape[1] > 11) 
+assert(measurementArray.shape[0] > DIMTILES)
+assert(measurementArray.shape[1] > DIMTILES) 
 
         #measurementArray[i,j,:,:] = measurementArray[i,j,:,:]/(np.sum(measurementArray[i,j,:,:])+1e-10) 
-bfdArea = np.sum(brightFieldDisk)
-diameterBFD = np.sqrt(bfdArea/np.pi) * 2
+diameterBFD = calc_diameter_bfd(measurementArray[0,0,:,:])
 # leftEdge = CBEDDim
 # rightEdge = 0
 # for row in brightFieldDisk:
@@ -226,48 +226,73 @@ mspie_objects, mspie_probes, rpie_positions, mspie_sse = multislice_reconstructi
 
 mspie_objects[-1].angle().interpolate(potential_thick.sampling).show()
 
-lightnDataLoader = ptychographicDataLightning("ZernikeNormal", classifier = False, indicesToPredict = None)
-lightnDataLoader.setup()
-model = loadModel(lightnDataLoader.val_dataloader(), "ZernikeNormal")
+print("Calculating the number of Zernike moments:")
+resultVectorLength = 0 
+numberOfOSAANSIMoments = 10	
+for n in range(numberOfOSAANSIMoments + 1):
+    for mShifted in range(2*n+1):
+        m = mShifted - n
+        if (n-m)%2 != 0:
+            continue
+        resultVectorLength += 1
 
-model = lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("models",f"ZernikeNormal_OneFileAllPosFixNewResults.ckpt"), model = model)
+print("load model")
+model = loadModel(modelName = "ZernikeNormal", numChannels=resultVectorLength * DIMTILES**2, numLabels = (DIMTILES**2)//9)
+
+model = lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("models",f"ZernikeNormal_PixelGridPooling3.ckpt"), model = model)
 model.eval()
 
 #initiate Zernike
-from Zernike.ZernikeTransformer import Zernike
-radius = int(CBEDDim/2)
+radius = diameterBFD//2 + 1
 ZernikeObject = Zernike(radius, numberOfOSAANSIMoments= 10)
 
 def generateGroupOfPatterns(measurementArray):
-    for ij in range((measurementArray.shape[1]-11)*(measurementArray.shape[0]-11)):
-        i = ij//(measurementArray.shape[1]-11)
-        j = ij%(measurementArray.shape[1]-11)
-        difPatternsOnePosition = measurementArray[i:11+i,j:11+j,:,:]
+    for ij in range((measurementArray.shape[1]-DIMTILES)*(measurementArray.shape[0]-DIMTILES)):
+        i = ij//(measurementArray.shape[1]-DIMTILES)
+        j = ij%(measurementArray.shape[1]-DIMTILES)
+        difPatternsOnePosition = np.copy(measurementArray[i:DIMTILES+i,j:DIMTILES+j,:,:])
         yield np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
+
+mASomeZeroedOut = np.copy(measurementArray)
+mASomeZeroedOut = np.reshape(mASomeZeroedOut, (-1,mASomeZeroedOut.shape[2],mASomeZeroedOut.shape[3]))
+mASomeZeroedOut[np.random.choice(mASomeZeroedOut.shape[0], int(0*mASomeZeroedOut.shape[0]), replace = False),:,:] = np.zeros((mASomeZeroedOut.shape[-2],mASomeZeroedOut.shape[-1]))
+mASomeZeroedOut = np.reshape(mASomeZeroedOut, (measurementArray.shape[0],measurementArray.shape[1],measurementArray.shape[2],measurementArray.shape[3]))
 
 #ZernikeTransform
 print("generating the zernike moments")
-momentsAllCoords = ZernikeObject.zernikeTransform(fileName = None, images = [generateGroupOfPatterns(measurementArray)], zernikeTotalImages = None, shapeOfMomentsAllCoords= np.array((1, (measurementArray.shape[0]-11)* (measurementArray.shape[1]-11), 11**2)))
+momentsAllCoords = ZernikeObject.zernikeTransform(fileName = None, images = [generateGroupOfPatterns(mASomeZeroedOut)], zernikeTotalImages = None, shapeOfMomentsAllCoords= np.array((1, (measurementArray.shape[0]-DIMTILES)* (measurementArray.shape[1]-DIMTILES), DIMTILES**2)))
 momentsAllCoords = momentsAllCoords[0]
-momentsAllCoords.reshape((measurementArray.shape[0]-11, measurementArray.shape[1]-11, momentsAllCoords.shape[-1]))
+momentsAllCoords = np.reshape(momentsAllCoords,(measurementArray.shape[0]-DIMTILES, measurementArray.shape[1]-DIMTILES, momentsAllCoords.shape[-1]))
+poolingFactor = int(3)
 
 # loop over the all positions and apply the model to the data
-Predictions = np.zeros((CBEDDim,CBEDDim))
-for i in tqdm(range(measurementArray.shape[0]-11), desc= "Going through all positions and predicting"):
-    for j in range(measurementArray.shape[1]-11):
+Predictions = np.zeros_like(measurementArray)
+for i in tqdm(range(measurementArray.shape[0]-DIMTILES), desc= "Going through all positions and predicting"):
+    for j in range(measurementArray.shape[1]-DIMTILES):
         pred = model(torch.tensor(momentsAllCoords[i,j,:]).float())
-        pred = pred.cpu().numpy()
-        pixelPosition = np.around(np.array((pred[3], pred[6]))/0.2) + np.array((i,j))
-        Predictions[pixelPosition] += 1
+        pred = pred.detach().numpy()
+        # xMostLikely = pred[3]//0.2 + i
+        # yMostLikely = pred[6]//0.2 + j
+        # if xMostLikely < 0 or xMostLikely >= Predictions.shape[0] or yMostLikely < 0 or yMostLikely >= Predictions.shape[1]:
+        #     continue
+        # Predictions[int(xMostLikely),int(yMostLikely)] += 1
+        predExpanded = np.zeros((DIMTILES, DIMTILES))
+        for n in range(poolingFactor):
+            predExpanded[n::poolingFactor,n::poolingFactor] = pred.reshape((DIMTILES//poolingFactor,DIMTILES//poolingFactor))
+        try:
+            Predictions[i:min(i+DIMTILES, Predictions.shape[0]),j:min(j+DIMTILES, Predictions.shape[1])] += predExpanded[:min(DIMTILES, Predictions.shape[0]-i),:min(DIMTILES, Predictions.shape[1]-j)]
+        except Exception as e:
+            print(f"Ignored Error: {e}")
 
 # for all elements in the predictions array divide through coordinates
-for x in range(Predictions.shape[0]):
-    for y in range(Predictions.shape[1]):
-        xArea = min(11,x)
-        yArea = min(11,y)
-        Predictions[x,y] = Predictions[x,y]/(xArea*yArea)
+# for x in range(Predictions.shape[0]):
+#     for y in range(Predictions.shape[1]):
+#         xArea = min(DIMTILES,x+1)
+#         yArea = min(DIMTILES,y+1)
+#         Predictions[x,y] = Predictions[x,y]/(xArea*yArea)
 
 Predictions/=np.max(Predictions)
+
 
 plt.tight_layout()
 plt.savefig("testStructureFullRec.png")
