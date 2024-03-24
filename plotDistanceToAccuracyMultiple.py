@@ -49,11 +49,15 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
         fullRow = np.zeros(18)
         knownHeaders = []
         for row, fileName in zip(table, fileNames):
+            skipFile = False
             if len(row) %2 != 0:
                 skipFile = True
                 break 
             if fullRowIndices == []: #only in the header row
                 for header in row:
+                    if "pixel" in header:
+                        skipFile = True
+                        break
                     index = headerToRowsIndex.get(header, -1) - 1
                     if header not in knownHeaders:
                         fullRowIndices.append(raiseExcep(header,index, file))
@@ -61,6 +65,8 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
                     else:
                         fullRowIndices.append(index + 9) #+9 because the first 9 columns are to be skipped 
                 continue
+            if skipFile:
+                break
             try:
                 fullRow[fullRowIndices] = row
             except ValueError as e:
