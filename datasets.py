@@ -11,7 +11,7 @@ import h5py
 from torch.utils.data import random_split, DataLoader
 
 class ptychographicDataLightning(pl.LightningDataModule):
-	def __init__(self, model_name, batch_size = 16, num_workers = 0, classifier = False, indicesToPredict = None):
+	def __init__(self, model_name, batch_size = 16, num_workers = 40, classifier = False, indicesToPredict = None):
 		super().__init__()
 		self.batch_size = batch_size
 		self.num_workers = num_workers
@@ -66,8 +66,10 @@ class ptychographicDataLightning(pl.LightningDataModule):
 
 class ptychographicData(Dataset):
 	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors = None, shift = None, labelIndicesToPredict = None, classifier = False):
-		self.img_labels = pd.read_csv(annotations_file)
-		self.columns = np.array(list(self.img_labels.columns))
+		img_labels_pd = pd.read_csv(annotations_file)
+		self.image_labels = img_labels_pd[img_labels_pd.columns[1:]].to_numpy('float32')
+		self.image_names = img_labels_pd[img_labels_pd.columns[0]].astype(str)
+		self.columns = np.array(list(img_labels_pd.columns))
 		self.img_dir = img_dir
 		self.transform = transform
 		self.target_transform = target_transform
@@ -77,6 +79,11 @@ class ptychographicData(Dataset):
 		self.scalingFactors = None
 		self.shift = None
 		self.dataPath = os.path.join(self.img_dir, "training_data.hdf5")
+		self.dataset = None
+
+		#removed option to classify
+		#removed option to select labels to predict
+		assert(self.labelIndicesToPredict is None and not self.classifier)
 
 		assert(not(labelIndicesToPredict is 0))
 		if isinstance(labelIndicesToPredict, list):
@@ -84,14 +91,14 @@ class ptychographicData(Dataset):
 		
 		self.createScaleAndShift(scalingFactors = scalingFactors, shift = shift)
 
-		if self.classifier:
-			assert(type(labelIndicesToPredict) != list)
-			self.smallestElem = self.img_labels.iloc[:, labelIndicesToPredict].min()
-			self.numberOfClasses = self.img_labels.iloc[:, labelIndicesToPredict].max() - self.smallestElem + 1
+		# if self.classifier:
+		# 	assert(type(labelIndicesToPredict) != list)
+		# 	self.smallestElem = self.img_labels.iloc[:, labelIndicesToPredict].min()
+		# 	self.numberOfClasses = self.img_labels.iloc[:, labelIndicesToPredict].max() - self.smallestElem + 1
 			
 
 	def __len__(self):
-		file_count = len(self.img_labels)
+		file_count = len(self.image_labels)
 		return file_count
 
 	def __getitem__(self, idx):
@@ -100,31 +107,37 @@ class ptychographicData(Dataset):
 		return imageOrZernikeMoments, label
 	
 	def getLabel(self, idx):
-		if self.classifier:
-			label = np.array(self.img_labels.iloc[idx, self.labelIndicesToPredict]).astype(int)
-			label = self.createOneHotEncodedVector(label)
-		elif self.labelIndicesToPredict is None:
-			label = np.array(self.img_labels.iloc[idx, 1:]).astype('float32') #gets read in as generic objects
-			label = self.scaleDown(label)
-		else:
-			label = np.array(self.img_labels.iloc[idx, self.labelIndicesToPredict]).astype('float32') #gets read in as generic objects
-			label = self.scaleDown(label)
+		# if self.classifier:
+		# 	label = np.array(self.img_labels.iloc[idx, self.labelIndicesToPredict]).astype(int)
+		# 	label = self.createOneHotEncodedVector(label)
+		# elif self.labelIndicesToPredict is None:
+  
+
+		label = self.image_labels[idx] #gets read in as generic objects
+		label = self.scaleDown(label)
+		# label = np.linspace(0,1,144).astype('float32') #for testing
+
+
+		# else:
+		# 	label = np.array(self.img_labels.iloc[idx, self.labelIndicesToPredict]).astype('float32') #gets read in as generic objects
+		# 	label = self.scaleDown(label)
 		if self.target_transform:
 			label = self.target_transform(label)
 		return np.array(label)
 
 	def getImageOrZernike(self, idx):
-		datasetStructIDWithCoords = str(self.img_labels.iloc[idx, 0])
-		datasetStructID, xCoords, yCoords = datasetStructIDWithCoords.split("[")
-		xCoords = int(xCoords[:-1])
-		yCoords = int(yCoords[:-1])
+		datasetStructIDWithCoords = self.image_names[idx]
 		with h5py.File(self.dataPath,'r') as data:
-			imageOrZernikeMoments = np.array(data.get(datasetStructID)).astype('float32')[xCoords,yCoords]		
-		if self.scalerZernike == 1 or len(imageOrZernikeMoments.shape) == 2: #only set once for Zernike
-			self.scalerZernike = np.max(imageOrZernikeMoments)
-		imageOrZernikeMoments /= self.scalerZernike
-		if len(imageOrZernikeMoments.shape) == 2 and (imageOrZernikeMoments.shape[0]%2 or imageOrZernikeMoments.shape[1]%2) and self.classifier:
-			raise Exception("uneven dimension not allowed in unet") #only even dimensions are allowed in unet
+			imageOrZernikeMoments = np.array(data.get(datasetStructIDWithCoords)).astype('float32')
+		# if self.dataset is None:
+		# 	self.dataset = h5py.File(self.dataPath,'r')
+		
+		# imageOrZernikeMoments = np.array(self.dataset.get(datasetStructID)).astype('float32')[xCoords,yCoords]		
+		# if self.scalerZernike == 1 or len(imageOrZernikeMoments.shape) == 2: #only set once for Zernike ALLWAYS TRUE CURRENTLY SO NOT USED
+		# self.scalerZernike = np.max(imageOrZernikeMoments)
+		# imageOrZernikeMoments /= self.scalerZernike
+		# if len(imageOrZernikeMoments.shape) == 2 and (imageOrZernikeMoments.shape[0]%2 or imageOrZernikeMoments.shape[1]%2) and self.classifier:
+		# 	raise Exception("uneven dimension not allowed in unet") #only even dimensions are allowed in unet
 		if self.transform:
 			imageOrZernikeMoments = self.transform(imageOrZernikeMoments) #not scaled here because it has to be datatype uint8 to be scaled automatically
 		return imageOrZernikeMoments
@@ -141,21 +154,21 @@ class ptychographicData(Dataset):
 		if scalingFactors is not None:
 			self.scalingFactors = scalingFactors
 		else:
-			self.scalingFactors = np.array(self.img_labels.iloc[:, 1:].max(axis=0).to_list())
+			self.scalingFactors = np.array(self.image_labels.max(axis=0))
 			#self.scalingFactors[np.array(dontScale)-1] = 1
 			if self.labelIndicesToPredict is not None: self.scalingFactors = self.scalingFactors[np.array(self.labelIndicesToPredict)-1]
 
 		if shift is not None:
 			self.shift = shift 
 		else:
-			self.shift = np.array(self.img_labels.iloc[:, 1:].mean(axis=0).to_list())
+			self.shift = np.array(self.image_labels.mean(axis=0))
 			self.shift[np.array(dontShift)-1] = 0
 			if self.labelIndicesToPredict is not None: self.shift = self.shift[np.array(self.labelIndicesToPredict)-1]
 
-	def createOneHotEncodedVector(self, classIndex):
-		classes = np.zeros(self.numberOfClasses)
-		classes[classIndex - self.smallestElem] = 1
-		return classes
+	# def createOneHotEncodedVector(self, classIndex):
+	# 	classes = np.zeros(self.numberOfClasses)
+	# 	classes[classIndex - self.smallestElem] = 1
+	# 	return classes
 
 	def scaleUp(self, row):
 		row = np.array(row)

@@ -65,7 +65,7 @@ def readProgressAcrossAllRuns(path:str):
     return fileNamesDone
 
 
-def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMoments = 10, leave = True): #radius set below & noOfMoment = 10 tested works, noOfMoment = 40 optimal performance
+def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMoments = 20, leave = True): #radius set below & noOfMoment = 10 tested works, noOfMoment = 40 optimal performance
     oldDir = os.getcwd() 
     os.chdir(pathToZernikeFolder)
     ZernikeObject = None
@@ -84,9 +84,7 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMom
                     Reader = csv.reader(labelsFullPixelGrid, delimiter=',', quotechar='|')
                     for cnt, row in enumerate(Reader):
                         if cnt == 0: continue #skips the header line 
-                        fileNameWithCoords = row[0]
-                        _, _, imageFileName = seperateFileNameAndCoords(fileNameWithCoords)
-                        imageFileNames.add(imageFileName)
+                        imageFileNames.add(row[0])
 
                 shutil.copy(os.path.join(imgPath, "labels.csv"), os.path.join(f"measurements_{testOrTrain}", "labels.csv"))
                 imageFileNames = imageFileNames.difference(fileNamesDone)
@@ -97,8 +95,9 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMom
             totalNumberOfFiles = len(imageFileNames)
             with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
                 randomFileName = imageFileNames[0]
-                randomImage = np.array(totalImages[randomFileName])[0,0] #this image always exists so it is easy to just use it
-                imageDim = randomImage.shape[0] 
+                randomGroupOfPatterns = np.array(totalImages[randomFileName]) #this image always exists so it is easy to just use it
+                imageDim = randomGroupOfPatterns.shape[-1] 
+                randomImage = randomGroupOfPatterns[0]
             if ZernikeObject is None:
                 diameterBFD = calc_diameter_bfd(randomImage)
                 radius = diameterBFD//2+1
@@ -108,9 +107,9 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMom
                     continue
                 #tqdm.write(f"rank: {rank}\nfileName: {fileName} \nram usage: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss}")
                 with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
-                    images = np.array(totalImages[fileName])
-                ZernikeObject.zernikeTransform(fileName, images, zernikeTotalImages)
-                images = None
+                    groupOfPatterns = np.array(totalImages[fileName])
+                ZernikeObject.zernikeTransform(fileName, groupOfPatterns, zernikeTotalImages)
+                groupOfPatterns = None
                 gc.collect()
                 with open(os.path.join(f"measurements_{testOrTrain}",zernikeProgressFileName), "a+") as progressFile:
                     progressFile.write(f"{fileName}\n")

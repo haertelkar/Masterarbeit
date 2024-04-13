@@ -333,23 +333,22 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
 
                 difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + 2*xStepSize, yCNT :yCNT + 2*yStepSize].copy() # type: ignore
                 difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
-                randomIndicesToTurnToZeros = np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - int(0.4*allTiles),allTiles - int(0.05*allTiles)), replace = False)
+                randomIndicesToTurnToZeros = np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - int(0.4*allTiles),allTiles - int(0.4*allTiles)), replace = False)
                 difPatternsOnePosition[randomIndicesToTurnToZeros] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
 
                 xPosTile = xCNT * gridSampling[0]
                 yPosTile = yCNT * gridSampling[1]
 
-                rows = generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile)
-                #rows = generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile, maxPooling = maxPooling)
+                # rows = generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile)
+                rows = generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile, maxPooling = maxPooling)
 
                 difPatternsOnePositionResized = []
 
                 for cnt, difPattern in enumerate(difPatternsOnePosition):
                     difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR))  # type: ignore
                 difPatternsAllPositions[xSteps][ySteps] = np.array(difPatternsOnePositionResized)
-                
-            datasetStruct = file.create_dataset(f"{datasetStructID}",data = difPatternsAllPositions, compression="gzip")
-            datasetStruct[:] = difPatternsAllPositions
+                datasetStruct = file.create_dataset(f"{datasetStructID}[{xSteps}][{ySteps}]",data = difPatternsAllPositions[xSteps][ySteps], compression="gzip")
+            # datasetStruct[:] = difPatternsAllPositions
     return rows            
 
 def createTopLineRelative(csvFilePath):
@@ -380,8 +379,8 @@ def writeAllRows(rows, trainOrTest, XDIMTILES, YDIMTILES, processID = "", create
     """
     csvFilePath = os.path.join(f'measurements_{trainOrTest}',f'labels_{processID}_{timeStamp}.csv')
     if createTopRow is None: createTopRow = not os.path.exists(csvFilePath)
-    if createTopRow: createTopLineRelative(csvFilePath)
-    #if createTopRow: createTopLinePixels(csvFilePath, XDIMTILES, YDIMTILES, maxPooling = maxPooling)
+    # if createTopRow: createTopLineRelative(csvFilePath)
+    if createTopRow: createTopLinePixels(csvFilePath, XDIMTILES, YDIMTILES, maxPooling = maxPooling)
     with open(csvFilePath, 'a', newline='') as csvfile:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         for row in rows:
@@ -410,6 +409,8 @@ if __name__ == "__main__":
             if trainOrTest not in args["trainOrTest"]:
                 continue
             print(f"PID {os.getpid()} on step {i+1} at {datetime.datetime.now()}")
+            with(open(f"progress_{args['id']}.txt", "w")) as file:
+                file.write(f"PID {os.getpid()} on step {i+1} at {datetime.datetime.now()}\n")
             timeStamp = int(str(time()).replace('.', ''))
             rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, processID=args["id"], silence=True, maxPooling = maxPooling)
             writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], timeStamp = timeStamp, maxPooling=maxPooling)

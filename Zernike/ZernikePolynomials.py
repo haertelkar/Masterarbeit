@@ -20,30 +20,60 @@ class Zernike(object):
                     continue
                 self.resultVectorLength += 1
 
-    def zernikeTransform(self, fileName, images, zernikeTotalImages, shapeOfMomentsAllCoords = None):
+    # def zernikeTransformMultiImages(self, fileName, images, zernikeTotalImages, shapeOfMomentsAllCoords = None):
+    #     if shapeOfMomentsAllCoords is None: 
+    #         shapeOfZernikeMoments = list(np.shape(images))[:-2]
+    #         shapeOfZernikeMoments[-1] = self.resultVectorLength * shapeOfZernikeMoments[-1]
+    #         momentsAllCoords = np.zeros(shapeOfZernikeMoments)
+    #     else:
+    #         shapeOfMomentsAllCoords[-1] = self.resultVectorLength * shapeOfMomentsAllCoords[-1]
+    #         momentsAllCoords = np.zeros(shapeOfMomentsAllCoords)
+    #     for xCNT, lineOfGroupsOfPatterns in enumerate(images): #X Coord
+    #         for yCNT, groupOfPatterns in enumerate(lineOfGroupsOfPatterns): #Y Coord
+    #             moments = []
+    #             for im in groupOfPatterns:
+    #                 dim = np.shape(im)[0]
+    #                 if self.dimToBasis.get(dim) is None:
+    #                     basisObject = self.basisObject(self, dim)
+    #                     self.dimToBasis[dim] = basisObject.basis
+    #                 basis = self.dimToBasis[dim]
+    #                 if not np.any(im):
+    #                     #most diffraction patterns are left empty, so this is a good optimization
+    #                     moments.append(np.zeros(self.resultVectorLength))
+    #                 else:
+    #                     moments.append(self.calculateZernikeWeights(basis, im)*1e3) #scaled up so it's more useful
+    #             moments = np.array(moments).flatten()
+    #             momentsAllCoords[xCNT,yCNT] = moments
+
+        
+    #     if fileName is not None:
+    #         zernikeTotalImages.create_dataset(fileName, data = momentsAllCoords, compression="gzip")
+    #     else:
+    #         return momentsAllCoords
+        
+
+    def zernikeTransform(self, fileName, groupOfPatterns, zernikeTotalImages, shapeOfMomentsAllCoords = None):
         if shapeOfMomentsAllCoords is None: 
-            shapeOfZernikeMoments = list(np.shape(images))[:-2]
+            shapeOfZernikeMoments = list(np.shape(groupOfPatterns))[:-2]
             shapeOfZernikeMoments[-1] = self.resultVectorLength * shapeOfZernikeMoments[-1]
             momentsAllCoords = np.zeros(shapeOfZernikeMoments)
         else:
             shapeOfMomentsAllCoords[-1] = self.resultVectorLength * shapeOfMomentsAllCoords[-1]
             momentsAllCoords = np.zeros(shapeOfMomentsAllCoords)
-        for xCNT, lineOfGroupsOfPatterns in enumerate(images): #X Coord
-            for yCNT, groupOfPatterns in enumerate(lineOfGroupsOfPatterns): #Y Coord
-                moments = []
-                for im in groupOfPatterns:
-                    dim = np.shape(im)[0]
-                    if self.dimToBasis.get(dim) is None:
-                        basisObject = self.basisObject(self, dim)
-                        self.dimToBasis[dim] = basisObject.basis
-                    basis = self.dimToBasis[dim]
-                    if not np.any(im):
-                        #most diffraction patterns are left empty, so this is a good optimization
-                        moments.append(np.zeros(self.resultVectorLength))
-                    else:
-                        moments.append(self.calculateZernikeWeights(basis, im)*1e3) #scaled up so it's more useful
-                moments = np.array(moments).flatten()
-                momentsAllCoords[xCNT,yCNT] = moments
+        moments = []
+        for im in groupOfPatterns:
+            dim = np.shape(im)[0]
+            if self.dimToBasis.get(dim) is None:
+                basisObject = self.basisObject(self, dim)
+                self.dimToBasis[dim] = basisObject.basis
+            basis = self.dimToBasis[dim]
+            if not np.any(im):
+                #most diffraction patterns are left empty, so this is a good optimization
+                moments.append(np.zeros(self.resultVectorLength))
+            else:
+                moments.append(self.calculateZernikeWeights(basis, im)*1e3) #scaled up so it's more useful
+        moments = np.array(moments).flatten()
+        momentsAllCoords = moments
 
         
         if fileName is not None:
