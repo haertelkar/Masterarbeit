@@ -17,6 +17,9 @@ def cleanUp(directory = "", printEmptiedDirs = False):
             if ".npy" in filename or ".csv" in filename or ".hdf5" in filename or ".h5" in filename or ".progress" in filename:
                 os.remove(os.path.join(dirFull, filename))
                 emptyDirs.add(dirFull)
+            if ".out" == filename[-4:]:
+                shutil.move(os.path.join(dirFull, filename), os.path.join(dirFull, "oldSlurmFiles", filename))
+                emptyDirs.add(dirFull)
     
 
 
