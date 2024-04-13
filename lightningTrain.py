@@ -21,6 +21,8 @@ from torch import nn
 from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.plugins.environments import SLURMEnvironment as SLURMEnvironment
 from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.profilers import AdvancedProfiler
+
 
 
 
@@ -177,7 +179,8 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 			print("loading from checkpoint")
 			checkPointExists = True
 		checkpoint_callback = ModelCheckpoint(dirpath=chkpPath, save_top_k=2, monitor="val_loss")
-		trainer = pl.Trainer(plugins=[SLURMEnvironment(requeue_signal=signal.SIGHUP)],logger=TensorBoardLogger("tb_logs", name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=[early_stop_callback, swa, checkpoint_callback])
+		#profiler = AdvancedProfiler(dirpath=".", filename=f"perf_logs_{modelName}_{version}")
+		trainer = pl.Trainer(profiler = "simple", plugins=[SLURMEnvironment(requeue_signal=signal.SIGHUP)],logger=TensorBoardLogger("tb_logs", name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=[early_stop_callback, swa, checkpoint_callback])
 		if checkPointExists:
 			trainer.fit(lightnModel, datamodule = lightnDataLoader, ckpt_path="last")
 		else:
