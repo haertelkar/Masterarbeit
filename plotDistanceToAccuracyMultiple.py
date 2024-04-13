@@ -24,7 +24,7 @@ def grabFileNames():
     test_data = ptychographicData(
                     os.path.abspath(os.path.join("FullPixelGridML", "measurements_test","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML", "measurements_test"))
                 ) 
-    fileNames = test_data.img_labels.iloc[:, 0]
+    fileNames = test_data.image_names
     return fileNames
 
 errors = [["modelName", "average error in predicting thickness", "element prediction accuracy", "MSE distance"]]
