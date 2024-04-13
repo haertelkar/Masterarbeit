@@ -73,4 +73,7 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
     print(f"Of all tiles with an atom in the ground truth {maxValueCorrespondsToAtom} have the highest prediction at the correct value. That is {maxValueCorrespondsToAtom/(counter-counterZeroGroundThruths)*100:.2f}% of all tiles with an atom in the ground truth.")
     print(f"There were {correctZeroPredictions} correct predictions of tiles with no atoms in them. That is {correctZeroPredictions/counterZeroGroundThruths*100:.2f}% of all tiles with no atoms in them. ")
     print(f"There were {wrongZeroPredictions} wrong all zero predictions even though the tiles had atoms in them. That is {wrongZeroPredictions/(counter - counterZeroGroundThruths)*100:.2f}% of all tiles with atoms in them.")
-    print(f"The values over 0.5 in the prediction corresponds to an atom (== 1) in the ground truth in {numberOfCorrectOnes} cases. It does not in {numberOfIncorrectOnes} of cases. If you picked them you'd be correct in {100*numberOfCorrectOnes/(numberOfIncorrectOnes+numberOfCorrectOnes):.2f}% of times \n")
+    try:
+        print(f"The values over 0.5 in the prediction corresponds to an atom (== 1) in the ground truth in {numberOfCorrectOnes} cases. It does not in {numberOfIncorrectOnes} of cases. If you picked them you'd be correct in {100*numberOfCorrectOnes/(numberOfIncorrectOnes+numberOfCorrectOnes):.2f}% of times \n")
+    except ZeroDivisionError:
+        print("numberOfIncorrectOnes+numberOfCorrectOnes ist zero??\n")
