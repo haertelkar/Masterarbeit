@@ -2,6 +2,7 @@ import glob
 import os
 import shutil
 import struct
+import time
 from abtem.reconstruct import MultislicePtychographicOperator, RegularizedPtychographicOperator
 import cv2
 from matplotlib import pyplot as plt
@@ -228,7 +229,7 @@ mspie_objects[-1].angle().interpolate(potential_thick.sampling).show()
 
 print("Calculating the number of Zernike moments:")
 resultVectorLength = 0 
-numberOfOSAANSIMoments = 10	
+numberOfOSAANSIMoments = 20	
 for n in range(numberOfOSAANSIMoments + 1):
     for mShifted in range(2*n+1):
         m = mShifted - n
@@ -239,19 +240,18 @@ for n in range(numberOfOSAANSIMoments + 1):
 print("load model")
 model = loadModel(modelName = "ZernikeNormal", numChannels=resultVectorLength * DIMTILES**2, numLabels = (DIMTILES**2)//9)
 
-model = lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("models",f"ZernikeNormal_PixelGridPooling3.ckpt"), model = model)
+model = lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("checkpoints",f"ZernikeNormal_PixelReworkedZernikeAndNewDatasets","epoch=23-step=162840.ckpt"), model = model)
 model.eval()
 
 #initiate Zernike
 radius = diameterBFD//2 + 1
-ZernikeObject = Zernike(radius, numberOfOSAANSIMoments= 10)
+ZernikeObject = Zernike(radius, numberOfOSAANSIMoments= numberOfOSAANSIMoments)
 
-def generateGroupOfPatterns(measurementArray):
-    for ij in range((measurementArray.shape[1]-DIMTILES)*(measurementArray.shape[0]-DIMTILES)):
-        i = ij//(measurementArray.shape[1]-DIMTILES)
-        j = ij%(measurementArray.shape[1]-DIMTILES)
-        difPatternsOnePosition = np.copy(measurementArray[i:DIMTILES+i,j:DIMTILES+j,:,:])
-        yield np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
+# def generateGroupOfPatterns(measurementArray):
+#     for i in range((measurementArray.shape[0]-DIMTILES)):
+#         for j in range((measurementArray.shape[1]-DIMTILES)):
+#             difPatternsOnePosition = np.copy(measurementArray[i:DIMTILES+i,j:DIMTILES+j,:,:])
+#             yield np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
 
 mASomeZeroedOut = np.copy(measurementArray)
 mASomeZeroedOut = np.reshape(mASomeZeroedOut, (-1,mASomeZeroedOut.shape[2],mASomeZeroedOut.shape[3]))
@@ -260,16 +260,19 @@ mASomeZeroedOut = np.reshape(mASomeZeroedOut, (measurementArray.shape[0],measure
 
 #ZernikeTransform
 print("generating the zernike moments")
-momentsAllCoords = ZernikeObject.zernikeTransform(fileName = None, images = [generateGroupOfPatterns(mASomeZeroedOut)], zernikeTotalImages = None, shapeOfMomentsAllCoords= np.array((1, (measurementArray.shape[0]-DIMTILES)* (measurementArray.shape[1]-DIMTILES), DIMTILES**2)))
-momentsAllCoords = momentsAllCoords[0]
-momentsAllCoords = np.reshape(momentsAllCoords,(measurementArray.shape[0]-DIMTILES, measurementArray.shape[1]-DIMTILES, momentsAllCoords.shape[-1]))
+
 poolingFactor = int(3)
 
 # loop over the all positions and apply the model to the data
-Predictions = np.zeros_like(measurementArray)
+Predictions = np.zeros(measurementArray.shape[:2])
 for i in tqdm(range(measurementArray.shape[0]-DIMTILES), desc= "Going through all positions and predicting"):
     for j in range(measurementArray.shape[1]-DIMTILES):
-        pred = model(torch.tensor(momentsAllCoords[i,j,:]).float())
+        groupOfPatterns = mASomeZeroedOut[i:DIMTILES+i,j:DIMTILES+j,:,:]
+        groupOfPatterns = np.reshape(groupOfPatterns, (-1,groupOfPatterns.shape[-2], groupOfPatterns.shape[-1]))
+        timeStart = time.time()
+        zernikeValues = ZernikeObject.zernikeTransform(fileName = None, groupOfPatterns = groupOfPatterns, zernikeTotalImages = None)
+        tqdm.write(f"Time elapsed to zernike transform: {timeStart-time.time()}")
+        pred = model(torch.tensor(zernikeValues).float())
         pred = pred.detach().numpy()
         # xMostLikely = pred[3]//0.2 + i
         # yMostLikely = pred[6]//0.2 + j
@@ -285,11 +288,11 @@ for i in tqdm(range(measurementArray.shape[0]-DIMTILES), desc= "Going through al
             print(f"Ignored Error: {e}")
 
 # for all elements in the predictions array divide through coordinates
-# for x in range(Predictions.shape[0]):
-#     for y in range(Predictions.shape[1]):
-#         xArea = min(DIMTILES,x+1)
-#         yArea = min(DIMTILES,y+1)
-#         Predictions[x,y] = Predictions[x,y]/(xArea*yArea)
+for x in range(Predictions.shape[0]):
+    for y in range(Predictions.shape[1]):
+        xArea = min(DIMTILES, x+1, Predictions.shape[0]-x)
+        yArea = min(DIMTILES, y+1, Predictions.shape[1]-y)
+        Predictions[x,y] = Predictions[x,y]/(xArea*yArea)
 
 Predictions/=np.max(Predictions)
 
@@ -297,7 +300,9 @@ Predictions/=np.max(Predictions)
 plt.tight_layout()
 plt.savefig("testStructureFullRec.png")
 plt.imshow(Predictions)
+plt.colorbar()
 plt.imsave("Predictions.png", Predictions)
 plt.savefig("testStructureFullRec_WithPredictions.png")
 plt.close()
+plt.imsave("PredictionsLog.png", np.log(Predictions+1))
 
