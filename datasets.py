@@ -132,7 +132,7 @@ class ptychographicData(Dataset):
 		# if self.dataset is None:
 		# 	self.dataset = h5py.File(self.dataPath,'r')
 		
-		# imageOrZernikeMoments = np.array(self.dataset.get(datasetStructID)).astype('float32')[xCoords,yCoords]		
+		# imageOrZernikeMoments = np.array(self.dataset.get(datasetStructIDWithCoords)).astype('float32')	
 		# if self.scalerZernike == 1 or len(imageOrZernikeMoments.shape) == 2: #only set once for Zernike ALLWAYS TRUE CURRENTLY SO NOT USED
 		# self.scalerZernike = np.max(imageOrZernikeMoments)
 		# imageOrZernikeMoments /= self.scalerZernike
@@ -182,60 +182,60 @@ class ptychographicData(Dataset):
 		row /= self.scalingFactors + 0.00000001
 		return row
 	
-class multiPos(ptychographicData):
-	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors=None, shift=None, labelIndicesToPredict=None, classifier=False):
-		super().__init__(annotations_file, img_dir, transform, target_transform, scalingFactors, shift, labelIndicesToPredict, classifier)
-		self.scansPerSpecimen = 100
-		self.numberOfSpecimen = None
-		self.indicesPerSpecimen = 20
-		self.idxToXY = {}
-		self.indices = self.getIndicesOfSparseScan(indicesPerSpecimen = self.indicesPerSpecimen, outputsPerSpecimen = self.scansPerSpecimen)
+# class multiPos(ptychographicData):
+# 	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors=None, shift=None, labelIndicesToPredict=None, classifier=False):
+# 		super().__init__(annotations_file, img_dir, transform, target_transform, scalingFactors, shift, labelIndicesToPredict, classifier)
+# 		self.scansPerSpecimen = 100
+# 		self.numberOfSpecimen = None
+# 		self.indicesPerSpecimen = 20
+# 		self.idxToXY = {}
+# 		self.indices = self.getIndicesOfSparseScan(indicesPerSpecimen = self.indicesPerSpecimen, outputsPerSpecimen = self.scansPerSpecimen)
 
-	def getIndicesOfSparseScan(self, indicesPerSpecimen, outputsPerSpecimen):
-		allFileNames = self.img_labels.iloc[:, 0]
-		specimenToIndex = {}
-		self.numberOfSpecimen = 0
-		for idx, fileName in enumerate(allFileNames):
-			_, specimen, xPos, yPos, _, _, _ = fileName.split("_")
-			self.idxToXY[idx] = (float(xPos), float(yPos))
-			if specimen not in specimenToIndex: 
-				specimenToIndex[specimen] = [idx]
-				self.numberOfSpecimen += 1
-			else:
-				specimenToIndex[specimen].append(idx)
+# 	def getIndicesOfSparseScan(self, indicesPerSpecimen, outputsPerSpecimen):
+# 		allFileNames = self.img_labels.iloc[:, 0]
+# 		specimenToIndex = {}
+# 		self.numberOfSpecimen = 0
+# 		for idx, fileName in enumerate(allFileNames):
+# 			_, specimen, xPos, yPos, _, _, _ = fileName.split("_")
+# 			self.idxToXY[idx] = (float(xPos), float(yPos))
+# 			if specimen not in specimenToIndex: 
+# 				specimenToIndex[specimen] = [idx]
+# 				self.numberOfSpecimen += 1
+# 			else:
+# 				specimenToIndex[specimen].append(idx)
 
-		randomIdxArray = []
-		for idxArray in specimenToIndex.values():
-			for _ in range(outputsPerSpecimen): 
-				randomIdxArray.append(np.random.choice(idxArray, size = indicesPerSpecimen, replace= False))
+# 		randomIdxArray = []
+# 		for idxArray in specimenToIndex.values():
+# 			for _ in range(outputsPerSpecimen): 
+# 				randomIdxArray.append(np.random.choice(idxArray, size = indicesPerSpecimen, replace= False))
 		
-		return np.array(randomIdxArray)
+# 		return np.array(randomIdxArray)
 
-	def __len__(self):
-		return self.scansPerSpecimen * self.numberOfSpecimen
+# 	def __len__(self):
+# 		return self.scansPerSpecimen * self.numberOfSpecimen
 
-	def __getitem__(self, sample):
-		zernikeMultiPos = None
-		labelMultiPos = None
-		# XYs = []
-
-
-		for idx in self.indices[sample]:
-			if labelMultiPos is None: labelMultiPos = self.getLabel(idx)
-			if zernikeMultiPos is None: zernikeMultiPos = self.getImageOrZernike(idx)
-
-			x,y = self.idxToXY.get(idx)
-			labelMultiPos = np.append(labelMultiPos,self.getLabel(idx))
-			zernikeMultiPos = torch.cat((torch.Tensor((x,y)), zernikeMultiPos,self.getImageOrZernike(idx)))
-			# XYs += [x,y] 
+# 	def __getitem__(self, sample):
+# 		zernikeMultiPos = None
+# 		labelMultiPos = None
+# 		# XYs = []
 
 
+# 		for idx in self.indices[sample]:
+# 			if labelMultiPos is None: labelMultiPos = self.getLabel(idx)
+# 			if zernikeMultiPos is None: zernikeMultiPos = self.getImageOrZernike(idx)
 
-		# zernikeMultiPos = np.append(np.array(zernikeMultiPos).flatten(),XYs) #TODO only valid for znn, wont work with cnn, for cnn use layers (also no idea how to implement xy for cnn)
-		# labelMultiPos = np.array(labelMultiPos).flatten()
-		#TODO missing Xpos And Ypos Also Labels Should Be Cleaned Up
+# 			x,y = self.idxToXY.get(idx)
+# 			labelMultiPos = np.append(labelMultiPos,self.getLabel(idx))
+# 			zernikeMultiPos = torch.cat((torch.Tensor((x,y)), zernikeMultiPos,self.getImageOrZernike(idx)))
+# 			# XYs += [x,y] 
 
 
-		#TODO ideally one label with the absolute pos of all atoms and also not a random SparseScan
-		#TODO easier: four close positions -> probably needs different simulateMoreComplex.py
-		return zernikeMultiPos, labelMultiPos
+
+# 		# zernikeMultiPos = np.append(np.array(zernikeMultiPos).flatten(),XYs) #TODO only valid for znn, wont work with cnn, for cnn use layers (also no idea how to implement xy for cnn)
+# 		# labelMultiPos = np.array(labelMultiPos).flatten()
+# 		#TODO missing Xpos And Ypos Also Labels Should Be Cleaned Up
+
+
+# 		#TODO ideally one label with the absolute pos of all atoms and also not a random SparseScan
+# 		#TODO easier: four close positions -> probably needs different simulateMoreComplex.py
+# 		return zernikeMultiPos, labelMultiPos
