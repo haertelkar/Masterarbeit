@@ -8,18 +8,17 @@ for testOrTrain in ["test", "train"]:
     with h5py.File(f"measurements_{testOrTrain}/training_data.hdf5", "r") as f:
         for key in tqdm(f.keys(), desc = f"Finding the maximum values to scale to one in measurements_{testOrTrain}."):
             zernikeImages = np.array(f[key][...]).astype(np.float32)
-            for xRows in zernikeImages:
-                for zernikeImage in xRows:                
-                    if maximumValues is None:
-                        maximumValues = np.absolute(np.copy(zernikeImage))
-                    maximumValues = np.maximum(np.abs(maximumValues), np.abs(zernikeImage))
+            if maximumValues is None:
+                maximumValues = np.absolute(np.copy(zernikeImages))
+                
+            maximumValues = np.maximum(np.abs(maximumValues), np.abs(zernikeImages))
 
     assert(maximumValues is not None)
 
     with h5py.File(f"measurements_{testOrTrain}/training_data.hdf5", "r+") as f:
         for key in tqdm(f.keys(), desc =f"Scaling every feature seperately in measurements_{testOrTrain}."):
             zernikeImages = np.array(f[key][...]).astype(np.float32)
-            f[key][...] = zernikeImages/maximumValues[None,None,:]
+            f[key][...] = zernikeImages/maximumValues
 
     with h5py.File(f"measurements_{testOrTrain}/training_data.hdf5", "r+") as f:
         for key in tqdm(f.keys(), desc = "Testing every feature seperately for scaling."):
