@@ -53,16 +53,10 @@ class Zernike(object):
         
 
     def zernikeTransform(self, fileName, groupOfPatterns, zernikeTotalImages, shapeOfMomentsAllCoords = None):
-        if shapeOfMomentsAllCoords is None: 
-            shapeOfZernikeMoments = list(np.shape(groupOfPatterns))[:-2]
-            shapeOfZernikeMoments[-1] = self.resultVectorLength * shapeOfZernikeMoments[-1]
-            momentsAllCoords = np.zeros(shapeOfZernikeMoments)
-        else:
-            shapeOfMomentsAllCoords[-1] = self.resultVectorLength * shapeOfMomentsAllCoords[-1]
-            momentsAllCoords = np.zeros(shapeOfMomentsAllCoords)
+        assert(len(np.shape(groupOfPatterns)) == 3)
         moments = []
         for im in groupOfPatterns:
-            dim = np.shape(im)[0]
+            dim = np.shape(im)[-1]
             if self.dimToBasis.get(dim) is None:
                 basisObject = self.basisObject(self, dim)
                 self.dimToBasis[dim] = basisObject.basis
@@ -71,19 +65,20 @@ class Zernike(object):
                 #most diffraction patterns are left empty, so this is a good optimization
                 moments.append(np.zeros(self.resultVectorLength))
             else:
-                moments.append(self.calculateZernikeWeights(basis, im)*1e3) #scaled up so it's more useful
+                moments.append(self.calculateZernikeWeights(basis, im)) #before: scaled up with 10e3 so it's more useful
         moments = np.array(moments).flatten()
-        momentsAllCoords = moments
+
 
         
         if fileName is not None:
-            zernikeTotalImages.create_dataset(fileName, data = momentsAllCoords, compression="gzip")
+            zernikeTotalImages.create_dataset(fileName, data = moments, compression="gzip")
         else:
-            return momentsAllCoords
+            return moments
         
     def calculateZernikeWeights(self, basis, image):
         #normFactor = np.pi #not used otherwise the weights are very small
-        weights = np.sum(basis * image[None,:] * self.dx * self.dy , axis = (1,2))
+        #normally the weights are normalized by the area of the image (self.dx * self.dy), but this is not necessary for our purposes
+        weights = np.sum(basis * image[None,:], axis = (1,2)) 
         return weights
 
 
