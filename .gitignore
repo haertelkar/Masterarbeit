@@ -197,3 +197,5 @@ MarcelEx/*
 old*Params*copy.cnf
 Params*copy.cnf
 ParamsMar.cnf
+FullPixelGridML/progress_*.txt
+fit-perf_logs*.txt
