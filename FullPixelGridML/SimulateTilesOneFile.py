@@ -43,6 +43,12 @@ device = "gpu" if torch.cuda.is_available() else "cpu"
 print(f"Calculating on {device}")
 xlen = ylen = 5
 
+def calc_diameter_bfd(image):
+    brightFieldDisk = np.zeros_like(image)
+    brightFieldDisk[image > np.max(image)*0.05] = 1
+    bfdArea = np.sum(brightFieldDisk)
+    diameterBFD = np.sqrt(bfdArea/np.pi) * 2
+    return diameterBFD
 
 def moveAndRotateAtomsAndOrthogonalize(atoms, xPos, yPos, zPos, ortho = True) -> Atoms:
     xPos = random()*xlen/3 + xlen/3 if xPos is None else xPos
@@ -312,6 +318,8 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
     xStepSize = (XDIMTILES)//2
     yStepSize = (YDIMTILES)//2
     allTiles = XDIMTILES * YDIMTILES
+    dBFD = 0
+    dim = 0
     with h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w') as file:
         for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick, _) in enumerate((generateDiffractionArray() for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))):
             datasetStructID = f"{cnt}{processID}{timeStamp}" 
@@ -326,7 +334,6 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
             if xMaxCoord < 0 or yMaxCoord < 0:
                 raise Exception(f"xMaxCoord : {xMaxCoord}, yMaxCoord : {yMaxCoord}, struct {nameStruct}, np.shape(measurement_thick.array)[:2] : {np.shape(measurement_thick.array)[:2]}") # type: ignore
 
-            difPatternsAllPositions = np.zeros((xMaxCoord, yMaxCoord, XDIMTILES*YDIMTILES, 50, 50))
             for xSteps, ySteps in tqdm(createAllXYCoordinates(yMaxCoord,xMaxCoord), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}. Applying max pooling with factor {maxPooling}.", total= len(measurement_thick.array), disable=silence): # type: ignore
                 xCNT = xStepSize * xSteps
                 yCNT = yStepSize * ySteps
@@ -339,16 +346,24 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
                 xPosTile = xCNT * gridSampling[0]
                 yPosTile = yCNT * gridSampling[1]
 
-                # rows = generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile)
-                rows = generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile, maxPooling = maxPooling)
+                rows = generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile)
+                # rows = generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile, maxPooling = maxPooling)
 
-                difPatternsOnePositionResized = []
+                if dBFD == 0:
+                    dim = difPatternsOnePosition.shape[-1]
+                    dBFD = calc_diameter_bfd(difPatternsOnePosition[0])
+                    tqdm.write(f"The diameter of the bright field disk is {dBFD} for an image dim of {difPatternsOnePosition.shape[-1]}x{difPatternsOnePosition.shape[-2]}.")
+                    assert(dBFD*dim and difPatternsOnePosition.shape[-1] == difPatternsOnePosition.shape[-2])
+                
+                #for cnt, difPattern in enumerate(difPatternsOnePosition): #TODO remove this resizing
+                #    difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR))  # type: ignore
+                
+                #removing everything outside the bright field disk
+                
+                indicesInBFD = slice((dim-dBFD)//2-1,(dim+dBFD)//2+1)
+                difPatternsOnePosition = difPatternsOnePosition[:,indicesInBFD, indicesInBFD]
 
-                for cnt, difPattern in enumerate(difPatternsOnePosition):
-                    difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR))  # type: ignore
-                difPatternsAllPositions[xSteps][ySteps] = np.array(difPatternsOnePositionResized)
-                datasetStruct = file.create_dataset(f"{datasetStructID}[{xSteps}][{ySteps}]",data = difPatternsAllPositions[xSteps][ySteps], compression="gzip")
-            # datasetStruct[:] = difPatternsAllPositions
+                file.create_dataset(f"{datasetStructID}[{xSteps}][{ySteps}]", data = difPatternsOnePosition, compression="lzf", chunks = (1, dim, dim), shuffle = True)
     return rows            
 
 def createTopLineRelative(csvFilePath):
@@ -379,8 +394,8 @@ def writeAllRows(rows, trainOrTest, XDIMTILES, YDIMTILES, processID = "", create
     """
     csvFilePath = os.path.join(f'measurements_{trainOrTest}',f'labels_{processID}_{timeStamp}.csv')
     if createTopRow is None: createTopRow = not os.path.exists(csvFilePath)
-    # if createTopRow: createTopLineRelative(csvFilePath)
-    if createTopRow: createTopLinePixels(csvFilePath, XDIMTILES, YDIMTILES, maxPooling = maxPooling)
+    if createTopRow: createTopLineRelative(csvFilePath)
+    # if createTopRow: createTopLinePixels(csvFilePath, XDIMTILES, YDIMTILES, maxPooling = maxPooling)
     with open(csvFilePath, 'a', newline='') as csvfile:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         for row in rows:
