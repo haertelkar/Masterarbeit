@@ -269,9 +269,7 @@ for i in tqdm(range(measurementArray.shape[0]-DIMTILES), desc= "Going through al
     for j in range(measurementArray.shape[1]-DIMTILES):
         groupOfPatterns = mASomeZeroedOut[i:DIMTILES+i,j:DIMTILES+j,:,:]
         groupOfPatterns = np.reshape(groupOfPatterns, (-1,groupOfPatterns.shape[-2], groupOfPatterns.shape[-1]))
-        timeStart = time.time()
         zernikeValues = ZernikeObject.zernikeTransform(fileName = None, groupOfPatterns = groupOfPatterns, zernikeTotalImages = None)
-        tqdm.write(f"Time elapsed to zernike transform: {timeStart-time.time()}")
         pred = model(torch.tensor(zernikeValues).float())
         pred = pred.detach().numpy()
         # xMostLikely = pred[3]//0.2 + i
