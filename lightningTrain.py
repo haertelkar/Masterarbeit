@@ -79,7 +79,7 @@ class lightnModelClass(pl.LightningModule):
 
 def loadModel(trainDataLoader = None, modelName = "ZernikeNormal", numChannels = 0, numLabels = 0) -> nn.Module:
 	# first element to access dimensions
-	if numChannels <= 0 and numLabels <= 0: 
+	if numChannels <= 0 and numLabels <= 0 and trainDataLoader is not None: 
 		trainFeatures, trainLabels = next(iter(trainDataLoader))
 		#first dim is batch size
 		numChannels = trainFeatures.shape[1]		
@@ -180,7 +180,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 			checkPointExists = True
 		checkpoint_callback = ModelCheckpoint(dirpath=chkpPath, save_top_k=2, monitor="val_loss")
 		#profiler = AdvancedProfiler(dirpath=".", filename=f"perf_logs_{modelName}_{version}")
-		trainer = pl.Trainer(profiler = "simple", plugins=[SLURMEnvironment(requeue_signal=signal.SIGHUP)],logger=TensorBoardLogger("tb_logs", name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=[early_stop_callback, swa, checkpoint_callback])
+		trainer = pl.Trainer(plugins=[SLURMEnvironment(requeue_signal=signal.SIGHUP)],logger=TensorBoardLogger("tb_logs", name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=[early_stop_callback, swa, checkpoint_callback])
 		if checkPointExists:
 			trainer.fit(lightnModel, datamodule = lightnDataLoader, ckpt_path="last")
 		else:
