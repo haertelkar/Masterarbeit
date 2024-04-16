@@ -99,8 +99,10 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMom
                 imageDim = randomGroupOfPatterns.shape[-1] 
                 randomImage = randomGroupOfPatterns[0]
             if ZernikeObject is None:
-                diameterBFD = calc_diameter_bfd(randomImage)
-                radius = diameterBFD//2+1
+                # diameterBFD = calc_diameter_bfd(randomImage)
+                # radius = diameterBFD//2+1
+                # if rank == 0: print(f"Calculated the following diameter for the bright field disk: {diameterBFD} and set the radius for the Zernike polynomials to {radius}. With imageDim: {imageDim} and noOfMoments: {noOfMoments}.")
+                radius = imageDim//2 #radius is half the image size because we already removed everything outside the BFD in SimulateTiles
                 ZernikeObject = Zernike(radius, noOfMoments)
             for cnt, fileName in enumerate(tqdm(imageFileNames, desc= f"Going through files in measurements_{testOrTrain}", total = totalNumberOfFiles, initial=len(fileNamesDone), leave = leave, disable = (rank != 0))):
                 if cnt%worldsize != rank:
