@@ -253,7 +253,7 @@ def generateDiffractionArray(conv_angle = 33, energy = 60e3, structure = "random
         )
         measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick, pbar = pbar)
 
-        plt.imsave("difPattern.png", measurement_thick.array[0,0])
+        # plt.imsave("difPattern.png", measurement_thick.array[0,0])
         #TODO: add noise
         #We dont give angle, conv_angle, energy, real pixelsize to ai because its the same for all training data. Can be done in future
 
