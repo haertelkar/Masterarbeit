@@ -3,6 +3,11 @@ from scipy.special import factorial
 import matplotlib.pyplot as plt
 import os
 import h5py
+import numexpr as ne
+
+
+
+
 
 class Zernike(object):
     def __init__(self,maxR, numberOfOSAANSIMoments:int):
@@ -10,9 +15,12 @@ class Zernike(object):
         self.numberOfOSAANSIMoments = numberOfOSAANSIMoments
         self.dx = 1/self.maxR
         self.dy = self.dx
+        self.indexXNonZero = None
+        self.indexYNonZero = None
         self.dimToBasis = {
         }
         self.resultVectorLength = 0 
+
         for n in range(self.numberOfOSAANSIMoments + 1):
             for mShifted in range(2*n+1):
                 m = mShifted - n
@@ -50,8 +58,16 @@ class Zernike(object):
     #         zernikeTotalImages.create_dataset(fileName, data = momentsAllCoords, compression="gzip")
     #     else:
     #         return momentsAllCoords
-        
+    
+    def calculateZernikeWeightsOnWholeGroup(self, basis, groupOfPatterns):
+        return np.sum(basis[None,:,self.indexXNonZero,self.indexYNonZero]* groupOfPatterns[:,None,self.indexXNonZero,self.indexYNonZero], axis = (2,3)).flatten()
 
+    def calculateZernikeWeights(self, basis, image):
+        #normFactor = np.pi #not used otherwise the weights are very small
+        #normally the weights are normalized by the area of the image (self.dx * self.dy), but this is not necessary for our purposes
+        return np.sum(basis[:,self.indexXNonZero,self.indexYNonZero]* image[None,self.indexXNonZero,self.indexYNonZero], axis = (1,2)).flatten()
+
+    
     def zernikeTransform(self, fileName, groupOfPatterns, zernikeTotalImages, shapeOfMomentsAllCoords = None):
         assert(len(np.shape(groupOfPatterns)) == 3)
         moments = []
@@ -59,7 +75,7 @@ class Zernike(object):
             dim = np.shape(im)[-1]
             if self.dimToBasis.get(dim) is None:
                 basisObject = self.basisObject(self, dim)
-                self.dimToBasis[dim] = basisObject.basis
+                self.dimToBasis[dim] = basisObject.basis.copy()
             basis = self.dimToBasis[dim]
             if not np.any(im):
                 #most diffraction patterns are left empty, so this is a good optimization
@@ -75,11 +91,23 @@ class Zernike(object):
         else:
             return moments
         
-    def calculateZernikeWeights(self, basis, image):
-        #normFactor = np.pi #not used otherwise the weights are very small
-        #normally the weights are normalized by the area of the image (self.dx * self.dy), but this is not necessary for our purposes
-        weights = np.sum(basis * image[None,:], axis = (1,2)) 
-        return weights
+           
+    def zernikeTransformVectorized(self, fileName, groupOfPatterns, zernikeTotalImages, shapeOfMomentsAllCoords = None):
+        #Slower for some weird reason
+        assert(len(np.shape(groupOfPatterns)) == 3)
+        dim = np.shape(groupOfPatterns)[-1]
+        if self.dimToBasis.get(dim) is None:
+            basisObject = self.basisObject(self, dim)
+            self.dimToBasis[dim] = basisObject.basis.copy()
+        basis = self.dimToBasis[dim]
+        moments = self.calculateZernikeWeightsOnWholeGroup(basis, groupOfPatterns)
+
+        if fileName is not None:
+            zernikeTotalImages.create_dataset(fileName, data = moments, compression="gzip")
+        else:
+            return moments
+    
+
 
 
     
@@ -90,6 +118,8 @@ class Zernike(object):
             self.center = np.array([pixelsDim/2 - 1,pixelsDim/2 - 1])
             self.rGrid = np.zeros((pixelsDim,pixelsDim))
             self.angleGrid = np.copy(self.rGrid)
+            self.ZernikeObject.indexXNonZero = slice(min(int(pixelsDim//2 - self.ZernikeObject.maxR),0), max(int(pixelsDim//2 + self.ZernikeObject.maxR), int(pixelsDim)))
+            self.ZernikeObject.indexYNonZero = self.ZernikeObject.indexXNonZero
 
             for x in range(pixelsDim):
                 for y in range(pixelsDim):
@@ -128,12 +158,14 @@ class Zernike(object):
             return angularFunc(abs(m) * angularVector)
             
         def ZernikePolynomialRadial(self, n:int, m:int, rValuesInput = None) -> np.ndarray:
+                    
             assert(n>=m>=0)
             assert((n-m)%2 == 0)
             k = np.arange((n-m)/2 + 1)
             summationTerms = ((-1)**k)*factorial(n-k)/(factorial(k)*factorial((n+m)/2 - k)*factorial((n-m)/2 - k)) #taken from wikipedia
             rValuesInput = rValuesInput if rValuesInput is not None else self.rGrid
-            rValues = rValuesInput.flatten()
+            rValues = rValuesInput.copy()
+            rValues = rValues.flatten()
             rMatrix = np.power(rValues[:,None]/self.ZernikeObject.maxR,n-2*k)
             rMatrix[rValues > self.ZernikeObject.maxR, :] = 0 #set everything outside a specified radius to zero
             rVector = rMatrix @ summationTerms
