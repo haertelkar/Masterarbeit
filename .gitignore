@@ -199,3 +199,6 @@ Params*copy.cnf
 ParamsMar.cnf
 FullPixelGridML/progress_*.txt
 fit-perf_logs*.txt
+slurm-746341outSave
+slurm-746344outSave
+singleAtom.tar.gz
