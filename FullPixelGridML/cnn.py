@@ -17,10 +17,10 @@ class cnn(Module):
 
         self.conv3 = Conv2d(in_channels=500, out_channels=1000,
         kernel_size=(2, 2))
-        self.maxpool3 = MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
+        # self.maxpool3 = MaxPool2d(kernel_size=(2, 2), stride=(2, 2))
 
         
-        self.fc1 = Linear(in_features=16000, out_features=5000)
+        self.fc1 = Linear(in_features=4000, out_features=5000)
 
         self.fc2 = Linear(in_features=5000, out_features=500)
 
@@ -37,7 +37,7 @@ class cnn(Module):
 
         x = self.conv3(x)
         x = self.relu(x)
-        x = self.maxpool3(x)
+        # x = self.maxpool3(x)
 
         x = flatten(x, 1)
         x = self.fc1(x)
