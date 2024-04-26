@@ -1,0 +1,46 @@
+# generated using pymatgen
+data_Ba(GdTe2)2
+_symmetry_space_group_name_H-M   Pnma
+_cell_length_a   13.84577281
+_cell_length_b   4.52994123
+_cell_length_c   16.41514142
+_cell_angle_alpha   90.00000000
+_cell_angle_beta   90.00000000
+_cell_angle_gamma   90.00000000
+_symmetry_Int_Tables_number   62
+_chemical_formula_structural   Ba(GdTe2)2
+_chemical_formula_sum   'Ba4 Gd8 Te16'
+_cell_volume   1029.56648665
+_cell_formula_units_Z   4
+loop_
+ _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+  1  'x, y, z'
+  2  '-x, -y, -z'
+  3  '-x+1/2, -y, z+1/2'
+  4  'x+1/2, y, -z+1/2'
+  5  'x+1/2, -y+1/2, -z+1/2'
+  6  '-x+1/2, y+1/2, z+1/2'
+  7  '-x, y+1/2, -z'
+  8  'x, -y+1/2, z'
+loop_
+ _atom_type_symbol
+ _atom_type_oxidation_number
+  Ba2+  2.0
+  Gd3+  3.0
+  Te2-  -2.0
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_occupancy
+  Ba2+  Ba0  4  0.23994298  0.25000000  0.33212894  1
+  Gd3+  Gd1  4  0.06188196  0.25000000  0.10963483  1
+  Gd3+  Gd2  4  0.08056380  0.25000000  0.59740915  1
+  Te2-  Te3  4  0.02573315  0.75000000  0.71598721  1
+  Te2-  Te4  4  0.08841179  0.25000000  0.92271479  1
+  Te2-  Te5  4  0.12812355  0.75000000  0.47204629  1
+  Te2-  Te6  4  0.20543844  0.75000000  0.16447933  1

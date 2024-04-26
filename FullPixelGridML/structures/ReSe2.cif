@@ -1,0 +1,38 @@
+# generated using pymatgen
+data_ReSe2
+_symmetry_space_group_name_H-M   P-1
+_cell_length_a   6.64418268
+_cell_length_b   6.76599124
+_cell_length_c   7.06690119
+_cell_angle_alpha   91.85791565
+_cell_angle_beta   104.38417448
+_cell_angle_gamma   118.88734809
+_symmetry_Int_Tables_number   2
+_chemical_formula_structural   ReSe2
+_chemical_formula_sum   'Re4 Se8'
+_cell_volume   265.05201794
+_cell_formula_units_Z   4
+loop_
+ _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+  1  'x, y, z'
+  2  '-x, -y, -z'
+loop_
+ _atom_type_symbol
+ _atom_type_oxidation_number
+  Re4+  4.0
+  Se2-  -2.0
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_occupancy
+  Re4+  Re0  2  0.06447089  0.31542087  0.49157537  1
+  Re4+  Re1  2  0.48719798  0.29129632  0.49721114  1
+  Se2-  Se2  2  0.22332635  0.10890753  0.71205903  1
+  Se2-  Se3  2  0.24826037  0.86531082  0.31468006  1
+  Se2-  Se4  2  0.25266702  0.38404364  0.22109028  1
+  Se2-  Se5  2  0.27435896  0.65734444  0.74670729  1

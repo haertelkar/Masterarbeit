@@ -1,0 +1,50 @@
+# generated using pymatgen
+data_Cs2MnS2
+_symmetry_space_group_name_H-M   Ibam
+_cell_length_a   7.37160844
+_cell_length_b   13.93613492
+_cell_length_c   6.51347173
+_cell_angle_alpha   90.00000000
+_cell_angle_beta   90.00000000
+_cell_angle_gamma   90.00000000
+_symmetry_Int_Tables_number   72
+_chemical_formula_structural   Cs2MnS2
+_chemical_formula_sum   'Cs8 Mn4 S8'
+_cell_volume   669.14021719
+_cell_formula_units_Z   4
+loop_
+ _symmetry_equiv_pos_site_id
+ _symmetry_equiv_pos_as_xyz
+  1  'x, y, z'
+  2  '-x, -y, -z'
+  3  '-x, -y, z'
+  4  'x, y, -z'
+  5  'x, -y, -z+1/2'
+  6  '-x, y, z+1/2'
+  7  '-x, y, -z+1/2'
+  8  'x, -y, z+1/2'
+  9  'x+1/2, y+1/2, z+1/2'
+  10  '-x+1/2, -y+1/2, -z+1/2'
+  11  '-x+1/2, -y+1/2, z+1/2'
+  12  'x+1/2, y+1/2, -z+1/2'
+  13  'x+1/2, -y+1/2, -z'
+  14  '-x+1/2, y+1/2, z'
+  15  '-x+1/2, y+1/2, -z'
+  16  'x+1/2, -y+1/2, z'
+loop_
+ _atom_type_symbol
+ _atom_type_oxidation_number
+  Cs+  1.0
+  Mn2+  2.0
+  S2-  -2.0
+loop_
+ _atom_site_type_symbol
+ _atom_site_label
+ _atom_site_symmetry_multiplicity
+ _atom_site_fract_x
+ _atom_site_fract_y
+ _atom_site_fract_z
+ _atom_site_occupancy
+  Cs+  Cs0  8  0.16061154  0.14946492  0.50000000  1
+  Mn2+  Mn1  4  0.00000000  0.50000000  0.25000000  1
+  S2-  S2  8  0.17480253  0.40579986  0.50000000  1
