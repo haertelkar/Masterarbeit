@@ -87,7 +87,7 @@ class Zernike(object):
 
         
         if fileName is not None:
-            zernikeTotalImages.create_dataset(fileName, data = moments, compression="gzip")
+            zernikeTotalImages.create_dataset(fileName, data = moments, compression="lzf", chunks = moments.shape, shuffle = True)
         else:
             return moments
         
@@ -103,7 +103,7 @@ class Zernike(object):
         moments = self.calculateZernikeWeightsOnWholeGroup(basis, groupOfPatterns)
 
         if fileName is not None:
-            zernikeTotalImages.create_dataset(fileName, data = moments, compression="gzip")
+            zernikeTotalImages.create_dataset(fileName, data = moments, compression="lzf", chunks = moments.shape, shuffle = True)
         else:
             return moments
     
@@ -118,7 +118,7 @@ class Zernike(object):
             self.center = np.array([pixelsDim/2 - 1,pixelsDim/2 - 1])
             self.rGrid = np.zeros((pixelsDim,pixelsDim))
             self.angleGrid = np.copy(self.rGrid)
-            self.ZernikeObject.indexXNonZero = slice(min(int(pixelsDim//2 - self.ZernikeObject.maxR),0), max(int(pixelsDim//2 + self.ZernikeObject.maxR), int(pixelsDim)))
+            self.ZernikeObject.indexXNonZero = slice(max(int(pixelsDim//2 - self.ZernikeObject.maxR),0), min(int(pixelsDim//2 + self.ZernikeObject.maxR), int(pixelsDim)))
             self.ZernikeObject.indexYNonZero = self.ZernikeObject.indexXNonZero
 
             for x in range(pixelsDim):
