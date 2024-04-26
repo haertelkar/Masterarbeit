@@ -1,3 +1,4 @@
+import glob
 from typing import Tuple
 from ase import Atoms
 from ase.visualize import view
@@ -35,6 +36,7 @@ import h5py
 from ase.build import nanotube
 from skimage.measure import block_reduce
 faulthandler.register(signal.SIGUSR1.value)
+from mp_api.client import MPRester
 # from hanging_threads import start_monitoring
 # monitoring_thread = start_monitoring(seconds_frozen=60, test_interval=100)
 
@@ -45,12 +47,12 @@ xlen = ylen = 5
 
 def calc_diameter_bfd(image):
     brightFieldDisk = np.zeros_like(image)
-    brightFieldDisk[image > np.max(image)*0.05] = 1
+    brightFieldDisk[image > np.max(image)*0.1 + np.min(image)*0.9] = 1
     bfdArea = np.sum(brightFieldDisk)
     diameterBFD = np.sqrt(bfdArea/np.pi) * 2
     return diameterBFD
 
-def moveAndRotateAtomsAndOrthogonalize(atoms, xPos, yPos, zPos, ortho = True) -> Atoms:
+def moveAndRotateAtomsAndOrthogonalize(atoms, xPos = None, yPos = None, zPos = None, ortho = True) -> Atoms:
     xPos = random()*xlen/3 + xlen/3 if xPos is None else xPos
     yPos = random()*ylen/3 + ylen/3 if yPos is None else yPos
     zPos = 0 if zPos is None else zPos
@@ -102,92 +104,91 @@ def MarcelsEx(xPos = None, yPos = None, zPos = None):
     orthogonal_atoms = moveAndRotateAtomsAndOrthogonalize(double_walled_cnt,xPos, yPos, zPos, ortho=True)
     return orthogonal_atoms
 
-def grapheneC(xPos = None, yPos = None, zPos = None) -> Atoms:
-    try:
-        grapheneC = read('structures/graphene.cif')
-    except FileNotFoundError:
-        grapheneC = read('FullPixelGridML/structures/graphene.cif')
-    grapheneC_101 = surface(grapheneC, indices=(1, 0, 1), layers=5, periodic=True)
-    grapheneC_slab = moveAndRotateAtomsAndOrthogonalize(grapheneC_101, xPos, yPos, zPos)
-    return grapheneC_slab
+# def grapheneC(xPos = None, yPos = None, zPos = None) -> Atoms:
+#     try:
+#         grapheneC = read('structures/graphene.cif')
+#     except FileNotFoundError:
+#         grapheneC = read('FullPixelGridML/structures/graphene.cif')
+#     grapheneC_101 = surface(grapheneC, indices=(1, 0, 1), layers=5, periodic=True)
+#     grapheneC_slab = moveAndRotateAtomsAndOrthogonalize(grapheneC_101, xPos, yPos, zPos)
+#     return grapheneC_slab
 
-def MoS2(xPos = None, yPos = None, zPos = None) -> Atoms:
-    try:
-        molybdenum_sulfur = read('structures/MoS2.cif')
-    except FileNotFoundError:
-        molybdenum_sulfur = read('FullPixelGridML/structures/MoS2.cif')
-    molybdenum_sulfur_011 = surface(molybdenum_sulfur, indices=(0, 1, 1), layers=2, periodic=True)
-    molybdenum_sulfur_slab = moveAndRotateAtomsAndOrthogonalize(molybdenum_sulfur_011, xPos, yPos, zPos)
-    return molybdenum_sulfur_slab
+# def MoS2(xPos = None, yPos = None, zPos = None) -> Atoms:
+#     try:
+#         molybdenum_sulfur = read('structures/MoS2.cif')
+#     except FileNotFoundError:
+#         molybdenum_sulfur = read('FullPixelGridML/structures/MoS2.cif')
+#     molybdenum_sulfur_011 = surface(molybdenum_sulfur, indices=(0, 1, 1), layers=2, periodic=True)
+#     molybdenum_sulfur_slab = moveAndRotateAtomsAndOrthogonalize(molybdenum_sulfur_011, xPos, yPos, zPos)
+#     return molybdenum_sulfur_slab
 
-def Si(xPos = None, yPos = None, zPos = None):
-    try:
-        silicon = read('structures/Si.cif')
-    except FileNotFoundError:
-        silicon = read('FullPixelGridML/structures/Si.cif')
-    silicon_011 = surface(silicon, indices=(0, 1, 1), layers=2, periodic=True)
-    silicon_slab = moveAndRotateAtomsAndOrthogonalize(silicon_011, xPos, yPos, zPos)
-    return silicon_slab
+# def Si(xPos = None, yPos = None, zPos = None):
+#     try:
+#         silicon = read('structures/Si.cif')
+#     except FileNotFoundError:
+#         silicon = read('FullPixelGridML/structures/Si.cif')
+#     silicon_011 = surface(silicon, indices=(0, 1, 1), layers=2, periodic=True)
+#     silicon_slab = moveAndRotateAtomsAndOrthogonalize(silicon_011, xPos, yPos, zPos)
+#     return silicon_slab
 
-def copper(xPos=None, yPos=None, zPos=None) -> Atoms:
-    try:
-        copper = read('structures/Cu.cif')
-    except FileNotFoundError:
-        copper = read('FullPixelGridML/structures/Cu.cif')
-    copper_111 = surface(copper, indices=(1, 1, 1), layers=2, periodic=True)
-    copper_slab = moveAndRotateAtomsAndOrthogonalize(copper_111, xPos, yPos, zPos)
-    return copper_slab
+# def copper(xPos=None, yPos=None, zPos=None) -> Atoms:
+#     try:
+#         copper = read('structures/Cu.cif')
+#     except FileNotFoundError:
+#         copper = read('FullPixelGridML/structures/Cu.cif')
+#     copper_111 = surface(copper, indices=(1, 1, 1), layers=2, periodic=True)
+#     copper_slab = moveAndRotateAtomsAndOrthogonalize(copper_111, xPos, yPos, zPos)
+#     return copper_slab
 
-def iron(xPos=None, yPos=None, zPos=None) -> Atoms:
-    try:
-        iron = read('structures/Fe.cif')
-    except FileNotFoundError:
-        iron = read('FullPixelGridML/structures/Fe.cif')
-    iron_111 = surface(iron, indices=(1, 1, 1), layers=2, periodic=True)
-    iron_slab = moveAndRotateAtomsAndOrthogonalize(iron_111, xPos, yPos, zPos)
-    return iron_slab
+# def iron(xPos=None, yPos=None, zPos=None) -> Atoms:
+#     try:
+#         iron = read('structures/Fe.cif')
+#     except FileNotFoundError:
+#         iron = read('FullPixelGridML/structures/Fe.cif')
+#     iron_111 = surface(iron, indices=(1, 1, 1), layers=2, periodic=True)
+#     iron_slab = moveAndRotateAtomsAndOrthogonalize(iron_111, xPos, yPos, zPos)
+#     return iron_slab
 
-def GaAs(xPos = None, yPos = None, zPos = None):
-    try:
-        gaas = read('structures/GaAs.cif')
-    except FileNotFoundError:
-        gaas = read('FullPixelGridML/structures/GaAs.cif')
-    gaas_110 = surface(gaas, indices=(1, 1, 0), layers=2, periodic=True)
-    gaas_slab = moveAndRotateAtomsAndOrthogonalize(gaas_110, xPos, yPos, zPos)
-    return gaas_slab
+# def GaAs(xPos = None, yPos = None, zPos = None):
+#     try:
+#         gaas = read('structures/GaAs.cif')
+#     except FileNotFoundError:
+#         gaas = read('FullPixelGridML/structures/GaAs.cif')
+#     gaas_110 = surface(gaas, indices=(1, 1, 0), layers=2, periodic=True)
+#     gaas_slab = moveAndRotateAtomsAndOrthogonalize(gaas_110, xPos, yPos, zPos)
+#     return gaas_slab
 
-def SrTiO3(xPos = None, yPos = None, zPos = None):
-    try:
-        srtio3 = read('structures/SrTiO3.cif')
-    except FileNotFoundError:
-        srtio3 = read('FullPixelGridML/structures/SrTiO3.cif')
-    srtio3_110 = surface(srtio3, indices=(1, 1, 0), layers= 5, periodic=True)
-    srtio3_slab = moveAndRotateAtomsAndOrthogonalize(srtio3_110, xPos, yPos, zPos)
-    return srtio3_slab
+# def SrTiO3(xPos = None, yPos = None, zPos = None):
+#     try:
+#         srtio3 = read('structures/SrTiO3.cif')
+#     except FileNotFoundError:
+#         srtio3 = read('FullPixelGridML/structures/SrTiO3.cif')
+#     srtio3_110 = surface(srtio3, indices=(1, 1, 0), layers= 5, periodic=True)
+#     srtio3_slab = moveAndRotateAtomsAndOrthogonalize(srtio3_110, xPos, yPos, zPos)
+#     return srtio3_slab
 
-def MAPbI3(xPos = None, yPos = None, zPos = None):
-    try:
-        mapi = read('structures/H6PbCI3N.cif')
-    except FileNotFoundError:
-        mapi = read('FullPixelGridML/structures/H6PbCI3N.cif')
-    mapi_110 = surface(mapi, indices=(1, 1, 0), layers=2, periodic=True)
-    mapi_slab = moveAndRotateAtomsAndOrthogonalize(mapi_110, xPos, yPos, zPos)
-    return mapi_slab
+# def MAPbI3(xPos = None, yPos = None, zPos = None):
+#     try:
+#         mapi = read('structures/H6PbCI3N.cif')
+#     except FileNotFoundError:
+#         mapi = read('FullPixelGridML/structures/H6PbCI3N.cif')
+#     mapi_110 = surface(mapi, indices=(1, 1, 0), layers=2, periodic=True)
+#     mapi_slab = moveAndRotateAtomsAndOrthogonalize(mapi_110, xPos, yPos, zPos)
+#     return mapi_slab
 
-def WSe2(xPos = None, yPos = None, zPos = None):
-    try:
-        wse2 = read('structures/WSe2.cif')
-    except FileNotFoundError:
-        wse2 = read('FullPixelGridML/structures/WSe2.cif')
-    wse2_110 = surface(wse2, indices=(1, 1, 0), layers=2, periodic=True)
-    wse2_slab = moveAndRotateAtomsAndOrthogonalize(wse2_110, xPos, yPos, zPos)
-    return wse2_slab
+# def WSe2(xPos = None, yPos = None, zPos = None):
+#     try:
+#         wse2 = read('structures/WSe2.cif')
+#     except FileNotFoundError:
+#         wse2 = read('FullPixelGridML/structures/WSe2.cif')
+#     wse2_110 = surface(wse2, indices=(1, 1, 0), layers=2, periodic=True)
+#     wse2_slab = moveAndRotateAtomsAndOrthogonalize(wse2_110, xPos, yPos, zPos)
+#     return wse2_slab
 
 def StructureUnknown(**kwargs):
-
     raise Exception(f"Structure unknown")
 
-def createStructure(specificStructure : str = "random", **kwargs) -> Tuple[str, Atoms]:
+def createStructure(specificStructure : str = "random", trainOrTest = None, **kwargs) -> Tuple[str, Atoms]:
     """ Creates a specified structure. If structure is unknown an Exception will be thrown. Default is "random" which randomly picks a structure
 
 
@@ -200,36 +201,35 @@ def createStructure(specificStructure : str = "random", **kwargs) -> Tuple[str, 
         Atoms: Ase Atoms object of specified structure
     """
 
-    structureFunctions = {
-        #"graphene" : grapheneC, 
-        "MoS2" : MoS2,
-        "Si" : Si,
-        "GaAs" : GaAs,
-        "SrTiO3" : SrTiO3,
-        "MAPbI3" : MAPbI3,
-        "WSe2" : WSe2,
-        "atomPillar" : createAtomPillar,
-        "multiPillar" : multiPillars,
-        "copper" : copper,
-        "iron" : iron,
-        "MarcelsEx" : MarcelsEx,
-    }
-    #TODO: add more structures
-    #TODO: use surface (see Download/ex2.py)
-    if specificStructure == "random":
-        nameStruct = choice(list(structureFunctions.keys()))
-        #tqdm.write(nameStruct)
-        struct = structureFunctions.get(nameStruct, StructureUnknown)(**kwargs)
-        return nameStruct, struct
+    if os.path.exists('FullPixelGridML/structures'):
+        path = 'FullPixelGridML/structures'
     else:
-        nameStruct = specificStructure
-        #tqdm.write(nameStruct)
-        struct = structureFunctions.get(specificStructure, StructureUnknown)(**kwargs)
-        return nameStruct, struct 
+        path = 'structures'
+    cifFiles = glob.glob(os.path.join(path,"*.cif"))
+    randomNumber = randint(0, len(cifFiles) - 1 + 3)
+    if randomNumber >= len(cifFiles):
+        predefinedFunctions = {
+            "createAtomPillar" : createAtomPillar,
+            "multiPillars" : multiPillars,
+            "MarcelsEx" : MarcelsEx 
+        }
+        nameStruct = choice(list(predefinedFunctions.keys()))
+        structFinished = predefinedFunctions[nameStruct](**kwargs)
+    else:
+        cifFile = cifFiles[randomNumber]
+        struct = read(cifFile)
+        nameStruct = cifFile.split("\\")[-1].split(".")[0]
+        #create a tuple with 3 random numbers, either one or zero
+        random_numbers = (randint(0, 1), randint(0, 1), randint(0, 1))
+        if random_numbers == (0,0,0):
+            random_numbers = (1,1,1)
+        surfaceStruct = surface(struct, indices=random_numbers, layers=3, periodic=True)
+        structFinished = moveAndRotateAtomsAndOrthogonalize(surfaceStruct)
+    return nameStruct, structFinished
 
-def generateDiffractionArray(conv_angle = 33, energy = 60e3, structure = "random", pbar = False, start = (0,0), end = (-1,-1)):
+def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3, structure = "random", pbar = False, start = (0,0), end = (-1,-1)):
 
-    nameStruct, atomStruct = createStructure(specificStructure= structure)
+    nameStruct, atomStruct = createStructure(specificStructure= structure, trainOrTest = trainOrTest)
     try:
         potential_thick = Potential(
             atomStruct,
@@ -313,15 +313,18 @@ def generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStr
     rows.append([f"{datasetStructID}[{xCoord}][{yCoord}]"] + [str(pixel) for pixel in pixelGrid.flatten()])
     return rows
 
-def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, timeStamp, processID = 99999, silence = False, maxPooling = 1):
+def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, timeStamp, BFDdiameter, processID = 99999, silence = False, maxPooling = 1):
     rows = []
     xStepSize = (XDIMTILES)//2
     yStepSize = (YDIMTILES)//2
+    dim = 50
     allTiles = XDIMTILES * YDIMTILES
-    dBFD = 0
-    dim = 0
+    fractionOfNonZeroIndices = {}
+    with open(os.path.join(f'measurements_{trainOrTest}',f'fractionOfNonZeroIndices_{processID}_{timeStamp}.csv'), 'w', newline='') as csvfile:
+        Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        Writer.writerow(["datasetStructID", "Fraction of non-zero indices"])
     with h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w') as file:
-        for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick, _) in enumerate((generateDiffractionArray() for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))):
+        for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick, _) in enumerate((generateDiffractionArray(trainOrTest = trainOrTest) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))):
             datasetStructID = f"{cnt}{processID}{timeStamp}" 
         
             xRealLength = XDIMTILES * gridSampling[0]
@@ -347,23 +350,25 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
                 yPosTile = yCNT * gridSampling[1]
 
                 rows = generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile)
+                fractionOfNonZeroIndices[f"{datasetStructID}[{xSteps}][{ySteps}]"] = (len(difPatternsOnePosition) - len(randomIndicesToTurnToZeros))/len(difPatternsOnePosition)
+                
                 # rows = generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile, maxPooling = maxPooling)
+                
 
-                if dBFD == 0:
-                    dim = difPatternsOnePosition.shape[-1]
-                    dBFD = calc_diameter_bfd(difPatternsOnePosition[0])
-                    tqdm.write(f"The diameter of the bright field disk is {dBFD} for an image dim of {difPatternsOnePosition.shape[-1]}x{difPatternsOnePosition.shape[-2]}.")
-                    assert(dBFD*dim and difPatternsOnePosition.shape[-1] == difPatternsOnePosition.shape[-2])
+                difPatternsOnePositionResized = []
+                for cnt, difPattern in enumerate(difPatternsOnePosition): #TODO remove this resizing
+                   difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(dim, dim), interpolation=cv2.INTER_LINEAR))  # type: ignore
                 
-                #for cnt, difPattern in enumerate(difPatternsOnePosition): #TODO remove this resizing
-                #    difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(50, 50), interpolation=cv2.INTER_LINEAR))  # type: ignore
-                
-                #removing everything outside the bright field disk
-                
-                indicesInBFD = slice((dim-dBFD)//2-1,(dim+dBFD)//2+1)
-                difPatternsOnePosition = difPatternsOnePosition[:,indicesInBFD, indicesInBFD]
-
-                file.create_dataset(f"{datasetStructID}[{xSteps}][{ySteps}]", data = difPatternsOnePosition, compression="lzf", chunks = (1, dim, dim), shuffle = True)
+                difPatternsOnePositionResized = np.array(difPatternsOnePositionResized)
+                # removing everything outside the bright field disk
+                indicesInBFD = slice(max((dim - BFDdiameter)//2-1,0),min((dim + BFDdiameter)//2+1, dim ))
+                difPatternsOnePositionResized = difPatternsOnePositionResized[:,indicesInBFD, indicesInBFD] 
+                # plt.imsave(os.path.join(f"measurements_{trainOrTest}",f"{datasetStructID}.png"), difPatternsOnePositionResized[0])
+                file.create_dataset(f"{datasetStructID}[{xSteps}][{ySteps}]", data = difPatternsOnePositionResized, compression="lzf", chunks = (1, difPatternsOnePositionResized.shape[-2], difPatternsOnePositionResized.shape[-1]), shuffle = True)
+    with open(os.path.join(f'measurements_{trainOrTest}',f'fractionOfNonZeroIndices_{processID}_{timeStamp}.csv'), 'w+', newline='') as csvfile:
+        Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        for key, value in fractionOfNonZeroIndices.items():
+            Writer.writerow([key, value])
     return rows            
 
 def createTopLineRelative(csvFilePath):
@@ -417,17 +422,18 @@ if __name__ == "__main__":
     XDIMTILES = 12
     YDIMTILES = 12
     maxPooling = 3
+    BFDdiameter = 20 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
     assert(XDIMTILES % maxPooling == 0)
     testDivider = {"train":1, "test":0.25}
     for i in tqdm(range(max(args["iterations"],1)), disable=True):
         for trainOrTest in ["train", "test"]:
             if trainOrTest not in args["trainOrTest"]:
                 continue
-            print(f"PID {os.getpid()} on step {i+1} at {datetime.datetime.now()}")
+            print(f"PID {os.getpid()} on step {i+1} of {trainOrTest}-data at {datetime.datetime.now()}")
             with(open(f"progress_{args['id']}.txt", "w")) as file:
-                file.write(f"PID {os.getpid()} on step {i+1} at {datetime.datetime.now()}\n")
+                file.write(f"PID {os.getpid()} on step {i+1} of {trainOrTest}-data at {datetime.datetime.now()}\n")
             timeStamp = int(str(time()).replace('.', ''))
-            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, processID=args["id"], silence=True, maxPooling = maxPooling)
+            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling)
             writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], timeStamp = timeStamp, maxPooling=maxPooling)
   
     print(f"PID {os.getpid()} done.")
