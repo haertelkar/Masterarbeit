@@ -9,16 +9,24 @@ def cleanUp(directory = "", printEmptiedDirs = False):
     fmD = [os.path.join("FullPixelGridML",d) for d in measurementDirs]
     measurementDirs+= zmD + fmD
     currentMainDir = os.path.join(os.getcwd(),directory)
+    for filename in tqdm(os.listdir(currentMainDir), desc = f"deleting content {currentMainDir}", leave = False):
+        if ".progress" in filename or ("progress" in filename and ".txt" in filename):
+            os.remove(os.path.join(currentMainDir, filename))
+            emptyDirs.add(currentMainDir)
+        if ".out" == filename[-4:]:
+            #create folder for old slurm files if it does not exist
+            if not os.path.exists(os.path.join(currentMainDir, "oldSlurmFiles")):
+                os.mkdir(os.path.join(currentMainDir, "oldSlurmFiles"))
+            shutil.move(os.path.join(currentMainDir, filename), os.path.join(currentMainDir, "oldSlurmFiles", filename))
+            emptyDirs.add(currentMainDir)
     for direct in measurementDirs:
         dirFull = os.path.join(currentMainDir, direct)
         if not os.path.exists(dirFull):
             continue
+
         for filename in tqdm(os.listdir(dirFull), desc = f"deleting content {dirFull}", leave = False):
-            if ".npy" in filename or ".csv" in filename or ".hdf5" in filename or ".h5" in filename or ".progress" in filename:
+            if ".png" in filename or ".npy" in filename or ".csv" in filename or ".hdf5" in filename or ".h5" in filename or ".progress" in filename or ("progress" in filename and ".txt" in filename):
                 os.remove(os.path.join(dirFull, filename))
-                emptyDirs.add(dirFull)
-            if ".out" == filename[-4:]:
-                shutil.move(os.path.join(dirFull, filename), os.path.join(dirFull, "oldSlurmFiles", filename))
                 emptyDirs.add(dirFull)
     
 
