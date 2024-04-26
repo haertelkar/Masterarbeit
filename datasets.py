@@ -11,12 +11,11 @@ import h5py
 from torch.utils.data import random_split, DataLoader
 
 class ptychographicDataLightning(pl.LightningDataModule):
-	def __init__(self, model_name, batch_size = 16, num_workers = 40, classifier = False, indicesToPredict = None):
+	def __init__(self, model_name, batch_size = 1024, num_workers = 20, classifier = False, indicesToPredict = None):
 		super().__init__()
 		self.batch_size = batch_size
 		self.num_workers = num_workers
 		self.model_name = model_name
-		self.BATCH_SIZE = batch_size
 		# define the train and val splits
 		self.TRAIN_SPLIT = 0.75
 		self.VAL_SPLIT = 1 - self.TRAIN_SPLIT
@@ -56,13 +55,13 @@ class ptychographicDataLightning(pl.LightningDataModule):
 		self.setupDone = True
 	
 	def train_dataloader(self) -> TRAIN_DATALOADERS:
-		return DataLoader(self.train_dataset, shuffle=True, batch_size=self.BATCH_SIZE, num_workers= self.num_workers, pin_memory=True)
+		return DataLoader(self.train_dataset, shuffle=True, batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True)
 	
 	def val_dataloader(self) -> EVAL_DATALOADERS:
-		return DataLoader(self.val_dataset, batch_size= self.BATCH_SIZE, num_workers= self.num_workers, pin_memory=True)
+		return DataLoader(self.val_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True)
 
 	def test_dataloader(self) -> EVAL_DATALOADERS:
-		return DataLoader(self.test_dataset, batch_size= self.BATCH_SIZE, num_workers= self.num_workers, pin_memory=True)
+		return DataLoader(self.test_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True)
 
 class ptychographicData(Dataset):
 	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors = None, shift = None, labelIndicesToPredict = None, classifier = False):
