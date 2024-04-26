@@ -19,7 +19,7 @@ from lightning.pytorch.tuner.tuning import Tuner
 from deepspeed.ops.adam import DeepSpeedCPUAdam
 from torch import nn
 from lightning.pytorch.loggers import TensorBoardLogger
-from lightning.pytorch.plugins.environments import SLURMEnvironment as SLURMEnvironment
+from lightning.pytorch.plugins.environments import SLURMEnvironment as SLURMEnvironment # type: ignore
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.profilers import AdvancedProfiler
 
@@ -186,9 +186,16 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 			#Create a Tuner
 			tuner = Tuner(trainer)
 			# Auto-scale batch size by growing it exponentially
-			if world_size == 1: tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, max_trials= 25) 
+			#if world_size == 1: 
+				#new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, max_trials= 25) 
+				#leads to crashing with slurm but has worked with 2048 batch size
+				#lightnDataLoader.batch_size is automatically set to new_batch_size
 			# finds learning rate automatically
-			tuner.lr_find(lightnModel, datamodule = lightnDataLoader, max_lr = 1e-2, early_stop_threshold = 4)
+			lr_finder = tuner.lr_find(lightnModel, datamodule = lightnDataLoader, max_lr = 1e-2 * np.sqrt(lightnDataLoader.batch_size/16), early_stop_threshold = 4)
+			assert(lr_finder is not None)
+			new_lr = lr_finder.suggestion()
+			assert(new_lr is not None)
+			lightnModel.lr = new_lr
 			trainer.fit(lightnModel, datamodule = lightnDataLoader)
 		trainer.save_checkpoint(os.path.join("models",f"{modelName}_{version}.ckpt"))
 		lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"), model = model)
