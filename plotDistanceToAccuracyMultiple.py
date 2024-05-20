@@ -19,17 +19,17 @@ def returnFullRowContent(fullRowIndices, fullRow, startInd, endInd):
             returnlist.append(fullRow[i])
     return returnlist
 
-def grabFileNames():
-    #only using it to grab file names, doesn't matter if it is Zernike or not
-    test_data = ptychographicData(
-                    os.path.abspath(os.path.join("FullPixelGridML", "measurements_test","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML", "measurements_test"))
-                ) 
-    fileNames = test_data.image_names
-    return fileNames
+# def grabFileNames():
+#     #only using it to grab file names, doesn't matter if it is Zernike or not
+#     test_data = ptychographicData(
+#                     os.path.abspath(os.path.join("FullPixelGridML", "measurements_test","labels.csv")), os.path.abspath(os.path.join("FullPixelGridML", "measurements_test"))
+#                 ) 
+#     fileNames = test_data.image_names
+#     return fileNames
 
 errors = [["modelName", "average error in predicting thickness", "element prediction accuracy", "MSE distance"]]
 
-fileNames = grabFileNames()
+# fileNames = grabFileNames()
 
 
 for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
@@ -48,7 +48,7 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
         fullRowIndices = []
         fullRow = np.zeros(18)
         knownHeaders = []
-        for row, fileName in zip(table, fileNames):
+        for row in table:
             skipFile = False
             if len(row) %2 != 0:
                 skipFile = True
@@ -74,7 +74,7 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
                 print(file)
                 raise Exception(e)
 
-            structures.append(fileName.split("_")[0])
+            #structures.append(fileName.split("_")[0])
             elementsNN = np.array([float(i) for i in returnFullRowContent(fullRowIndices, fullRow,0,3)])
             xAtomRelsNN = np.array([float(i) for i in returnFullRowContent(fullRowIndices, fullRow,3,6)])
             yAtomRelsNN = np.array([float(i) for i in returnFullRowContent(fullRowIndices, fullRow,6,9)])
