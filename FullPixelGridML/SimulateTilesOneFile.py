@@ -318,11 +318,11 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
     xStepSize = (XDIMTILES)//2
     yStepSize = (YDIMTILES)//2
     dim = 50
-    allTiles = XDIMTILES * YDIMTILES
-    fractionOfNonZeroIndices = {}
-    with open(os.path.join(f'measurements_{trainOrTest}',f'fractionOfNonZeroIndices_{processID}_{timeStamp}.csv'), 'w', newline='') as csvfile:
-        Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        Writer.writerow(["datasetStructID", "Fraction of non-zero indices"])
+    # allTiles = XDIMTILES * YDIMTILES
+    # fractionOfNonZeroIndices = {}
+    # with open(os.path.join(f'measurements_{trainOrTest}',f'fractionOfNonZeroIndices_{processID}_{timeStamp}.csv'), 'w', newline='') as csvfile:
+    #     Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+    #     Writer.writerow(["datasetStructID", "Fraction of non-zero indices"])
     with h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w') as file:
         for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick, _) in enumerate((generateDiffractionArray(trainOrTest = trainOrTest) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))):
             datasetStructID = f"{cnt}{processID}{timeStamp}" 
@@ -341,22 +341,22 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
                 xCNT = xStepSize * xSteps
                 yCNT = yStepSize * ySteps
 
-                difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + 2*xStepSize, yCNT :yCNT + 2*yStepSize].copy() # type: ignore
+                difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + 2*xStepSize:3, yCNT :yCNT + 2*yStepSize:3].copy() # type: ignore
                 difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
-                randomIndicesToTurnToZeros = np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - int(0.4*allTiles),allTiles - int(0.4*allTiles)), replace = False)
-                difPatternsOnePosition[randomIndicesToTurnToZeros] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
+                # randomIndicesToTurnToZeros = np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - int(0.4*allTiles),allTiles - int(0.4*allTiles)), replace = False)
+                # difPatternsOnePosition[randomIndicesToTurnToZeros] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
 
                 xPosTile = xCNT * gridSampling[0]
                 yPosTile = yCNT * gridSampling[1]
 
                 rows = generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile)
-                fractionOfNonZeroIndices[f"{datasetStructID}[{xSteps}][{ySteps}]"] = (len(difPatternsOnePosition) - len(randomIndicesToTurnToZeros))/len(difPatternsOnePosition)
+                #fractionOfNonZeroIndices[f"{datasetStructID}[{xSteps}][{ySteps}]"] = (len(difPatternsOnePosition) - len(randomIndicesToTurnToZeros))/len(difPatternsOnePosition)
                 
                 # rows = generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile, maxPooling = maxPooling)
                 
 
                 difPatternsOnePositionResized = []
-                for cnt, difPattern in enumerate(difPatternsOnePosition): #TODO remove this resizing
+                for cnt, difPattern in enumerate(difPatternsOnePosition): 
                    difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(dim, dim), interpolation=cv2.INTER_LINEAR))  # type: ignore
                 
                 difPatternsOnePositionResized = np.array(difPatternsOnePositionResized)
@@ -365,10 +365,10 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
                 difPatternsOnePositionResized = difPatternsOnePositionResized[:,indicesInBFD, indicesInBFD] 
                 # plt.imsave(os.path.join(f"measurements_{trainOrTest}",f"{datasetStructID}.png"), difPatternsOnePositionResized[0])
                 file.create_dataset(f"{datasetStructID}[{xSteps}][{ySteps}]", data = difPatternsOnePositionResized, compression="lzf", chunks = (1, difPatternsOnePositionResized.shape[-2], difPatternsOnePositionResized.shape[-1]), shuffle = True)
-    with open(os.path.join(f'measurements_{trainOrTest}',f'fractionOfNonZeroIndices_{processID}_{timeStamp}.csv'), 'w+', newline='') as csvfile:
-        Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        for key, value in fractionOfNonZeroIndices.items():
-            Writer.writerow([key, value])
+    # with open(os.path.join(f'measurements_{trainOrTest}',f'fractionOfNonZeroIndices_{processID}_{timeStamp}.csv'), 'w+', newline='') as csvfile:
+    #     Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+    #     for key, value in fractionOfNonZeroIndices.items():
+    #         Writer.writerow([key, value])
     return rows            
 
 def createTopLineRelative(csvFilePath):
