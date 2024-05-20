@@ -21,9 +21,9 @@ def combineLabelsAndCSV(workingDir):
                     labelsToConcat.append(file)
                     if file != "labels.csv": filesToDelete.append(file)
                     noOfLabelCSVs +=1
-                if (".csv" == file[-4:]) and ("Indices" in file):
-                    indicesToConcat.append(file)
-                    if file != "fractionOfNonZeroIndices.csv": filesToDelete.append(file)
+                # if (".csv" == file[-4:]) and ("Indices" in file):
+                #     indicesToConcat.append(file)
+                #     if file != "fractionOfNonZeroIndices.csv": filesToDelete.append(file)
                 if ".hdf5" == file[-5:]:
                     try:
                         if "training_data.hdf5" != file: filesToDelete.append(file)
@@ -46,14 +46,14 @@ def combineLabelsAndCSV(workingDir):
         print(f"Found {noOfLabelCSVs} files. Combining into one file. {len(filesToIgnore)} .hdf5-files were corrupted and are deleted with their csv.-counterparts")        
 
         cntCor = 0
-        if len(labelsToConcat) != 0:
-            for file in indicesToConcat:
-                id = "_".join(".".join(file.split(".")[:-1]).split("_")[1:])
-                if f"{id}.hdf5" in filesToIgnore:
-                    continue
-                data = pd.read_csv(os.path.join(f"measurements_{testOrTrain}",file))
-                df = pd.concat([df, data], axis = 0)
-            df.to_csv(os.path.join(f"measurements_{testOrTrain}","fractionOfNonZeroIndices.csv"), index= False)
+        # if len(labelsToConcat) != 0:
+        #     for file in indicesToConcat:
+        #         id = "_".join(".".join(file.split(".")[:-1]).split("_")[1:])
+        #         if f"{id}.hdf5" in filesToIgnore:
+        #             continue
+        #         data = pd.read_csv(os.path.join(f"measurements_{testOrTrain}",file))
+        #         df = pd.concat([df, data], axis = 0)
+        #     df.to_csv(os.path.join(f"measurements_{testOrTrain}","fractionOfNonZeroIndices.csv"), index= False)
 
         for file in labelsToConcat:
             id = "_".join(".".join(file.split(".")[:-1]).split("_")[1:])
