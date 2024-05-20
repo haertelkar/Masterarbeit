@@ -14,8 +14,7 @@ for n in range(numberOfOSAANSIMoments + 1):
 
 DIMTILES = 12
 
-
-version = "ZernikeNormal_RelNewLowerBatchSize"
+version = "ZernikeNormal_1905_onlyGridPos"
 
 if "Zernike" in version:
     pool = 3
@@ -30,7 +29,7 @@ else:
 print("load model")
 model = loadModel(modelName = modelName, numChannels=numChannels, numLabels = numLabels)
 
-epochAndStep = "epoch=13-step=7168"
+epochAndStep = "epoch=14-step=12585"
 checkpoint_path = os.path.join("checkpoints",f"{version}",f"{epochAndStep}.ckpt")
 model = lightnModelClass.load_from_checkpoint(checkpoint_path = checkpoint_path, model = model)
 lightnModel = lightnModelClass(model)

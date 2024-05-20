@@ -4,7 +4,7 @@
 #SBATCH --nodes=1             
 #SBATCH --ntasks-per-node=1    
 #SBATCH --cpus-per-task=10
-#SBATCH --time=24:00:00
+#SBATCH --time=48:00:00
 #SBATCH --signal=SIGUSR1@90
 #SBATCH -J "CNN"   # job name
 
@@ -18,4 +18,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun python3 lightningTrain.py -v OneFileAllPosFix -e 300 -m ull
+srun python3 lightningTrain.py -v relCNN2024MoreData -e 20 -m ull
