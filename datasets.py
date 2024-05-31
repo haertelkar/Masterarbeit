@@ -11,7 +11,7 @@ import h5py
 from torch.utils.data import random_split, DataLoader
 
 class ptychographicDataLightning(pl.LightningDataModule):
-	def __init__(self, model_name, batch_size = 1024, num_workers = 20, classifier = False, indicesToPredict = None):
+	def __init__(self, model_name, batch_size = 1024*4, num_workers = 20, classifier = False, indicesToPredict = None):
 		super().__init__()
 		self.batch_size = batch_size
 		self.num_workers = num_workers
@@ -126,12 +126,12 @@ class ptychographicData(Dataset):
 
 	def getImageOrZernike(self, idx):
 		datasetStructIDWithCoords = self.image_names[idx]
-		with h5py.File(self.dataPath,'r') as data:
-			imageOrZernikeMoments = np.array(data.get(datasetStructIDWithCoords)).astype('float32')
-		# if self.dataset is None:
-		# 	self.dataset = h5py.File(self.dataPath,'r')
+		# with h5py.File(self.dataPath,'r') as data:
+		# 	imageOrZernikeMoments = np.array(data.get(datasetStructIDWithCoords)).astype('float32')
+		if self.dataset is None:
+			self.dataset = h5py.File(self.dataPath,'r')
 		
-		# imageOrZernikeMoments = np.array(self.dataset.get(datasetStructIDWithCoords)).astype('float32')	
+		imageOrZernikeMoments = np.array(self.dataset.get(datasetStructIDWithCoords)).astype('float32')	
 		# if self.scalerZernike == 1 or len(imageOrZernikeMoments.shape) == 2: #only set once for Zernike ALLWAYS TRUE CURRENTLY SO NOT USED
 		# self.scalerZernike = np.max(imageOrZernikeMoments)
 		# imageOrZernikeMoments /= self.scalerZernike
