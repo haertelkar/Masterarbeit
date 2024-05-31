@@ -168,7 +168,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 		lightnDataLoader.setup()
 		model = loadModel(lightnDataLoader.val_dataloader(), modelName)
 		lightnModel = lightnModelClass(model)
-		early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=0.00, patience=10, verbose=False, mode="min", stopping_threshold = 1e-6)
+		early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=0.00, patience=5, verbose=False, mode="min", stopping_threshold = 1e-10)
 		swa = StochasticWeightAveraging(swa_lrs=1e-2) #faster but a bit less good
 		chkpPath = os.path.join("checkpoints",f"{modelName}_{version}")
 		if not os.path.exists(chkpPath):
@@ -186,10 +186,11 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 			#Create a Tuner
 			tuner = Tuner(trainer)
 			# Auto-scale batch size by growing it exponentially
-			#if world_size == 1: 
-				#new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, max_trials= 25) 
-				#leads to crashing with slurm but has worked with 2048 batch size
-				#lightnDataLoader.batch_size is automatically set to new_batch_size
+			# if world_size == 1: 
+			# 	new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, max_trials= 25) 
+			# 	print(f"New batch size: {new_batch_size}")
+				# leads to crashing with slurm but has worked with 2048 batch size
+				# lightnDataLoader.batch_size is automatically set to new_batch_size
 			# finds learning rate automatically
 			if world_size == 1:
 				lr_finder = tuner.lr_find(lightnModel, datamodule = lightnDataLoader, max_lr = 1e-2 * np.sqrt(lightnDataLoader.batch_size/16), early_stop_threshold = 4)
