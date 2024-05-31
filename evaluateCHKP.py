@@ -13,17 +13,18 @@ for n in range(numberOfOSAANSIMoments + 1):
         resultVectorLength += 1
 
 DIMTILES = 12
+DIMENSION = 12//3
 
 version = "ZernikeNormal_1905_onlyGridPos"
 
 if "Zernike" in version:
     pool = 3
-    numChannels=resultVectorLength * DIMTILES**2
+    numChannels=resultVectorLength * DIMENSION**2
     numLabels = 9
     modelName = "ZernikeNormal"
 else:
-    numChannels = DIMTILES**2
-    numLabels = (DIMTILES**2)//3**2
+    numChannels = DIMENSION**2
+    numLabels = (DIMENSION**2)//3**2
     modelName = "FullPixelGridML"
     
 print("load model")
