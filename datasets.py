@@ -11,7 +11,7 @@ import h5py
 from torch.utils.data import random_split, DataLoader
 
 class ptychographicDataLightning(pl.LightningDataModule):
-	def __init__(self, model_name, batch_size = 1024*4, num_workers = 20, classifier = False, indicesToPredict = None):
+	def __init__(self, model_name, batch_size = 2048, num_workers = 20, classifier = False, indicesToPredict = None):
 		super().__init__()
 		self.batch_size = batch_size
 		self.num_workers = num_workers
@@ -88,7 +88,7 @@ class ptychographicData(Dataset):
 		if isinstance(labelIndicesToPredict, list):
 			assert(0 not in labelIndicesToPredict)
 		
-		self.createScaleAndShift(scalingFactors = scalingFactors, shift = shift)
+		# self.createScaleAndShift(scalingFactors = scalingFactors, shift = shift)
 
 		# if self.classifier:
 		# 	assert(type(labelIndicesToPredict) != list)
@@ -103,6 +103,7 @@ class ptychographicData(Dataset):
 	def __getitem__(self, idx):
 		label = self.getLabel(idx)
 		imageOrZernikeMoments = self.getImageOrZernike(idx)
+		#print(f"data type: {imageOrZernikeMoments}, data size: {np.shape(imageOrZernikeMoments)}")
 		return imageOrZernikeMoments, label
 	
 	def getLabel(self, idx):
@@ -113,7 +114,7 @@ class ptychographicData(Dataset):
   
 
 		label = self.image_labels[idx] #gets read in as generic objects
-		label = self.scaleDown(label)
+		# label = self.scaleDown(label)
 		# label = np.linspace(0,1,144).astype('float32') #for testing
 
 
