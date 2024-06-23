@@ -12,25 +12,24 @@ for n in range(numberOfOSAANSIMoments + 1):
             continue
         resultVectorLength += 1
 
-DIMTILES = 12
-DIMENSION = 12//3
+DIMTILES = 11
+DIMENSION = DIMTILES//2 + 1
 
-version = "ZernikeNormal_1905_onlyGridPos"
+version = "ZernikeNormal_1806_newDataDistFix_20n"
 
 if "Zernike" in version:
-    pool = 3
     numChannels=resultVectorLength * DIMENSION**2
     numLabels = 9
     modelName = "ZernikeNormal"
 else:
     numChannels = DIMENSION**2
-    numLabels = (DIMENSION**2)//3**2
+    numLabels = 9
     modelName = "FullPixelGridML"
     
 print("load model")
 model = loadModel(modelName = modelName, numChannels=numChannels, numLabels = numLabels)
 
-epochAndStep = "epoch=14-step=12585"
+epochAndStep = "epoch=13-step=784"
 checkpoint_path = os.path.join("checkpoints",f"{version}",f"{epochAndStep}.ckpt")
 model = lightnModelClass.load_from_checkpoint(checkpoint_path = checkpoint_path, model = model)
 lightnModel = lightnModelClass(model)
@@ -39,6 +38,6 @@ lightnDataLoader = ptychographicDataLightning(modelName, classifier = False, ind
 lightnDataLoader.setup()
 
 trainer = pl.Trainer(accelerator='gpu')
-trainer.test(model, dataloaders=lightnDataLoader.test_dataloader())
+# trainer.test(model, dataloaders=lightnDataLoader.test_dataloader())
 
 evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, model, indicesToPredict = None, modelName = modelName, version = f"evaluation_{version}_{epochAndStep}", classifier=False)
