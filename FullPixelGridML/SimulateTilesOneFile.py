@@ -200,31 +200,34 @@ def createStructure(specificStructure : str = "random", trainOrTest = None, **kw
     Returns:
         Atoms: Ase Atoms object of specified structure
     """
-
-    if os.path.exists('FullPixelGridML/structures'):
-        path = 'FullPixelGridML/structures'
-    else:
-        path = 'structures'
-    cifFiles = glob.glob(os.path.join(path,"*.cif"))
-    randomNumber = randint(0, len(cifFiles) - 1 + 3)
-    if randomNumber >= len(cifFiles):
-        predefinedFunctions = {
-            "createAtomPillar" : createAtomPillar,
-            "multiPillars" : multiPillars,
-            "MarcelsEx" : MarcelsEx 
-        }
-        nameStruct = choice(list(predefinedFunctions.keys()))
+    predefinedFunctions = {
+        "createAtomPillar" : createAtomPillar,
+        "multiPillars" : multiPillars,
+        "MarcelsEx" : MarcelsEx 
+    }
+    if specificStructure != "random":
+        nameStruct = specificStructure
         structFinished = predefinedFunctions[nameStruct](**kwargs)
     else:
-        cifFile = cifFiles[randomNumber]
-        struct = read(cifFile)
-        nameStruct = cifFile.split("\\")[-1].split(".")[0]
-        #create a tuple with 3 random numbers, either one or zero
-        random_numbers = (randint(0, 1), randint(0, 1), randint(0, 1))
-        if random_numbers == (0,0,0):
-            random_numbers = (1,1,1)
-        surfaceStruct = surface(struct, indices=random_numbers, layers=3, periodic=True)
-        structFinished = moveAndRotateAtomsAndOrthogonalize(surfaceStruct)
+        if os.path.exists('FullPixelGridML/structures'):
+            path = 'FullPixelGridML/structures'
+        else:
+            path = 'structures'
+        cifFiles = glob.glob(os.path.join(path,"*.cif"))
+        randomNumber = randint(0, len(cifFiles) - 1 + 3)
+        if randomNumber >= len(cifFiles):
+            nameStruct = choice(list(predefinedFunctions.keys()))
+            structFinished = predefinedFunctions[nameStruct](**kwargs)
+        else:
+            cifFile = cifFiles[randomNumber]
+            struct = read(cifFile)
+            nameStruct = cifFile.split("\\")[-1].split(".")[0]
+            #create a tuple with 3 random numbers, either one or zero
+            random_numbers = (randint(0, 1), randint(0, 1), randint(0, 1))
+            if random_numbers == (0,0,0):
+                random_numbers = (1,1,1)
+            surfaceStruct = surface(struct, indices=random_numbers, layers=3, periodic=True)
+            structFinished = moveAndRotateAtomsAndOrthogonalize(surfaceStruct)
     return nameStruct, structFinished
 
 def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3, structure = "random", pbar = False, start = (0,0), end = (-1,-1)):
@@ -276,6 +279,16 @@ def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:f
     return atomNumbers, xPositions, yPositions
 
 @njit
+def closestAtom(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:float, yPos:float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    Distances = (atomPositions - np.expand_dims(np.array([xPos, yPos, 0]),0))[:,0:2]
+    Distances = Distances[:,0] + Distances[:,1] * 1j
+    DistanceSortedIndices = np.absolute(Distances).argsort() 
+    
+    atomNumber = atomicNumbers[DistanceSortedIndices[0]]
+    xPosition, yPosition = atomPositions[DistanceSortedIndices[0]][:2]
+    return atomNumber, xPosition, yPosition
+
+@njit
 def findAtomsInTile(xPosTile:float, yPosTile:float, xRealLength:float, yRealLength:float, atomPositions:np.ndarray):
     atomPositionsCopy = np.copy(atomPositions)
     xAtomPositions, yAtomPositions, _ = atomPositionsCopy.transpose()
@@ -284,16 +297,16 @@ def findAtomsInTile(xPosTile:float, yPosTile:float, xRealLength:float, yRealLeng
     return xPositions, yPositions
 
 def createAllXYCoordinates(yMaxCoord, xMaxCoord):
-    return [(x,y) for y in np.arange(yMaxCoord) for x in np.arange(xMaxCoord)]
+    return [(x,y) for y in np.arange(yMaxCoord+1) for x in np.arange(xMaxCoord+1)]
 
 
 def generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile):
     #generates row in labels.csv with relative distances of three closest atoms to the center of the diffraction pattern. Also saves the element predictions.
-    atomNumbers, xPositionsAtoms, yPositionsAtoms = threeClosestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPosTile + xRealLength/2, yPosTile + yRealLength/2)
+    atomNumber, xPositionsAtom, yPositionsAtom = closestAtom(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPosTile + xRealLength/2, yPosTile + yRealLength/2)
                 
-    xAtomRel = xPositionsAtoms - xPosTile
-    yAtomRel = yPositionsAtoms - yPosTile
-    rows.append([f"{datasetStructID}[{xSteps}][{ySteps}]"] + [str(difParams) for difParams in [no for no in atomNumbers] + [x for x in xAtomRel] + [y for y in yAtomRel]])
+    xAtomRel = xPositionsAtom - xPosTile
+    yAtomRel = yPositionsAtom - yPosTile
+    rows.append([f"{datasetStructID}[{xSteps}][{ySteps}]"] + [str(difParams) for difParams in [atomNumber, xAtomRel, yAtomRel]])
     return rows
 
 def generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPosTile, yPosTile, maxPooling = 1):
@@ -315,8 +328,8 @@ def generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStr
 
 def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, timeStamp, BFDdiameter, processID = 99999, silence = False, maxPooling = 1):
     rows = []
-    xStepSize = (XDIMTILES)//2
-    yStepSize = (YDIMTILES)//2
+    xStepSize = (XDIMTILES-1)//3
+    yStepSize = (YDIMTILES-1)//3
     dim = 50
     # allTiles = XDIMTILES * YDIMTILES
     # fractionOfNonZeroIndices = {}
@@ -331,17 +344,18 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
             yRealLength = YDIMTILES * gridSampling[1]
 
             xMaxCNT, yMaxCNT = np.shape(measurement_thick.array)[:2] # type: ignore
-            xMaxCoord = (xMaxCNT-1)//xStepSize - 2
-            yMaxCoord = (yMaxCNT-1)//yStepSize - 2
+            xMaxStartCoord = (xMaxCNT-XDIMTILES)//xStepSize
+            yMaxStartCoord = (yMaxCNT-YDIMTILES)//yStepSize
 
-            if xMaxCoord < 0 or yMaxCoord < 0:
-                raise Exception(f"xMaxCoord : {xMaxCoord}, yMaxCoord : {yMaxCoord}, struct {nameStruct}, np.shape(measurement_thick.array)[:2] : {np.shape(measurement_thick.array)[:2]}") # type: ignore
+            if xMaxStartCoord < 0 or yMaxStartCoord < 0:
+                print(f"Structure too small, skipped: xMaxStartCoord : {xMaxStartCoord}, yMaxStartCoord : {yMaxStartCoord}, struct {nameStruct}, np.shape(measurement_thick.array)[:2] : {np.shape(measurement_thick.array)[:2]}") # type: ignore
+                continue
 
-            for xSteps, ySteps in tqdm(createAllXYCoordinates(yMaxCoord,xMaxCoord), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}. Applying max pooling with factor {maxPooling}.", total= len(measurement_thick.array), disable=silence): # type: ignore
+            for xSteps, ySteps in tqdm(createAllXYCoordinates(yMaxStartCoord,xMaxStartCoord), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}.", total= len(measurement_thick.array), disable=silence): # type: ignore
                 xCNT = xStepSize * xSteps
                 yCNT = yStepSize * ySteps
 
-                difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + 2*xStepSize:3, yCNT :yCNT + 2*yStepSize:3].copy() # type: ignore
+                difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + XDIMTILES:2, yCNT :yCNT + YDIMTILES:2].copy() # type: ignore
                 difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
                 # randomIndicesToTurnToZeros = np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - int(0.4*allTiles),allTiles - int(0.4*allTiles)), replace = False)
                 # difPatternsOnePosition[randomIndicesToTurnToZeros] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
@@ -374,7 +388,8 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
 def createTopLineRelative(csvFilePath):
     with open(csvFilePath, 'w+', newline='') as csvfile:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        Writer.writerow(["fileName", "element1", "element2", "element3", "xAtomRel1", "xAtomRel2", "xAtomRel3", "yAtomRel1", "yAtomRel2", "yAtomRel3"])
+        #Writer.writerow(["fileName", "element1", "element2", "element3", "xAtomRel1", "xAtomRel2", "xAtomRel3", "yAtomRel1", "yAtomRel2", "yAtomRel3"])
+        Writer.writerow(["fileName", "element1", "xAtomRel", "yAtomRel"])
         Writer = None
 
 def createTopLinePixels(csvFilePath, XDIMTILES, YDIMTILES, maxPooling = 1):
@@ -419,11 +434,11 @@ if __name__ == "__main__":
     args = vars(ap.parse_args())
 
 
-    XDIMTILES = 12
-    YDIMTILES = 12
+    XDIMTILES = 11
+    YDIMTILES = 11
     maxPooling = 3
     BFDdiameter = 20 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
-    assert(XDIMTILES % maxPooling == 0)
+    # assert(XDIMTILES % maxPooling == 0)
     testDivider = {"train":1, "test":0.25}
     for i in tqdm(range(max(args["iterations"],1)), disable=True):
         for trainOrTest in ["train", "test"]:
