@@ -148,8 +148,8 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 			pred = model(x)
 			if not classifier:
 				for predEntry, yEntry in zip(pred.tolist(), y.tolist()):
-					predScaled = test_data.scaleUp(row = predEntry)
-					yScaled = test_data.scaleUp(row = yEntry)
+					predScaled = predEntry
+					yScaled = yEntry
 					Writer.writerow(list(predScaled) +  list(yScaled))
 			else:
 				for predEntry,yEntry in zip(pred.cpu().numpy(), y.cpu().numpy()):
@@ -187,7 +187,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 			tuner = Tuner(trainer)
 			# Auto-scale batch size by growing it exponentially
 			# if world_size == 1: 
-			# 	new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, max_trials= 25) 
+			# 	new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, init_val=1024, max_trials= 25) 
 			# 	print(f"New batch size: {new_batch_size}")
 				# leads to crashing with slurm but has worked with 2048 batch size
 				# lightnDataLoader.batch_size is automatically set to new_batch_size
