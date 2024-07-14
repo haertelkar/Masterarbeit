@@ -11,7 +11,7 @@ import h5py
 from torch.utils.data import random_split, DataLoader
 
 class ptychographicDataLightning(pl.LightningDataModule):
-	def __init__(self, model_name, batch_size = 2048, num_workers = 20, classifier = False, indicesToPredict = None):
+	def __init__(self, model_name, batch_size = 2048, num_workers = 20, classifier = False, indicesToPredict = None, labelFile = "labels.csv"):
 		super().__init__()
 		self.batch_size = batch_size
 		self.num_workers = num_workers
@@ -23,6 +23,7 @@ class ptychographicDataLightning(pl.LightningDataModule):
 		self.indicesToPredict = indicesToPredict
 		self.setupDone = False
 		self.prepare_data_per_node = False
+		self.labelFile = labelFile
 
 	def setup(self, stage = None) -> None:
 		if self.setupDone: return
@@ -32,7 +33,7 @@ class ptychographicDataLightning(pl.LightningDataModule):
 		else:
 			raise Exception(f"model name '{self.model_name}' unknown")
 		self.trainAndVal_dataset = ptychographicData(
-					os.path.abspath(os.path.join(folderName,"measurements_train","labels.csv")), 
+					os.path.abspath(os.path.join(folderName,"measurements_train",self.labelFile)), 
 					os.path.abspath(os.path.join(folderName,"measurements_train")), transform=torch.as_tensor, 
 					target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
 				)		
@@ -45,7 +46,7 @@ class ptychographicDataLightning(pl.LightningDataModule):
 			generator=torch.Generator().manual_seed(42))
 		
 		self.test_dataset = ptychographicData(
-					os.path.abspath(os.path.join(folderName,"measurements_test","labels.csv")), 
+					os.path.abspath(os.path.join(folderName,"measurements_test",self.labelFile)), 
 					os.path.abspath(os.path.join(folderName,"measurements_test")), transform=torch.as_tensor,
 					target_transform=torch.as_tensor, scalingFactors = self.trainAndVal_dataset.scalingFactors, 
 					shift = self.trainAndVal_dataset.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
