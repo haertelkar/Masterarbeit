@@ -6,3 +6,12 @@ rowsIndexToHeader = {
 }
 
 headerToRowsIndex = {v: k for k, v in rowsIndexToHeader.items()}
+
+rowsIndexToHeaderSingle = {
+    0:"filename",
+    1:"element",
+    2:"xAtomRel",
+    3:"yAtomRel"
+}
+
+headerToRowsIndexSingle = {v: k for k, v in rowsIndexToHeaderSingle.items()}
