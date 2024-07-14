@@ -145,7 +145,7 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 		# loop over the test set
 		for (x, y) in tqdm(testDataLoader, desc="Going through test data"):
 			# make the predictions and add them to the list
-			pred = model(x)
+			pred = model(x.to('cuda'))
 			if not classifier:
 				for predEntry, yEntry in zip(pred.tolist(), y.tolist()):
 					predScaled = predEntry
@@ -156,7 +156,7 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 					Writer.writerow([int(predEntry.argmax() == yEntry.argmax())])
 	
 
-def main(epochs, version, classifier, indicesToPredict, modelString):
+def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 	print(f"Training model version {version} for {epochs} epochs.")
 	world_size = getMPIWorldSize()
 	numberOfModels = 0
@@ -164,7 +164,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 	for modelName in models:
 		if modelString and modelString not in modelName:
 			continue
-		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict)
+		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile)
 		lightnDataLoader.setup()
 		model = loadModel(lightnDataLoader.val_dataloader(), modelName)
 		lightnModel = lightnModelClass(model)
@@ -193,11 +193,13 @@ def main(epochs, version, classifier, indicesToPredict, modelString):
 				# lightnDataLoader.batch_size is automatically set to new_batch_size
 			# finds learning rate automatically
 			if world_size == 1:
-				lr_finder = tuner.lr_find(lightnModel, datamodule = lightnDataLoader, max_lr = 1e-2 * np.sqrt(lightnDataLoader.batch_size/16), early_stop_threshold = 4)
+				lr_finder = tuner.lr_find(lightnModel, datamodule = lightnDataLoader, min_lr = 1e-8, max_lr = 1e-2 * np.sqrt(lightnDataLoader.batch_size/16), early_stop_threshold=4)
 				assert(lr_finder is not None)
 				new_lr = lr_finder.suggestion()
-				assert(new_lr is not None)
-				lightnModel.lr = new_lr
+				if (new_lr is None):
+					new_lr = 1e-7
+				else:
+					lightnModel.lr = new_lr
 			trainer.fit(lightnModel, datamodule = lightnDataLoader)
 		trainer.save_checkpoint(os.path.join("models",f"{modelName}_{version}.ckpt"))
 		lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"), model = model)
@@ -218,6 +220,7 @@ if __name__ == '__main__':
 	ap.add_argument("-m" ,"--models", type=str, required=False, help = "only use models with this String in their name")
 	ap.add_argument("-c" ,"--classifier", type=int, required=False, default=0, help = "Use if the model is to be a classfier. Choose the label index to be classified")
 	ap.add_argument("-i" ,"--indices", type=str, required=False, default="all", help = "specify indices of labels to predict (eg. '1, 2, 5'). Default is all.")
+	ap.add_argument("-l" ,"--labelsFile", type=str, required=False, default="labels.csv", help = "Specify the name of the labels-file. Default is labels.csv.")
 	args = vars(ap.parse_args())
 
 
@@ -232,4 +235,4 @@ if __name__ == '__main__':
 	if args["indices"] != "all":
 		indices = args["indices"].split(",")
 		indicesToPredict = [int(i) for i in indices]
-	main(args["epochs"], args["version"], classifier, indicesToPredict, args["models"])     
+	main(args["epochs"], args["version"], classifier, indicesToPredict, args["models"], args["labelsFile"])     
