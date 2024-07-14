@@ -97,7 +97,7 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMom
                 randomFileName = imageFileNames[0]
                 randomGroupOfPatterns = np.array(totalImages[randomFileName]) #this image always exists so it is easy to just use it
                 imageDim = randomGroupOfPatterns.shape[-1] 
-                randomImage = randomGroupOfPatterns[0]
+
             if ZernikeObject is None:
                 # diameterBFD = calc_diameter_bfd(randomImage)
                 # radius = diameterBFD//2+1
