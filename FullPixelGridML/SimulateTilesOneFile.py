@@ -326,7 +326,7 @@ def generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStr
     rows.append([f"{datasetStructID}[{xCoord}][{yCoord}]"] + [str(pixel) for pixel in pixelGrid.flatten()])
     return rows
 
-def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, timeStamp, BFDdiameter, processID = 99999, silence = False, maxPooling = 1):
+def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, timeStamp, BFDdiameter, processID = 99999, silence = False, maxPooling = 1, structure = "random"):
     rows = []
     xStepSize = (XDIMTILES-1)//3
     yStepSize = (YDIMTILES-1)//3
@@ -337,7 +337,7 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
     #     Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
     #     Writer.writerow(["datasetStructID", "Fraction of non-zero indices"])
     with h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w') as file:
-        for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick, _) in enumerate((generateDiffractionArray(trainOrTest = trainOrTest) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))):
+        for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick, _) in enumerate((generateDiffractionArray(trainOrTest = trainOrTest, structure=structure) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))):
             datasetStructID = f"{cnt}{processID}{timeStamp}" 
         
             xRealLength = XDIMTILES * gridSampling[0]
@@ -355,7 +355,7 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
                 xCNT = xStepSize * xSteps
                 yCNT = yStepSize * ySteps
 
-                difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + XDIMTILES:2, yCNT :yCNT + YDIMTILES:2].copy() # type: ignore
+                difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + XDIMTILES:3, yCNT :yCNT + YDIMTILES:3].copy() # type: ignore
                 difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
                 # randomIndicesToTurnToZeros = np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - int(0.4*allTiles),allTiles - int(0.4*allTiles)), replace = False)
                 # difPatternsOnePosition[randomIndicesToTurnToZeros] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
@@ -378,6 +378,7 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
                 indicesInBFD = slice(max((dim - BFDdiameter)//2-1,0),min((dim + BFDdiameter)//2+1, dim ))
                 difPatternsOnePositionResized = difPatternsOnePositionResized[:,indicesInBFD, indicesInBFD] 
                 # plt.imsave(os.path.join(f"measurements_{trainOrTest}",f"{datasetStructID}.png"), difPatternsOnePositionResized[0])
+
                 file.create_dataset(f"{datasetStructID}[{xSteps}][{ySteps}]", data = difPatternsOnePositionResized, compression="lzf", chunks = (1, difPatternsOnePositionResized.shape[-2], difPatternsOnePositionResized.shape[-1]), shuffle = True)
     # with open(os.path.join(f'measurements_{trainOrTest}',f'fractionOfNonZeroIndices_{processID}_{timeStamp}.csv'), 'w+', newline='') as csvfile:
     #     Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
@@ -389,7 +390,7 @@ def createTopLineRelative(csvFilePath):
     with open(csvFilePath, 'w+', newline='') as csvfile:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         #Writer.writerow(["fileName", "element1", "element2", "element3", "xAtomRel1", "xAtomRel2", "xAtomRel3", "yAtomRel1", "yAtomRel2", "yAtomRel3"])
-        Writer.writerow(["fileName", "element1", "xAtomRel", "yAtomRel"])
+        Writer.writerow(["fileName", "element", "xAtomRel", "yAtomRel"])
         Writer = None
 
 def createTopLinePixels(csvFilePath, XDIMTILES, YDIMTILES, maxPooling = 1):
@@ -431,13 +432,14 @@ if __name__ == "__main__":
     ap.add_argument("-id", "--id", type=str, required=False, default= "0",help="version number")
     ap.add_argument("-it", "--iterations", type=int, required=False, default= 1,help="number of iterations")
     ap.add_argument("-t", "--trainOrTest", type=str, required = False, default="traintest", help="specify train or test if you want to limit to just one")
+    ap.add_argument("-s", "--structure", type=str, required = False, default="random", help="Specify if a specific structure should be used. Otherwise random will be chosen.")
     args = vars(ap.parse_args())
 
 
     XDIMTILES = 11
     YDIMTILES = 11
     maxPooling = 3
-    BFDdiameter = 20 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
+    BFDdiameter = 18 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
     # assert(XDIMTILES % maxPooling == 0)
     testDivider = {"train":1, "test":0.25}
     for i in tqdm(range(max(args["iterations"],1)), disable=True):
@@ -448,7 +450,7 @@ if __name__ == "__main__":
             with(open(f"progress_{args['id']}.txt", "w")) as file:
                 file.write(f"PID {os.getpid()} on step {i+1} of {trainOrTest}-data at {datetime.datetime.now()}\n")
             timeStamp = int(str(time()).replace('.', ''))
-            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling)
+            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling, structure = args["structure"])
             writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], timeStamp = timeStamp, maxPooling=maxPooling)
   
     print(f"PID {os.getpid()} done.")
