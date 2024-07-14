@@ -70,20 +70,18 @@ class Zernike(object):
     
     def zernikeTransform(self, fileName, groupOfPatterns, zernikeTotalImages, shapeOfMomentsAllCoords = None):
         assert(len(np.shape(groupOfPatterns)) == 3)
-        moments = []
-        for im in groupOfPatterns:
-            dim = np.shape(im)[-1]
+        moments = np.zeros((len(groupOfPatterns)* self.resultVectorLength),dtype=np.float32)
+        dim = np.shape(groupOfPatterns)[-1]
+        for cnt, im in enumerate(groupOfPatterns):
             if self.dimToBasis.get(dim) is None:
                 basisObject = self.basisObject(self, dim)
                 self.dimToBasis[dim] = basisObject.basis.copy()
             basis = self.dimToBasis[dim]
-            if not np.any(im):
-                #most diffraction patterns are left empty, so this is a good optimization
-                moments.append(np.zeros(self.resultVectorLength))
-            else:
-                moments.append(self.calculateZernikeWeights(basis, im)) #before: scaled up with 10e3 so it's more useful
-        moments = np.array(moments).flatten()
-
+            # if not np.any(im):
+            #     #most diffraction patterns are left empty, so this is a good optimization
+            #     continue
+            # else:
+            moments[cnt*self.resultVectorLength:(cnt+1)*self.resultVectorLength] = self.calculateZernikeWeights(basis, im) #before: scaled up with 10e3 so it's more useful
 
         
         if fileName is not None:
