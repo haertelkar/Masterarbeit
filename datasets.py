@@ -8,7 +8,7 @@ import torch
 import os
 import lightning.pytorch as pl
 import h5py
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import random_split, DataLoader, WeightedRandomSampler
 
 class ptychographicDataLightning(pl.LightningDataModule):
 	def __init__(self, model_name, batch_size = 2048, num_workers = 20, classifier = False, indicesToPredict = None, labelFile = "labels.csv", testDirectory = "measurements_test"):
@@ -25,6 +25,7 @@ class ptychographicDataLightning(pl.LightningDataModule):
 		self.prepare_data_per_node = False
 		self.labelFile = labelFile
 		self.testDirectory = testDirectory
+		self.weights = None
 
 	def setup(self, stage = None) -> None:
 		if self.setupDone: return
@@ -34,16 +35,16 @@ class ptychographicDataLightning(pl.LightningDataModule):
 		else:
 			raise Exception(f"model name '{self.model_name}' unknown")
 		self.trainAndVal_dataset = ptychographicData(
-					os.path.abspath(os.path.join(folderName,"measurements_train",self.labelFile)), 
+					os.path.abspath(os.path.join(folderName,"measurements_train", self.labelFile)), 
 					os.path.abspath(os.path.join(folderName,"measurements_train")), transform=torch.as_tensor, 
 					target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
 				)		
 		
-		numTrainSamples = int(len(self.trainAndVal_dataset) * self.TRAIN_SPLIT)
+		self.numTrainSamples = int(len(self.trainAndVal_dataset) * self.TRAIN_SPLIT)
 		numValSamples = int(len(self.trainAndVal_dataset) * self.VAL_SPLIT)
-		numValSamples += len(self.trainAndVal_dataset) - numTrainSamples - numValSamples
+		numValSamples += len(self.trainAndVal_dataset) - self.numTrainSamples - numValSamples
 		(self.train_dataset, self.val_dataset) = random_split(self.trainAndVal_dataset,
-			[numTrainSamples, numValSamples],
+			[self.numTrainSamples, numValSamples],
 			generator=torch.Generator().manual_seed(42))
 		
 		self.test_dataset = ptychographicData(
@@ -54,10 +55,38 @@ class ptychographicDataLightning(pl.LightningDataModule):
 				)
 		# initialize the train, validation, and test data loaders
 		warnings.filterwarnings("ignore", ".*This DataLoader will create 20 worker processes in total. Our suggested max number of worker in current system is 10.*") #this is an incorrect warning as we have 20 cores
+		
+		xAtomRelPos = None
+		yAtomRelPos = None
+
+		if len(self.trainAndVal_dataset.columns[1:]) == 2:
+			if "xAtomRel" in self.trainAndVal_dataset.columns[1] and "yAtomRel" in self.trainAndVal_dataset.columns[2]:
+				xAtomRelPos = 0
+				yAtomRelPos = 1
+			elif "xAtomRel" in self.trainAndVal_dataset.columns[2] and "yAtomRel" in self.trainAndVal_dataset.columns[1]:
+				xAtomRelPos = 1
+				yAtomRelPos = 0
+
+		if xAtomRelPos is not None:
+			train_label_array = np.hstack([y for x, y in self.train_dataset])
+			hist, xbins, ybins = np.histogram2d(train_label_array[:,xAtomRelPos], train_label_array[:,yAtomRelPos], bins=100)
+			logHist = np.log(hist, where=hist != 0)
+			logHist[hist == 0] = np.log(1) - 1 #to make zero the lowest value
+			logHist = logHist + 1 + np.abs(np.min(logHist)) #to make all values higher than 0
+			xbinPositions = np.digitize(train_label_array[:,xAtomRelPos], xbins, right = True)-1
+			ybinPositions = np.digitize(train_label_array[:,yAtomRelPos], ybins, right = True)-1
+			self.weights = list(1/(logHist[xbinPositions[cnt], ybinPositions[cnt]]) for cnt in range(len(self.train_dataset)))
+
 		self.setupDone = True
+
 	
 	def train_dataloader(self) -> TRAIN_DATALOADERS:
-		return DataLoader(self.train_dataset, shuffle=True, batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True)
+		if self.weights is None: 
+			return DataLoader(self.train_dataset, shuffle=False, batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True)
+		else:
+			samples_weight = self.weights
+			sampler = WeightedRandomSampler(samples_weight, self.numTrainSamples)
+			return DataLoader(self.train_dataset, shuffle=False, batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, sampler = sampler)
 	
 	def val_dataloader(self) -> EVAL_DATALOADERS:
 		return DataLoader(self.val_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True)
@@ -108,6 +137,22 @@ class ptychographicData(Dataset):
 		#print(f"data type: {imageOrZernikeMoments}, data size: {np.shape(imageOrZernikeMoments)}")
 		return imageOrZernikeMoments, label
 	
+	# def get2Dhist(self):
+	# 	xIndex = np.where(self.columns == "xAtomRel")[0][0] - 1
+	# 	yIndex = np.where(self.columns == "yAtomRel")[0][0] - 1
+	# 	minDist = min(min(self.image_labels[:,xIndex]), min(self.image_labels[:,yIndex]))
+	# 	maxDist = max(max(self.image_labels[:,xIndex]), max(self.image_labels[:,yIndex]))
+	# 	xBins = np.linspace(minDist, maxDist, 100)
+	# 	yBins = np.linspace(minDist, maxDist, 100)
+	# 	hist = np.zeros((100,100))
+	# 	for rowIndex in range(len(self)):
+	# 		xAtomRel = self.image_labels[rowIndex][xIndex]
+	# 		yAtomRel = self.image_labels[rowIndex][yIndex]
+	# 		xBin = np.digitize(xAtomRel, xBins, right = True)-1
+	# 		yBin = np.digitize(yAtomRel, yBins, right = True)-1
+	# 		hist[xBin, yBin] += 1
+	# 	return hist, xBins, yBins
+
 	def getLabel(self, idx):
 		# if self.classifier:
 		# 	label = np.array(self.img_labels.iloc[idx, self.labelIndicesToPredict]).astype(int)
