@@ -21,4 +21,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun python3 -u lightningTrain.py -v 3107_test4_2146 -e 40 -m ormal -l labels_only_Elem_1.csv
+srun python3 -u lightningTrain.py -v 2407_test_1411 -e 40 -m ormal -l labels_only_Dist_smol.csv

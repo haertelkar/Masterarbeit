@@ -11,6 +11,7 @@
 
 #SBATCH --mail-type=END
 #SBATCH --mail-type=FAIL
+#SBATCH --array=1-4
 
 
 # Debugging flags (optional)
@@ -21,4 +22,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun python3 -u lightningTrain.py -v 3107_test4_2146 -e 40 -m ormal -l labels_only_Elem_1.csv
+srun python3 lightningTrain.py -v 3108_1328_onlyElemWeightedClip_atom$SLURM_ARRAY_TASK_ID -e 10 -m FullPixelGridML -l labels_only_Elem_$SLURM_ARRAY_TASK_ID.csv

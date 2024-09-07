@@ -18,4 +18,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun python3 lightningTrain.py -v relCNN2024MoreData -e 20 -m ull
+srun python3 lightningTrain.py -v 2607_onlyDist_atom1_0940-e 40 -m ormal -l labels_only_Elem_2noNan.csv

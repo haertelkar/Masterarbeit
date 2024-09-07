@@ -121,6 +121,19 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMom
     print("Finished Zernike Transformations.")
 
 def calc_diameter_bfd(image):
+    # leftEdge = CBEDDim
+    # rightEdge = 0
+    # for row in brightFieldDisk:
+    #     for i in range(len(row)):
+    #         if row[i] == 1 and i < leftEdge:
+    #             leftEdge = i
+    #         if i < len(row) - 1 and row[i+1] == 0 and row[i] == 1 and i > rightEdge:
+    #             rightEdge = i
+
+    # if rightEdge < leftEdge:
+    #     raise Exception("rightEdge < leftEdge")
+        
+    # diameterBFD = rightEdge - leftEdge
     brightFieldDisk = np.zeros_like(image)
     brightFieldDisk[image > np.max(image)*0.05] = 1
     bfdArea = np.sum(brightFieldDisk)

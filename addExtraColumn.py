@@ -1,4 +1,4 @@
-fileName = "results_ZernikeNormal_0807_DistOverCubedDistOnlyDist.csv"
+fileName = "results_ZernikeNormal_evaluation_ZernikeNormal_0607_OnlyDist_epoch=30-step=50840_randomData.csv"
 
 import pandas as pd
 #import the file as pd.dataframe and add a new column at the beginning and in the middle

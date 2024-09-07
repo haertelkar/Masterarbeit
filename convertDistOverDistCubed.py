@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import csv
 
-csvFile = "AppendedColumn_results_ZernikeNormal_0807_DistOverCubedDistOnlyDist.csv"
+csvFile = "AppendedColumn_results_ZernikeNormal_evaluation_ZernikeNormal_0807_DistOverCubedDistOnlyDist_epoch=35-step=59040.csv"
 csvFileFullPath = "testDataEval/"+csvFile
 
 #change the first row in csvFile to "element1", "xAtomRelOverDistCub1", "yAtomRelOverDistCub1", "element" "xAtomRelOverDistCub", "yAtomRelOverDistCub"

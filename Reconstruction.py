@@ -8,7 +8,7 @@ import cv2
 from matplotlib import pyplot as plt
 import torch
 from tqdm import tqdm
-from FullPixelGridML.SimulateTilesOneFile import generateDiffractionArray
+from FullPixelGridML.SimulateTilesOneFile import generateDiffractionArray, createAllXYCoordinates, saveAllDifPatterns
 import numpy as np
 from ase.io import write
 from ase.visualize.plot import plot_atoms
@@ -18,15 +18,13 @@ from torch import nn
 from lightningTrain import loadModel, lightnModelClass
 from Zernike.ZernikeTransformer import Zernike, calc_diameter_bfd
 
-DIMTILES = 11
+
 
 def replace_line_in_file(file_path, line_number, text):
 
     """
 
     Replaces a specific line in a file with the given text.
-
-
 
     :param file_path: Path to the file where the line needs to be replaced.
 
@@ -37,47 +35,28 @@ def replace_line_in_file(file_path, line_number, text):
     """
 
     try:
-
         # Read the file contents
-
         with open(file_path, 'r') as file:
-
             lines = file.readlines()
 
-
-
         # Check if the specified line number is within the file's line count
-
         if line_number > len(lines) or line_number < 1:
-
             raise ValueError("Line number is out of range.")
 
-
-
         # Replace the specified line
-
         lines[line_number - 1] = text + '\n'
 
-
-
         # Write back the modified content
-
         with open(file_path, 'w') as file:
-
             file.writelines(lines)
 
-
-
     except FileNotFoundError:
-
         print(f"The file {file_path} was not found.")
 
     except IOError:
-
         print("An error occurred while reading or writing the file.")
 
     except Exception as e:
-
         print(f"An error occurred: {e}")
 
 def cutEverythingBelowLine(textFile : str, line:int):
@@ -127,91 +106,85 @@ def writeParamsCNF(ScanX,ScanY, beamPositions, diameterBFD, conv_angle_in_mrad= 
     replace_line_in_file('Params.cnf', 45, f"ScanY:   {ScanY}     #Number of steps in Y-direction")
     replace_line_in_file('Params.cnf', 46, f"batchSize: {min(ScanX,ScanY)}  #Number of CBEDs that are processed in parallel")
 
-energy = 60e3
-conv_angle_in_mrad = 33
 
-nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick = generateDiffractionArray(conv_angle= conv_angle_in_mrad, energy=energy,structure="multiPillars", pbar = True, start=[2, 0], end=[25, 15])
-assert(measurement_thick.array.shape[2] == measurement_thick.array.shape[3])
-CBEDDim = measurement_thick.array.shape[2]
-measurementArray = np.zeros((measurement_thick.array.shape[0],measurement_thick.array.shape[1],CBEDDim,CBEDDim))
 
-realPositions = np.zeros((measurementArray.shape[0],measurementArray.shape[1]), dtype = object)   
-for i in range(measurementArray.shape[0]): 
-    for j in range(measurementArray.shape[1]):
-        realPositions[i,j] = (i*0.2*1e-10,j*0.2*1e-10)
-for i in range(measurementArray.shape[0]):
-    for j in range(measurementArray.shape[1]):
-        measurementArray[i,j,:,:] = measurement_thick.array[i,j,:,:]
+def createMeasurementArray(DIMTILES, energy, conv_angle_in_mrad, structure):
+    nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick = generateDiffractionArray(conv_angle= conv_angle_in_mrad, energy=energy,structure=structure, pbar = True, start=[5, 5], end=[20, 20])
+    assert(measurement_thick.array.shape[2] == measurement_thick.array.shape[3])
+    CBEDDim = measurement_thick.array.shape[2]
+    measurementArray = np.zeros((measurement_thick.array.shape[0],measurement_thick.array.shape[1],CBEDDim,CBEDDim))
 
-assert(measurementArray.shape[0] > DIMTILES)
-assert(measurementArray.shape[1] > DIMTILES) 
+    realPositions = np.zeros((measurementArray.shape[0],measurementArray.shape[1]), dtype = object)   
+    for i in range(measurementArray.shape[0]): 
+        for j in range(measurementArray.shape[1]):
+            realPositions[i,j] = (i*0.2*1e-10,j*0.2*1e-10)
+    for i in range(measurementArray.shape[0]):
+        for j in range(measurementArray.shape[1]):
+            measurementArray[i,j,:,:] = measurement_thick.array[i,j,:,:]
+
+    assert(measurementArray.shape[0] > DIMTILES)
+    assert(measurementArray.shape[1] > DIMTILES)
+    return nameStruct,gridSampling,atomStruct,measurement_thick,potential_thick,CBEDDim,measurementArray,realPositions
+
+
 
         #measurementArray[i,j,:,:] = measurementArray[i,j,:,:]/(np.sum(measurementArray[i,j,:,:])+1e-10) 
-diameterBFD = calc_diameter_bfd(measurementArray[0,0,:,:])
-# leftEdge = CBEDDim
-# rightEdge = 0
-# for row in brightFieldDisk:
-#     for i in range(len(row)):
-#         if row[i] == 1 and i < leftEdge:
-#             leftEdge = i
-#         if i < len(row) - 1 and row[i+1] == 0 and row[i] == 1 and i > rightEdge:
-#             rightEdge = i
-
-# if rightEdge < leftEdge:
-#     raise Exception("rightEdge < leftEdge")
-    
-# diameterBFD = rightEdge - leftEdge
-print(f"diameter of the bfd in pixels: {diameterBFD}")
-
-#remove ROP clutter
-for filename in glob.glob('Probe*.bin'):
-    os.remove(filename)
-for filename in glob.glob('Potential*.bin'):
-    os.remove(filename)
-for filename in glob.glob('Positions*.txt'):
-    os.remove(filename)
-for filename in glob.glob('Potential*.png'):
-    os.remove(filename)
-        
-
-writeParamsCNF(measurementArray.shape[1],measurementArray.shape[0], realPositions.flatten(), diameterBFD, conv_angle_in_mrad = conv_angle_in_mrad, energy=energy, CBEDDim=CBEDDim)
-size = measurementArray.shape[0] * measurementArray.shape[1] * measurementArray.shape[2] * measurementArray.shape[3]
-measurementArrayToFile = np.copy(measurementArray)
-#Normalize data - required for ROP
-measurementArrayToFile /= (np.sum(measurementArrayToFile)/(measurementArrayToFile.shape[0] * measurementArrayToFile.shape[1]))
-#Convert to binary format
-measurementArrayToFile = np.ravel(measurementArrayToFile)
-measurementArrayToFile = struct.pack(size * 'f', *measurementArrayToFile)
-file = open("testMeasurement.bin", 'wb')
-file.write(measurementArrayToFile)
-file.close()
-
-# measurementArray.astype('float').flatten().tofile("testMeasurement.bin")
 
 
 
+def CleanUpROP():
+    #remove ROP clutter
+    for filename in glob.glob('Probe*.bin'):
+        os.remove(filename)
+    for filename in glob.glob('Potential*.bin'):
+        os.remove(filename)
+    for filename in glob.glob('Positions*.txt'):
+        os.remove(filename)
+    for filename in glob.glob('Potential*.png'):
+        os.remove(filename)
 
+def createROPFiles(energy, conv_angle_in_mrad, CBEDDim, measurementArray, realPositions, diameterBFD):
+    CleanUpROP()
+    writeParamsCNF(measurementArray.shape[1],measurementArray.shape[0], realPositions.flatten(), diameterBFD, conv_angle_in_mrad = conv_angle_in_mrad, energy=energy, CBEDDim=CBEDDim)
+    size = measurementArray.shape[0] * measurementArray.shape[1] * measurementArray.shape[2] * measurementArray.shape[3]
+    measurementArrayToFile = np.copy(measurementArray)
+    #Normalize data - required for ROP
+    measurementArrayToFile /= (np.sum(measurementArrayToFile)/(measurementArrayToFile.shape[0] * measurementArrayToFile.shape[1]))
+    #Convert to binary format
+    measurementArrayToFile = np.ravel(measurementArrayToFile)
+    measurementArrayToFile = struct.pack(size * 'f', *measurementArrayToFile)
+    file = open("testMeasurement.bin", 'wb')
+    file.write(measurementArrayToFile)
+    file.close()
 
+def plotGTandPred(atomStruct, groundTruth, Predictions):
+    """Create plots of the ground truth and the predictions. 
+    They are transposed because the reconstruction is also transposed.
+    """
+    extent=  [5,20,5,20]
+    plt.imshow(Predictions.T, origin = "lower", interpolation="none", extent=extent)
+    plt.colorbar()
+    plt.savefig("Predictions.png")
+    plt.close()
+    plt.imshow(np.log(Predictions+1).T, origin = "lower", extent=extent)
+    plt.savefig("PredictionsLog.png")
+    plt.close()
+    import abtem
+    abtem.show_atoms(atomStruct, legend = True)
+    plt.savefig("testStructureOriginal.png")
+    plt.close()
+    plt.imshow(groundTruth.T, origin = "lower", interpolation="none", extent=extent)
+    plt.colorbar()
+    plt.savefig("groundTruth.png")
+    plt.close()
+    plt.imshow(np.log(groundTruth+1).T, origin = "lower", interpolation="none", extent=extent)
+    plt.colorbar()
+    plt.savefig("groundTruthLog.png")
+    plt.close()
+    print("Finished")
 
-
-
-
-
-
-# write('testAtomStruct.png', atomStruct)
-# print(len(potential_thick))
-
-# randomizedXPositions = np.random.choice(measurement_thick.shape[0], int(min(measurement_thick.shape[0],measurement_thick.shape[1]) * 0.3), replace = True)
-# randomizedYPositions = np.random.choice(measurement_thick.shape[1], int(min(measurement_thick.shape[0],measurement_thick.shape[1]) * 0.3), replace = True)
-
-# realPositionsSparse = np.ravel(realPositions[randomizedXPositions, randomizedYPositions])
-
-# measurementArraySparse = np.copy(measurement_thick)
-# measurementArraySparse = np.ravel(measurement_thick[randomizedXPositions, randomizedYPositions,:,:])
-
-
-
-multislice_reconstruction_ptycho_operator = RegularizedPtychographicOperator(
+def createAndPlotReconstructedPotential(potential_thick):
+    multislice_reconstruction_ptycho_operator = RegularizedPtychographicOperator(
     measurement_thick,
     scan_step_sizes = 0.2,
     semiangle_cutoff=conv_angle_in_mrad,
@@ -220,13 +193,34 @@ multislice_reconstruction_ptycho_operator = RegularizedPtychographicOperator(
     device="gpu",
     #slice_thicknesses=1
 ).preprocess()
+    mspie_objects, mspie_probes, rpie_positions, mspie_sse = multislice_reconstruction_ptycho_operator.reconstruct(
+    max_iterations=20, return_iterations=True, random_seed=1, verbose=True)
 
-mspie_objects, mspie_probes, rpie_positions, mspie_sse = multislice_reconstruction_ptycho_operator.reconstruct(
-    max_iterations=20, return_iterations=True, random_seed=1, verbose=True
-)
+    mspie_objects[-1].angle().interpolate(potential_thick.sampling).show(extent = [5,20,5,20])
+    plt.tight_layout()
+    plt.savefig("testStructureFullRec.png")
 
-mspie_objects[-1].angle().interpolate(potential_thick.sampling).show()
+def groundTruthCalculator(DIMTILES, LabelCSV, groundTruth, Predictions, cnt, xCNT, yCNT):
+    for i in range(4):
+        gtDist = [LabelCSV[cnt][-8 + i], LabelCSV[cnt][-4 + i]]
+        xGT = int(np.around(float(gtDist[0])/0.2)) + xCNT + DIMTILES//2
+        yGT = int(np.around(float(gtDist[1])/0.2)) + yCNT + DIMTILES//2
+        element = int(float(LabelCSV[cnt][1+i]))
+        print(f"atom no. {i}: gt element: {element}, Ground truth position: {xGT}, {yGT}, Ground truth values: {gtDist}")
+        if xGT < 0 or xGT >= Predictions.shape[0] or yGT < 0 or yGT >= Predictions.shape[1]:
+            print("Ground truth out of bounds")
+        else:
+            groundTruth[int(xGT), int(yGT)] += element
 
+
+# measurementArray.astype('float').flatten().tofile("testMeasurement.bin")
+energy = 60e3
+structure="multiPillars"
+conv_angle_in_mrad = 33
+DIMTILES = 10
+DIMENSION = DIMTILES//3 + 1
+dim = 50
+diameterBFD50Pixels = 18
 print("Calculating the number of Zernike moments:")
 resultVectorLength = 0 
 numberOfOSAANSIMoments = 20	
@@ -236,14 +230,8 @@ for n in range(numberOfOSAANSIMoments + 1):
         if (n-m)%2 != 0:
             continue
         resultVectorLength += 1
-
 print("load model")
 modelName = "ZernikeNormal"
-DIMTILES = 11
-DIMENSION = DIMTILES//3 + 1
-
-
-
 if "Zernike" in modelName:
     numChannels=resultVectorLength * DIMENSION**2
     numLabels = 2
@@ -253,72 +241,97 @@ else:
     numLabels = 2
     modelName = "FullPixelGridML"
 
+
+
+nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick, CBEDDim, measurementArray, realPositions = createMeasurementArray(DIMTILES, energy, conv_angle_in_mrad, structure) 
+diameterBFDNotScaled = calc_diameter_bfd(measurementArray[0,0,:,:])
+plt.imsave("detectorImage.png",measurementArray[0,0,:,:])
+createROPFiles(energy, conv_angle_in_mrad, CBEDDim, measurementArray, realPositions, diameterBFDNotScaled)
+print(f"Calculated BFD not scaled to 50 pixels: {diameterBFDNotScaled}")
+print(f"imageDim Not Scaled to 50 Pixels: {measurementArray[0,0,:,:].shape[-1]}")
+print(f"Calculated BFD scaled to 50 pixels: {diameterBFDNotScaled/measurementArray[0,0,:,:].shape[-1] * 50}")
+print(f"Actually used BFD with margin: {diameterBFD50Pixels}")
+
+
+
+# createAndPlotReconstructedPotential(potential_thick)
+
 model = loadModel(modelName = modelName, numChannels=numChannels, numLabels = numLabels)
 
-model = lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("checkpoints",f"ZernikeNormal_0607_OnlyDist","epoch=30-step=50840.ckpt"), model = model)
+model = lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("checkpoints",f"ZernikeNormal_2707_onlyDist_atom1_2305","epoch=31-step=27168.ckpt"), model = model)
 model.eval()
 
 #initiate Zernike
-radius = diameterBFD//2 + 1
-ZernikeObject = Zernike(radius, numberOfOSAANSIMoments= numberOfOSAANSIMoments)
-
-# def generateGroupOfPatterns(measurementArray):
-#     for i in range((measurementArray.shape[0]-DIMTILES)):
-#         for j in range((measurementArray.shape[1]-DIMTILES)):
-#             difPatternsOnePosition = np.copy(measurementArray[i:DIMTILES+i,j:DIMTILES+j,:,:])
-#             yield np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
-
-# mASomeZeroedOut = np.copy(measurementArray)
-# mASomeZeroedOut = np.reshape(mASomeZeroedOut, (-1,mASomeZeroedOut.shape[2],mASomeZeroedOut.shape[3]))
-# mASomeZeroedOut[np.random.choice(mASomeZeroedOut.shape[0], int(0*mASomeZeroedOut.shape[0]), replace = False),:,:] = np.zeros((mASomeZeroedOut.shape[-2],mASomeZeroedOut.shape[-1]))
-# mASomeZeroedOut = np.reshape(mASomeZeroedOut, (measurementArray.shape[0],measurementArray.shape[1],measurementArray.shape[2],measurementArray.shape[3]))
+print("generating the zernike moments")
+xMaxCNT, yMaxCNT = np.shape(measurement_thick.array)[:2] # type: ignore
+xStepSize = (DIMTILES-1)//3
+yStepSize = (DIMTILES-1)//3
+xMaxStartCoord = (xMaxCNT-DIMTILES)//xStepSize
+yMaxStartCoord = (yMaxCNT-DIMTILES)//yStepSize
 
 #ZernikeTransform
-print("generating the zernike moments")
-
+difArrays = [[nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick]]
+RelLabelCSV, dataArray = saveAllDifPatterns(DIMTILES, DIMTILES, None, -1, None, diameterBFD50Pixels, processID = 99999, silence = False, maxPooling = 1, structure = "None", fileWrite = False, difArrays = difArrays) # type: ignore
+radius = dataArray.shape[-1] #already removed everything outside BFD in saveAllDifPatterns 
+ZernikeObject = Zernike(radius, numberOfOSAANSIMoments= numberOfOSAANSIMoments)
 #poolingFactor = int(3)
-
+groundTruth = np.zeros((measurementArray.shape[0], measurementArray.shape[1]))
 # loop over the all positions and apply the model to the data
-Predictions = np.zeros((measurementArray.shape[0], measurementArray.shape[1]))
-for i in tqdm(range(measurementArray.shape[0]-DIMTILES), desc= "Going through all positions and predicting"):
-    for j in range(measurementArray.shape[1]-DIMTILES):
-        if i % 3 != 0 or j % 3 != 0:
-            continue    
-        groupOfPatterns = measurementArray[i:DIMTILES+i:3,j:DIMTILES+j:3,:,:]
-        groupOfPatterns = np.reshape(groupOfPatterns, (-1,groupOfPatterns.shape[-2], groupOfPatterns.shape[-1]))
-        zernikeValues = ZernikeObject.zernikeTransform(fileName = None, groupOfPatterns = groupOfPatterns, zernikeTotalImages = None)
-        pred = model(torch.tensor(zernikeValues).float())
-        pred = pred.detach().numpy()
-        xMostLikely = int(np.around(pred[0]/0.2)) + i #*21.150389
-        yMostLikely = int(np.around(pred[1]/0.2)) + j #*21.282316
-        if xMostLikely < 0 or xMostLikely >= Predictions.shape[0] or yMostLikely < 0 or yMostLikely >= Predictions.shape[1]:
-            print("Prediction out of bounds")
-            continue
-        Predictions[int(xMostLikely), int(yMostLikely)] += 1 #for some reason the reconstruction is rotated by 90 degrees
-        # predExpanded = np.zeros((DIMTILES, DIMTILES))
-        # for n in range(poolingFactor):
-        #     predExpanded[n::poolingFactor,n::poolingFactor] = pred.reshape((DIMTILES//poolingFactor,DIMTILES//poolingFactor))
-        # try:
-        #     Predictions[i:min(i+DIMTILES, Predictions.shape[0]),j:min(j+DIMTILES, Predictions.shape[1])] += predExpanded[:min(DIMTILES, Predictions.shape[0]-i),:min(DIMTILES, Predictions.shape[1]-j)]
-        # except Exception as e:
-        #     print(f"Ignored Error: {e}")
+Predictions = np.zeros_like(groundTruth)
+
+predictions = []
+
+for cnt, (xSteps, ySteps) in tqdm(enumerate(createAllXYCoordinates(yMaxStartCoord,xMaxStartCoord))   , desc= "Going through all positions and predicting"):
+    zernikeValues = ZernikeObject.zernikeTransform(fileName = None, groupOfPatterns = dataArray[cnt], zernikeTotalImages = None)
+    pred = model(torch.tensor(zernikeValues).float())
+    pred = pred.detach().numpy()
+    
+    xCNT = xStepSize * xSteps
+    yCNT = yStepSize * ySteps
+    predictions.append(pred)
+
+predictionArray = np.array(predictions)
+medianPredicitionX = np.median(predictionArray[:,0])
+print(f"Median prediction for x: {medianPredicitionX}")
+medianPredicitionY = np.median(predictionArray[:,1])
+print(f"Median prediction for y: {medianPredicitionY}")
+
+
+for cnt, (xSteps, ySteps) in tqdm(enumerate(createAllXYCoordinates(yMaxStartCoord,xMaxStartCoord))   , desc= "Going through all positions and predicting"):
+    zernikeValues = ZernikeObject.zernikeTransform(fileName = None, groupOfPatterns = dataArray[cnt], zernikeTotalImages = None)
+    pred = model(torch.tensor(zernikeValues).float())
+    pred = pred.detach().numpy()
+    
+    xCNT = xStepSize * xSteps
+    yCNT = yStepSize * ySteps
+    xMostLikely = int(np.around((pred[0]+0.05)/0.2)) + xCNT + DIMTILES//2
+    yMostLikely = int(np.around(pred[1]/0.2)) + yCNT + DIMTILES//2
+
+    print(f"Predicted position: {xMostLikely}, {yMostLikely}, Predicted values: {pred}")
+    if xMostLikely < 0 or xMostLikely >= Predictions.shape[0] or yMostLikely < 0 or yMostLikely >= Predictions.shape[1]:
+        print("Prediction out of bounds")
+    else:
+        Predictions[int(xMostLikely), int(yMostLikely)] += (pred[0]-medianPredicitionX)/0.07 >=1 or (pred[1]-medianPredicitionY)/0.07 >=1 #for some reason the reconstruction is transposed. Is adjusted later when plotted
+
+    groundTruthCalculator(DIMTILES, RelLabelCSV, groundTruth, Predictions, cnt, xCNT, yCNT)
+        # groundTruth[xCNT + DIMTILES//2, yCNT + DIMTILES//2] += 1 only for plotting the tile centers
+    # predExpanded = np.zeros((DIMTILES, DIMTILES))
+    # for n in range(poolingFactor):
+    #     predExpanded[n::poolingFactor,n::poolingFactor] = pred.reshape((DIMTILES//poolingFactor,DIMTILES//poolingFactor))
+    # try:
+    #     Predictions[i:min(i+DIMTILES, Predictions.shape[0]),j:min(j+DIMTILES, Predictions.shape[1])] += predExpanded[:min(DIMTILES, Predictions.shape[0]-i),:min(DIMTILES, Predictions.shape[1]-j)]
+    # except Exception as e:
+    #     print(f"Ignored Error: {e}")
 
 # for all elements in the predictions array divide through coordinates
-for x in range(Predictions.shape[0]):
-    for y in range(Predictions.shape[1]):
-        xArea = min(DIMTILES, x+1, Predictions.shape[0]-x)
-        yArea = min(DIMTILES, y+1, Predictions.shape[1]-y)
-        Predictions[x,y] = Predictions[x,y]/(xArea*yArea)
-
-Predictions/=np.max(Predictions)
+# for x in range(Predictions.shape[0]):
+#     for y in range(Predictions.shape[1]):
+#         xArea = min(DIMTILES, x+1, Predictions.shape[0]-x)
+#         yArea = min(DIMTILES, y+1, Predictions.shape[1]-y)
+#         Predictions[x,y] = Predictions[x,y]/(xArea*yArea)
 
 
-plt.tight_layout()
-plt.savefig("testStructureFullRec.png")
-plt.imshow(Predictions)
-plt.colorbar()
-plt.imsave("Predictions.png", Predictions)
-plt.savefig("testStructureFullRec_WithPredictions.png")
-plt.close()
-plt.imsave("PredictionsLog.png", np.log(Predictions+1))
 
+
+
+plotGTandPred(atomStruct, groundTruth, Predictions)

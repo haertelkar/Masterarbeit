@@ -10,6 +10,7 @@ import torch
 import faulthandler
 import signal
 from tqdm import tqdm
+from Zernike.dqn import DQNLightning
 from datasets import ptychographicDataLightning
 import torch.nn.functional as F
 import lightning.pytorch as pl
@@ -79,7 +80,7 @@ class lightnModelClass(pl.LightningModule):
 def loadModel(trainDataLoader = None, modelName = "ZernikeNormal", numChannels = 0, numLabels = 0) -> nn.Module:
 	# first element to access dimensions
 	if numChannels <= 0 and numLabels <= 0 and trainDataLoader is not None: 
-		trainFeatures, trainLabels = next(iter(trainDataLoader))
+		trainFeatures, trainLabels = next(iter(trainDataLoader))		
 		#first dim is batch size
 		numChannels = trainFeatures.shape[1]		
 		numLabels = trainLabels.shape[1]
@@ -129,23 +130,31 @@ def loadModel(trainDataLoader = None, modelName = "ZernikeNormal", numChannels =
 def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, version, classifier):
 	# we can now evaluate the network on the test set
 	print("[INFO] evaluating network...")
-	
+	model.to('cuda')
 	# turn off autograd for testing evaluation
 	with torch.inference_mode(), open(os.path.join("testDataEval",f'results_{modelName}_{version}.csv'), 'w+', newline='') as resultsTest:
 		Writer = csv.writer(resultsTest, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
 		if not classifier and indicesToPredict is None:
-			Writer.writerow(list(test_data.columns[1:])*2)
+			predColumnNames = []
+			for columnName in list(test_data.columns[1:]):
+				predColumnNames.append(f"{columnName}_pred")
+			Writer.writerow(predColumnNames + list(test_data.columns[1:]))
 		elif not classifier:
-			Writer.writerow(list(test_data.columns[np.array(indicesToPredict)])*2)
+			predColumnNames = []
+			for columnName in list(test_data.columns[np.array(indicesToPredict)]):
+				predColumnNames.append(f"{columnName}_pred")
+			Writer.writerow(predColumnNames+ list(test_data.columns[np.array(indicesToPredict)]))
 		else:
 			Writer.writerow(list(test_data.columns[np.array(indicesToPredict)])) 
 		
 		model.eval()
 		
+		
 		# loop over the test set
 		for (x, y) in tqdm(testDataLoader, desc="Going through test data"):
 			# make the predictions and add them to the list
 			pred = model(x.to('cuda'))
+			y.to("cuda")
 			if not classifier:
 				for predEntry, yEntry in zip(pred.tolist(), y.tolist()):
 					predScaled = predEntry
@@ -166,10 +175,11 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 			continue
 		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile)
 		lightnDataLoader.setup()
-		model = loadModel(lightnDataLoader.val_dataloader(), modelName)
-		lightnModel = lightnModelClass(model)
+		# model = loadModel(lightnDataLoader.val_dataloader(), modelName)
+		#lightnModel = lightnModelClass(model)
+		lightnModel = DQNLightning()
 		early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=0.00, patience=5, verbose=False, mode="min", stopping_threshold = 1e-10)
-		swa = StochasticWeightAveraging(swa_lrs=1e-2) #faster but a bit less good
+		swa = StochasticWeightAveraging(swa_lrs=1e-2) #faster but a bit worse
 		chkpPath = os.path.join("checkpoints",f"{modelName}_{version}")
 		if not os.path.exists(chkpPath):
 			os.makedirs(chkpPath)
@@ -179,7 +189,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 			checkPointExists = True
 		checkpoint_callback = ModelCheckpoint(dirpath=chkpPath, save_top_k=1, monitor="val_loss")
 		#profiler = AdvancedProfiler(dirpath=".", filename=f"perf_logs_{modelName}_{version}")
-		trainer = pl.Trainer(plugins=[SLURMEnvironment(requeue_signal=signal.SIGHUP)],logger=TensorBoardLogger("tb_logs", name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=[early_stop_callback, swa, checkpoint_callback])
+		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=[early_stop_callback, swa, checkpoint_callback])
 		if checkPointExists:
 			trainer.fit(lightnModel, datamodule = lightnDataLoader, ckpt_path="last")
 		else:
@@ -187,13 +197,13 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 			tuner = Tuner(trainer)
 			# Auto-scale batch size by growing it exponentially
 			# if world_size == 1: 
-			# 	new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, init_val=1024, max_trials= 25) 
+			# 	new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, init_val=512, max_trials= 25) 
 			# 	print(f"New batch size: {new_batch_size}")
 				# leads to crashing with slurm but has worked with 2048 batch size
 				# lightnDataLoader.batch_size is automatically set to new_batch_size
 			# finds learning rate automatically
 			if world_size == 1:
-				lr_finder = tuner.lr_find(lightnModel, datamodule = lightnDataLoader, min_lr = 1e-8, max_lr = 1e-2 * np.sqrt(lightnDataLoader.batch_size/16), early_stop_threshold=4)
+				lr_finder = tuner.lr_find(lightnModel, num_training=100, datamodule = lightnDataLoader, min_lr = 1e-8, max_lr = 1 * np.sqrt(lightnDataLoader.batch_size/16), early_stop_threshold=4)
 				assert(lr_finder is not None)
 				new_lr = lr_finder.suggestion()
 				if (new_lr is None):
@@ -202,11 +212,11 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 					lightnModel.lr = new_lr
 			trainer.fit(lightnModel, datamodule = lightnDataLoader)
 		trainer.save_checkpoint(os.path.join("models",f"{modelName}_{version}.ckpt"))
-		lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"), model = model)
+		lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
 		evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, lightnModel, indicesToPredict, modelName, version, classifier)
 		torch.save(lightnModel.state_dict(), os.path.join("models",f"{modelName}_{version}.m"))
 		numberOfModels += 1
-
+	print(f"Finished training {numberOfModels} models.")
 	if numberOfModels == 0: raise Exception("No model fits the required String.")
 
 if __name__ == '__main__':

@@ -12,13 +12,14 @@ import numpy as np
 from abtem.measure import block_zeroth_order_spot, Measurement
 from abtem.scan import GridScan
 from abtem.detect import PixelatedDetector
-from random import random, randint, choice, uniform
+from random import random, randint, choice, uniform, randrange
 from abtem.reconstruct import MultislicePtychographicOperator, RegularizedPtychographicOperator
 from abtem import Potential, FrozenPhonons, Probe, CTF
 from abtem.detect import AnnularDetector, PixelatedDetector
 from abtem.scan import GridScan
 from abtem.noise import poisson_noise
 from abtem.structures import orthogonalize_cell
+import abtem
 import torch
 from tqdm import tqdm
 import csv
@@ -43,7 +44,7 @@ from mp_api.client import MPRester
 
 device = "gpu" if torch.cuda.is_available() else "cpu"
 print(f"Calculating on {device}")
-xlen = ylen = 5
+xlen = ylen = 25
 
 def calc_diameter_bfd(image):
     brightFieldDisk = np.zeros_like(image)
@@ -52,20 +53,21 @@ def calc_diameter_bfd(image):
     diameterBFD = np.sqrt(bfdArea/np.pi) * 2
     return diameterBFD
 
-def moveAndRotateAtomsAndOrthogonalize(atoms, xPos = None, yPos = None, zPos = None, ortho = True) -> Atoms:
+def moveAndRotateAtomsAndOrthogonalizeAndRepeat(atoms : Atoms, xPos = None, yPos = None, zPos = None, ortho = True) -> Atoms:
     xPos = random()*xlen/3 + xlen/3 if xPos is None else xPos
     yPos = random()*ylen/3 + ylen/3 if yPos is None else yPos
     zPos = 0 if zPos is None else zPos
     atoms.positions += np.array([xPos, yPos, zPos])[None,:]    
-    atoms.rotate("x", randint(0,360))
-    atoms.rotate("y", randint(0,360))
+    atoms.rotate("x", randint(0,360)) 
+    atoms.rotate("y", randint(0,360))  
     atoms.rotate("z", randint(0,360))
     if ortho: atoms = orthogonalize_cell(atoms, max_repetitions=10)
-    return atoms # type: ignore
+    xLength, yLength, zLength = atoms.cell.lengths()
+    atoms_slab = atoms.repeat((int(max(xlen/xLength, 1)), int(max(ylen/yLength,1)), 1))
+    return atoms_slab # type: ignore
 
 def createAtomPillar(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), xAtomShift = 0, yAtomShift = 0, element = None) -> Atoms:
-    kindsOfElements = {6:0, 14:1, 74:2}
-    element = choice(list(kindsOfElements.keys())) if element is None else element
+    element = randint(1, 100) if element is None else element
     # maxShiftFactorPerLayer = 0.01
     #(random()  - 1/2) * maxShiftFactorPerLayer * xlen  #slant of atom pillar
     #(random() -  1/2) * maxShiftFactorPerLayer * ylen #slant of atom pillar
@@ -75,24 +77,23 @@ def createAtomPillar(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,1
     for atomBefore in range(zAtoms-1):
         positions += [positions[atomBefore] + np.array([xAtomShift, yAtomShift, 1])]
     atomPillar = Atoms(numbers = [element] * zAtoms , positions=positions, cell = [xlen, ylen, zAtoms,90,90,90])
-    atomPillar_101 = surface(atomPillar, indices=(1, 0, 1), layers=2, periodic=True)
-    atomPillar_slab = moveAndRotateAtomsAndOrthogonalize(atomPillar_101, xPos, yPos, zPos, ortho=True)
+    #atomPillar_101 = surface(atomPillar, indices=(1, 0, 1), layers=2, periodic=True)
+    atomPillar_slab = moveAndRotateAtomsAndOrthogonalizeAndRepeat(atomPillar, xPos, yPos, zPos, ortho=True)
     return atomPillar_slab
 
 #BROKEN #TODO use poisson disk
-def multiPillars(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), xAtomShift = 0, yAtomShift = 0, element = None, numberOfRandomAtomPillars = 3) -> Atoms:
-    allPositions = []
-    xPos = xPos if xPos is not None else -3
-    yPos = yPos if yPos is not None else -3
-    zPos = zPos if zPos is not None else 0
+def multiPillars(xAtomShift = 0, yAtomShift = 0, element = None, numberOfRandomAtomPillars = None) -> Atoms:
+    numberOfRandomAtomPillars = numberOfRandomAtomPillars or randint(25,50)
+    xPos = random()*ylen 
+    yPos = random()*xlen
+    zPos = 0
     atomPillar = createAtomPillar(xPos = xPos, yPos = yPos, zPos = zPos)
-    for i in range(numberOfRandomAtomPillars - 1):
-        xPos += 1 + random()*2 
-        yPos += 1 + random()*2 
-        xPos += 1 + random()*2
+    for _ in range(numberOfRandomAtomPillars - 1):
+        xPos = random()*ylen 
+        yPos = random()*xlen
         atomPillar.extend(createAtomPillar(xPos = xPos, yPos = yPos, zPos = zPos))
-    atomPillar_011 = surface(atomPillar, indices=(0, 1, 1), layers=2, periodic=True)
-    atomPillar_slab = moveAndRotateAtomsAndOrthogonalize(atomPillar_011, xPos, yPos, zPos, ortho=True)
+    #atomPillar_011 = surface(atomPillar, indices=(0, 1, 1), layers=2, periodic=True)
+    atomPillar_slab = moveAndRotateAtomsAndOrthogonalizeAndRepeat(atomPillar, xPos, yPos, zPos, ortho=True)
     return atomPillar_slab
 
 def MarcelsEx(xPos = None, yPos = None, zPos = None):
@@ -101,89 +102,13 @@ def MarcelsEx(xPos = None, yPos = None, zPos = None):
     double_walled_cnt =  cnt1 + cnt2
     double_walled_cnt.rotate(-90, 'x', rotate_cell=True)
     double_walled_cnt.center(vacuum=5, axis=(0,1))
-    orthogonal_atoms = moveAndRotateAtomsAndOrthogonalize(double_walled_cnt,xPos, yPos, zPos, ortho=True)
+    orthogonal_atoms = moveAndRotateAtomsAndOrthogonalizeAndRepeat(double_walled_cnt,xPos, yPos, zPos, ortho=True)
     return orthogonal_atoms
 
-# def grapheneC(xPos = None, yPos = None, zPos = None) -> Atoms:
-#     try:
-#         grapheneC = read('structures/graphene.cif')
-#     except FileNotFoundError:
-#         grapheneC = read('FullPixelGridML/structures/graphene.cif')
-#     grapheneC_101 = surface(grapheneC, indices=(1, 0, 1), layers=5, periodic=True)
-#     grapheneC_slab = moveAndRotateAtomsAndOrthogonalize(grapheneC_101, xPos, yPos, zPos)
-#     return grapheneC_slab
-
-# def MoS2(xPos = None, yPos = None, zPos = None) -> Atoms:
-#     try:
-#         molybdenum_sulfur = read('structures/MoS2.cif')
-#     except FileNotFoundError:
-#         molybdenum_sulfur = read('FullPixelGridML/structures/MoS2.cif')
-#     molybdenum_sulfur_011 = surface(molybdenum_sulfur, indices=(0, 1, 1), layers=2, periodic=True)
-#     molybdenum_sulfur_slab = moveAndRotateAtomsAndOrthogonalize(molybdenum_sulfur_011, xPos, yPos, zPos)
-#     return molybdenum_sulfur_slab
-
-# def Si(xPos = None, yPos = None, zPos = None):
-#     try:
-#         silicon = read('structures/Si.cif')
-#     except FileNotFoundError:
-#         silicon = read('FullPixelGridML/structures/Si.cif')
-#     silicon_011 = surface(silicon, indices=(0, 1, 1), layers=2, periodic=True)
-#     silicon_slab = moveAndRotateAtomsAndOrthogonalize(silicon_011, xPos, yPos, zPos)
-#     return silicon_slab
-
-# def copper(xPos=None, yPos=None, zPos=None) -> Atoms:
-#     try:
-#         copper = read('structures/Cu.cif')
-#     except FileNotFoundError:
-#         copper = read('FullPixelGridML/structures/Cu.cif')
-#     copper_111 = surface(copper, indices=(1, 1, 1), layers=2, periodic=True)
-#     copper_slab = moveAndRotateAtomsAndOrthogonalize(copper_111, xPos, yPos, zPos)
-#     return copper_slab
-
-# def iron(xPos=None, yPos=None, zPos=None) -> Atoms:
-#     try:
-#         iron = read('structures/Fe.cif')
-#     except FileNotFoundError:
-#         iron = read('FullPixelGridML/structures/Fe.cif')
-#     iron_111 = surface(iron, indices=(1, 1, 1), layers=2, periodic=True)
-#     iron_slab = moveAndRotateAtomsAndOrthogonalize(iron_111, xPos, yPos, zPos)
-#     return iron_slab
-
-# def GaAs(xPos = None, yPos = None, zPos = None):
-#     try:
-#         gaas = read('structures/GaAs.cif')
-#     except FileNotFoundError:
-#         gaas = read('FullPixelGridML/structures/GaAs.cif')
-#     gaas_110 = surface(gaas, indices=(1, 1, 0), layers=2, periodic=True)
-#     gaas_slab = moveAndRotateAtomsAndOrthogonalize(gaas_110, xPos, yPos, zPos)
-#     return gaas_slab
-
-# def SrTiO3(xPos = None, yPos = None, zPos = None):
-#     try:
-#         srtio3 = read('structures/SrTiO3.cif')
-#     except FileNotFoundError:
-#         srtio3 = read('FullPixelGridML/structures/SrTiO3.cif')
-#     srtio3_110 = surface(srtio3, indices=(1, 1, 0), layers= 5, periodic=True)
-#     srtio3_slab = moveAndRotateAtomsAndOrthogonalize(srtio3_110, xPos, yPos, zPos)
-#     return srtio3_slab
-
-# def MAPbI3(xPos = None, yPos = None, zPos = None):
-#     try:
-#         mapi = read('structures/H6PbCI3N.cif')
-#     except FileNotFoundError:
-#         mapi = read('FullPixelGridML/structures/H6PbCI3N.cif')
-#     mapi_110 = surface(mapi, indices=(1, 1, 0), layers=2, periodic=True)
-#     mapi_slab = moveAndRotateAtomsAndOrthogonalize(mapi_110, xPos, yPos, zPos)
-#     return mapi_slab
-
-# def WSe2(xPos = None, yPos = None, zPos = None):
-#     try:
-#         wse2 = read('structures/WSe2.cif')
-#     except FileNotFoundError:
-#         wse2 = read('FullPixelGridML/structures/WSe2.cif')
-#     wse2_110 = surface(wse2, indices=(1, 1, 0), layers=2, periodic=True)
-#     wse2_slab = moveAndRotateAtomsAndOrthogonalize(wse2_110, xPos, yPos, zPos)
-#     return wse2_slab
+def grapheneC(xPos = None, yPos = None, zPos = None) -> Atoms:
+    grapheneC = graphene()
+    grapheneC_slab = moveAndRotateAtomsAndOrthogonalizeAndRepeat(grapheneC, xPos, yPos, zPos)
+    return grapheneC_slab
 
 def StructureUnknown(**kwargs):
     raise Exception(f"Structure unknown")
@@ -203,7 +128,8 @@ def createStructure(specificStructure : str = "random", trainOrTest = None, **kw
     predefinedFunctions = {
         "createAtomPillar" : createAtomPillar,
         "multiPillars" : multiPillars,
-        "MarcelsEx" : MarcelsEx 
+        "MarcelsEx" : MarcelsEx,
+        "grapheneC" : grapheneC,
     }
     if specificStructure != "random":
         nameStruct = specificStructure
@@ -223,14 +149,14 @@ def createStructure(specificStructure : str = "random", trainOrTest = None, **kw
             struct = read(cifFile)
             nameStruct = cifFile.split("\\")[-1].split(".")[0]
             #create a tuple with 3 random numbers, either one or zero
-            random_numbers = (randint(0, 1), randint(0, 1), randint(0, 1))
-            if random_numbers == (0,0,0):
-                random_numbers = (1,1,1)
-            surfaceStruct = surface(struct, indices=random_numbers, layers=3, periodic=True)
-            structFinished = moveAndRotateAtomsAndOrthogonalize(surfaceStruct)
+            # random_numbers = (randint(0, 1), randint(0, 1), randint(0, 1))
+            # if random_numbers == (0,0,0):
+            #     random_numbers = (1,1,1)
+            #surfaceStruct = surface(struct, indices=random_numbers, layers=3, periodic=True)
+            structFinished = moveAndRotateAtomsAndOrthogonalizeAndRepeat(struct)
     return nameStruct, structFinished
 
-def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3, structure = "random", pbar = False, start = (0,0), end = (-1,-1)):
+def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3, structure = "random", pbar = False, start = (5,5), end = (20,20)) -> Tuple[str, Tuple[float, float], Atoms, Measurement, Potential]:
 
     nameStruct, atomStruct = createStructure(specificStructure= structure, trainOrTest = trainOrTest)
     try:
@@ -262,31 +188,21 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
 
         return nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick
 
-@njit
-def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:float, yPos:float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    Distances = (atomPositions - np.expand_dims(np.array([xPos, yPos, 0]),0))[:,0:2]
-    Distances = Distances[:,0] + Distances[:,1] * 1j
-    DistanceSortedIndices = np.absolute(Distances).argsort() 
+# @njit
+# def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:float, yPos:float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+#     Distances = (atomPositions - np.expand_dims(np.array([xPos, yPos, 0]),0))[:,0:2]
+#     Distances = Distances[:,0] + Distances[:,1] * 1j
+#     DistanceSortedIndices = np.absolute(Distances).argsort() 
 
-    # DistancesSqu = np.array(Distances)**2
-    # DistanceSortedIndices = DistancesSqu.sum(axis=1).argsort()
+#     # DistancesSqu = np.array(Distances)**2
+#     # DistanceSortedIndices = DistancesSqu.sum(axis=1).argsort()
 
-    while len(DistanceSortedIndices) < 3: #if less than three atoms, just append the closest one again
-        DistanceSortedIndices = np.concatenate((DistanceSortedIndices,DistanceSortedIndices))
+#     while len(DistanceSortedIndices) < 3: #if less than three atoms, just append the closest one again
+#         DistanceSortedIndices = np.concatenate((DistanceSortedIndices,DistanceSortedIndices))
     
-    atomNumbers = atomicNumbers[DistanceSortedIndices[:3]]
-    xPositions, yPositions = atomPositions[DistanceSortedIndices[:3]].transpose()[:2]
-    return atomNumbers, xPositions, yPositions
-
-@njit
-def closestAtom(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:float, yPos:float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    Distances = (atomPositions - np.expand_dims(np.array([xPos, yPos, 0]),0))[:,0:2]
-    Distances = Distances[:,0] + Distances[:,1] * 1j
-    DistanceSortedIndices = np.absolute(Distances).argsort() 
-    
-    atomNumber = atomicNumbers[DistanceSortedIndices[0]]
-    xPosition, yPosition = atomPositions[DistanceSortedIndices[0]][:2]
-    return atomNumber, xPosition, yPosition
+#     atomNumbers = atomicNumbers[DistanceSortedIndices[:3]]
+#     xPositions, yPositions = atomPositions[DistanceSortedIndices[:3]].transpose()[:2]
+#     return atomNumbers, xPositions, yPositions
 
 @njit
 def findAtomsInTile(xPosTile:float, yPosTile:float, xRealLength:float, yRealLength:float, atomPositions:np.ndarray):
@@ -299,98 +215,205 @@ def findAtomsInTile(xPosTile:float, yPosTile:float, xRealLength:float, yRealLeng
 def createAllXYCoordinates(yMaxCoord, xMaxCoord):
     return [(x,y) for y in np.arange(yMaxCoord+1) for x in np.arange(xMaxCoord+1)]
 
+#@njit
+def closestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPosTileCenter:float, 
+                yPosTileCenter:float)-> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Finds the closest atoms to a given tile center position.
 
-def generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile):
+    Parameters:
+    - atomPositions (np.ndarray): Array of atom positions.
+    - atomicNumbers (np.ndarray): Array of atomic numbers.
+    - xPosTileCenter (float): X-coordinate of the tile center.
+    - yPosTileCenter (float): Y-coordinate of the tile center.
+
+    Returns:
+    - atomNumbersSorted (np.ndarray): Array of atomic numbers sorted by distance.
+    - xRelativDistancesSorted (np.ndarray): Array of x-coordinate relative distances sorted by distance.
+    - yRelativDistancesSorted (np.ndarray): Array of y-coordinate relative distances sorted by distance.
+    """
+    Distances = (atomPositions - np.expand_dims(np.array([xPosTileCenter, yPosTileCenter, 0]),0))[:,0:2]
+
+    Distances = Distances[:,0] + Distances[:,1] * 1j
+    DistanceSortedIndices = np.absolute(Distances).argsort() 
+    # plt.scatter(x=xPosTileCenter, y=yPosTileCenter, c='r', label='current Position')  # use this to plot a single point
+    # plt.scatter(x=atomPositions[:,0], y=atomPositions[:,1], c='black', label='atoms')
+    # plt.scatter(x=atomPositions[DistanceSortedIndices[0]][0], y=atomPositions[DistanceSortedIndices[0]][1], c='g', label='closest Atom')
+    # plt.legend()
+    # plt.savefig("closestAtoms.png")
+    
+    
+    atomNumbersSorted = atomicNumbers[DistanceSortedIndices]
+    #xPosition, yPosition = atomPositions[DistanceSortedIndices[0]][:2] 
+    xRelativDistancesSorted, yRelativDistancesSorted = Distances[DistanceSortedIndices].real, Distances[DistanceSortedIndices].imag
+    # print(xRelativDistancesSorted[0], yRelativDistancesSorted[0])
+    # print("current Position: ", xPosTileCenter, yPosTileCenter)
+    # exit()
+    return atomNumbersSorted, xRelativDistancesSorted, yRelativDistancesSorted
+
+def generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile, start = (5,5)):
     #generates row in labels.csv with relative distances of three closest atoms to the center of the diffraction pattern. Also saves the element predictions.
-    atomNumber, xPositionsAtom, yPositionsAtom = closestAtom(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPosTile + xRealLength/2, yPosTile + yRealLength/2)
-                
-    xAtomRel = xPositionsAtom - xPosTile
-    yAtomRel = yPositionsAtom - yPosTile
-    rows.append([f"{datasetStructID}[{xSteps}][{ySteps}]"] + [str(difParams) for difParams in [atomNumber, xAtomRel, yAtomRel]])
+    atomNumbersSorted, xRelativDistancesSorted, yRelativDistancesSorted = closestAtoms(atomStruct.get_positions(), atomStruct.get_atomic_numbers(), xPosTile + xRealLength/2 + start[0], yPosTile + yRealLength/2 + start[1])
+    
+    # print(f"atomStruct.get_positions(): {atomStruct.get_positions()}")
+    # print(f"atomStruct.get_cell(): {atomStruct.get_cell()}")
+    # print(f"atomNumber: {atomNumber}, xPositionsAtom: {xPositionsAtom}, yPositionsAtom: {yPositionsAtom}, xPosTile: {xPosTile}, yPosTile: {yPosTile}, xRealLength: {xRealLength}, yRealLength: {yRealLength}")
+    # abtem.show_atoms(
+    # atomStruct
+    # )
+    # plt.savefig("atomStructTest.png")
+    # exit()
+    if len(atomNumbersSorted) >= 4:
+        rows.append([f"{datasetStructID}[{xSteps}][{ySteps}]"] + [str(element) for element in atomNumbersSorted[:4]] + [str(xDistance) for xDistance in xRelativDistancesSorted[:4]] + [str(yDistance) for yDistance in yRelativDistancesSorted[:4]])
     return rows
 
-def generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPosTile, yPosTile, maxPooling = 1):
-    #Generates row in labels.csv with XDIMTILES*YDIMTILES pixels. Each pixel is one if an atom is in the pixel and zero if not.
-    pixelGrid = np.zeros((XDIMTILES, YDIMTILES), dtype = int)
-    xPositions, yPositions = findAtomsInTile(xPosTile, yPosTile, xRealLength, yRealLength, atomStruct.get_positions())
-    #integer division is good enough. Othewise we would have to use the real pixel size in findAtomsInTile to get the correct boundaries
-    xPositions = (xPositions - xPosTile) / (xRealLength/XDIMTILES)
-    yPositions = (yPositions - yPosTile) / (yRealLength/YDIMTILES)
-    xPositions = xPositions.astype(int)
-    yPositions = yPositions.astype(int)
-    #print the maxima of the x and y positions
-    for x,y in zip(xPositions, yPositions):
-        pixelGrid[x, y] = 1
-    if maxPooling > 1:
-        pixelGrid = block_reduce(pixelGrid, maxPooling, np.max)
-    rows.append([f"{datasetStructID}[{xCoord}][{yCoord}]"] + [str(pixel) for pixel in pixelGrid.flatten()])
-    return rows
+# def generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xCoord, yCoord, xPosTile, yPosTile, maxPooling = 1, start = (5,5)):
+#     #Generates row in labels.csv with XDIMTILES*YDIMTILES pixels. Each pixel is one if an atom is in the pixel and zero if not.
+#     pixelGrid = np.zeros((XDIMTILES, YDIMTILES), dtype = int)
+#     xPositions, yPositions = findAtomsInTile(xPosTile + xRealLength/2 - start[0], yPosTile + yRealLength/2 + start[1], xRealLength, yRealLength, atomStruct.get_positions())
+#     #integer division is good enough. Othewise we would have to use the real pixel size in findAtomsInTile to get the correct boundaries
+#     xPositions = (xPositions - xPosTile) / (xRealLength/XDIMTILES)
+#     yPositions = (yPositions - yPosTile) / (yRealLength/YDIMTILES)
+#     xPositions = xPositions.astype(int)
+#     yPositions = yPositions.astype(int)
+#     #print the maxima of the x and y positions
+#     for x,y in zip(xPositions, yPositions):
+#         pixelGrid[x, y] = 1
+#     if maxPooling > 1:
+#         pixelGrid = block_reduce(pixelGrid, maxPooling, np.max)
+#     rows.append([f"{datasetStructID}[{xCoord}][{yCoord}]"] + [str(pixel) for pixel in pixelGrid.flatten()])
+#     return rows
 
-def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, timeStamp, BFDdiameter, processID = 99999, silence = False, maxPooling = 1, structure = "random"):
+
+
+def generateAtomGrid(datasetStructID, rows, atomStruct, start, end, silence):
+    allPositions = atomStruct.get_positions()
+    allPositionsShifted = allPositions - np.array([start[0], start[1], 0])
+    numberOfPositionsInOneAngstrom = 5
+    xMaxCoord, yMaxCoord = (end[0] - start[0])* numberOfPositionsInOneAngstrom, (end[1] - start[1]) * numberOfPositionsInOneAngstrom
+    gridOfCoords = np.array([[x/numberOfPositionsInOneAngstrom+y/numberOfPositionsInOneAngstrom * 1j for y in np.arange(yMaxCoord)] for x in np.arange(xMaxCoord)])
+    # print(gridOfCoords)
+    # plt.scatter(x=allPositionsShifted[:,0][(allPositionsShifted[:,0]>0) *(allPositionsShifted[:,1]>0)], y=allPositionsShifted[:,1][(allPositionsShifted[:,0]>0) * (allPositionsShifted[:,1]>0)], c='black', label='atoms')
+
+    # plt.savefig("atomStructTest.png")
+    atomGridInterpolated = np.zeros((xMaxCoord, yMaxCoord))
+    silence = False
+
+    for (x, y), atomNo in tqdm(zip(allPositionsShifted[:,0:2], atomStruct.get_atomic_numbers()), leave=False, desc = f"Going through diffraction Pattern in atoms.", total= len(allPositionsShifted), disable=silence):
+        x = x 
+        y = y * 1j
+        distance  = gridOfCoords - x - y
+        distance = np.absolute(distance) + 1
+        OneOverdistanceSquTimesAtomNo = 1/distance**2 * atomNo
+        atomGridInterpolated += OneOverdistanceSquTimesAtomNo
+    rows.append([f"{datasetStructID}"]+list(atomGridInterpolated.flatten()))
+    return rows
+    
+
+
+def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter, processID = 99999, silence = False, structure = "random", fileWrite = True, difArrays = None):
     rows = []
-    xStepSize = (XDIMTILES-1)//3
-    yStepSize = (YDIMTILES-1)//3
+    # rowsPixel = []
     dim = 50
-    # allTiles = XDIMTILES * YDIMTILES
-    # fractionOfNonZeroIndices = {}
-    # with open(os.path.join(f'measurements_{trainOrTest}',f'fractionOfNonZeroIndices_{processID}_{timeStamp}.csv'), 'w', newline='') as csvfile:
-    #     Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-    #     Writer.writerow(["datasetStructID", "Fraction of non-zero indices"])
-    with h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w') as file:
-        for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick, _) in enumerate((generateDiffractionArray(trainOrTest = trainOrTest, structure=structure) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))):
-            datasetStructID = f"{cnt}{processID}{timeStamp}" 
+    start = (5,5)
+    end = (20,20)
+
+    if fileWrite: file = h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w')
+    else: dataArray = []
+    difArrays = difArrays or (generateDiffractionArray(trainOrTest = trainOrTest, structure=structure, start=start, end=end) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))
+    for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick, _) in enumerate(difArrays):
+        datasetStructID = f"{cnt}{processID}{timeStamp}"         
+
+        difPatternsOnePosition = measurement_thick.array.copy() # type: ignore
+        difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
         
-            xRealLength = XDIMTILES * gridSampling[0]
-            yRealLength = YDIMTILES * gridSampling[1]
+        rows = generateAtomGrid(datasetStructID, rows, atomStruct, start, end, silence)
+        difPatternsOnePositionResized = []
+        for cnt, difPattern in enumerate(difPatternsOnePosition): 
+            difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(dim, dim), interpolation=cv2.INTER_LINEAR))  # type: ignore
+        
+        difPatternsOnePositionResized = np.array(difPatternsOnePositionResized)
+        # removing everything outside the bright field disk
+        indicesInBFD = slice(max((dim - BFDdiameter)//2-1,0),min((dim + BFDdiameter)//2+1, dim ))
+        difPatternsOnePositionResized = difPatternsOnePositionResized[:,indicesInBFD, indicesInBFD] 
+        # plt.imsave(os.path.join(f"measurements_{trainOrTest}",f"{datasetStructID}.png"), difPatternsOnePositionResized[0])
+        
+        if fileWrite: file.create_dataset(f"{datasetStructID}", data = difPatternsOnePositionResized, compression="lzf", chunks = (1, difPatternsOnePositionResized.shape[-2], difPatternsOnePositionResized.shape[-1]), shuffle = True)
+        else: dataArray.append(difPatternsOnePositionResized)
+    if fileWrite: 
+        file.close()
+        return rows
+    else:
+        return rows, np.array(dataArray) 
 
-            xMaxCNT, yMaxCNT = np.shape(measurement_thick.array)[:2] # type: ignore
-            xMaxStartCoord = (xMaxCNT-XDIMTILES)//xStepSize
-            yMaxStartCoord = (yMaxCNT-YDIMTILES)//yStepSize
+def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, timeStamp, BFDdiameter, processID = 99999, silence = False, maxPooling = 1, structure = "random", fileWrite = True, difArrays = None):
+    rowsRelative = []
+    # rowsPixel = []
+    stepsPerTile = 3
+    xStepSize = (XDIMTILES-1)//stepsPerTile
+    yStepSize = (YDIMTILES-1)//stepsPerTile
+    dim = 50
+    start = (5,5)
+    end = (20,20)
 
-            if xMaxStartCoord < 0 or yMaxStartCoord < 0:
-                print(f"Structure too small, skipped: xMaxStartCoord : {xMaxStartCoord}, yMaxStartCoord : {yMaxStartCoord}, struct {nameStruct}, np.shape(measurement_thick.array)[:2] : {np.shape(measurement_thick.array)[:2]}") # type: ignore
-                continue
+    if fileWrite: file = h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w')
+    else: dataArray = []
+    difArrays = difArrays or (generateDiffractionArray(trainOrTest = trainOrTest, structure=structure, start=start, end=end) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))
+    for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick, _) in enumerate(difArrays):
+        datasetStructID = f"{cnt}{processID}{timeStamp}" 
+    
+        xRealLength = XDIMTILES * gridSampling[0]
+        yRealLength = YDIMTILES * gridSampling[1]
 
-            for xSteps, ySteps in tqdm(createAllXYCoordinates(yMaxStartCoord,xMaxStartCoord), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}.", total= len(measurement_thick.array), disable=silence): # type: ignore
-                xCNT = xStepSize * xSteps
-                yCNT = yStepSize * ySteps
+        xMaxCNT, yMaxCNT = np.shape(measurement_thick.array)[:2] # type: ignore
+        xMaxStartCoord = (xMaxCNT-XDIMTILES)//xStepSize
+        yMaxStartCoord = (yMaxCNT-YDIMTILES)//yStepSize
 
-                difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + XDIMTILES:3, yCNT :yCNT + YDIMTILES:3].copy() # type: ignore
-                difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
-                # randomIndicesToTurnToZeros = np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - int(0.4*allTiles),allTiles - int(0.4*allTiles)), replace = False)
-                # difPatternsOnePosition[randomIndicesToTurnToZeros] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
+        if xMaxStartCoord < 0 or yMaxStartCoord < 0:
+            print(f"Structure too small, skipped: xMaxStartCoord : {xMaxStartCoord}, yMaxStartCoord : {yMaxStartCoord}, struct {nameStruct}, np.shape(measurement_thick.array)[:2] : {np.shape(measurement_thick.array)[:2]}") # type: ignore
+            continue
+        
+        for xSteps, ySteps in tqdm(createAllXYCoordinates(yMaxStartCoord,xMaxStartCoord), leave=False,desc = f"Going through diffraction Pattern in {XDIMTILES}x{YDIMTILES} tiles {processID}.", total= len(measurement_thick.array), disable=silence): # type: ignore
+            
+            xCNT = xStepSize * xSteps
+            yCNT = yStepSize * ySteps
 
-                xPosTile = xCNT * gridSampling[0]
-                yPosTile = yCNT * gridSampling[1]
+            difPatternsOnePosition = measurement_thick.array[xCNT:xCNT + XDIMTILES:3, yCNT :yCNT + YDIMTILES:3].copy() # type: ignore
+            difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
+            # randomIndicesToTurnToZeros = np.random.choice(difPatternsOnePosition.shape[0], randint(allTiles - int(0.4*allTiles),allTiles - int(0.4*allTiles)), replace = False)
+            # difPatternsOnePosition[randomIndicesToTurnToZeros] = np.zeros((difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))            
 
-                rows = generateGroundThruthRelative(rows, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile)
-                #fractionOfNonZeroIndices[f"{datasetStructID}[{xSteps}][{ySteps}]"] = (len(difPatternsOnePosition) - len(randomIndicesToTurnToZeros))/len(difPatternsOnePosition)
-                
-                # rows = generateGroundThruthPixel(rows, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile, maxPooling = maxPooling)
-                
+            xPosTile = xCNT * gridSampling[0]
+            yPosTile = yCNT * gridSampling[1]
 
-                difPatternsOnePositionResized = []
-                for cnt, difPattern in enumerate(difPatternsOnePosition): 
-                   difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(dim, dim), interpolation=cv2.INTER_LINEAR))  # type: ignore
-                
-                difPatternsOnePositionResized = np.array(difPatternsOnePositionResized)
-                # removing everything outside the bright field disk
-                indicesInBFD = slice(max((dim - BFDdiameter)//2-1,0),min((dim + BFDdiameter)//2+1, dim ))
-                difPatternsOnePositionResized = difPatternsOnePositionResized[:,indicesInBFD, indicesInBFD] 
-                # plt.imsave(os.path.join(f"measurements_{trainOrTest}",f"{datasetStructID}.png"), difPatternsOnePositionResized[0])
+            rowsRelative = generateGroundThruthRelative(rowsRelative, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile, start)            
+            # rowsPixel = generateGroundThruthPixel(rowsPixel, XDIMTILES, YDIMTILES, atomStruct, datasetStructID, xRealLength, yRealLength, xSteps, ySteps, xPosTile, yPosTile, maxPooling = maxPooling)
+            
 
-                file.create_dataset(f"{datasetStructID}[{xSteps}][{ySteps}]", data = difPatternsOnePositionResized, compression="lzf", chunks = (1, difPatternsOnePositionResized.shape[-2], difPatternsOnePositionResized.shape[-1]), shuffle = True)
-    # with open(os.path.join(f'measurements_{trainOrTest}',f'fractionOfNonZeroIndices_{processID}_{timeStamp}.csv'), 'w+', newline='') as csvfile:
-    #     Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-    #     for key, value in fractionOfNonZeroIndices.items():
-    #         Writer.writerow([key, value])
-    return rows            
+            difPatternsOnePositionResized = []
+            for cnt, difPattern in enumerate(difPatternsOnePosition): 
+                difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(dim, dim), interpolation=cv2.INTER_LINEAR))  # type: ignore
+            
+            difPatternsOnePositionResized = np.array(difPatternsOnePositionResized)
+            # removing everything outside the bright field disk
+            indicesInBFD = slice(max((dim - BFDdiameter)//2-1,0),min((dim + BFDdiameter)//2+1, dim ))
+            difPatternsOnePositionResized = difPatternsOnePositionResized[:,indicesInBFD, indicesInBFD] 
+            # plt.imsave(os.path.join(f"measurements_{trainOrTest}",f"{datasetStructID}.png"), difPatternsOnePositionResized[0])
+            
+            if fileWrite: file.create_dataset(f"{datasetStructID}[{xSteps}][{ySteps}]", data = difPatternsOnePositionResized, compression="lzf", chunks = (1, difPatternsOnePositionResized.shape[-2], difPatternsOnePositionResized.shape[-1]), shuffle = True)
+            else: dataArray.append(difPatternsOnePositionResized)
+    if fileWrite: 
+        file.close()
+        return rowsRelative
+    else:
+        return rowsRelative, np.array(dataArray) 
+
 
 def createTopLineRelative(csvFilePath):
     with open(csvFilePath, 'w+', newline='') as csvfile:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        #Writer.writerow(["fileName", "element1", "element2", "element3", "xAtomRel1", "xAtomRel2", "xAtomRel3", "yAtomRel1", "yAtomRel2", "yAtomRel3"])
-        Writer.writerow(["fileName", "element", "xAtomRel", "yAtomRel"])
+        Writer.writerow(["fileName", "element1", "element2", "element3", "element4", "xAtomRel1", "xAtomRel2", "xAtomRel3", "xAtomRel4", "yAtomRel1", "yAtomRel2", "yAtomRel3", "yAtomRel4"])
+        # Writer.writerow(["fileName", "element", "xAtomRel", "yAtomRel"])
         Writer = None
 
 def createTopLinePixels(csvFilePath, XDIMTILES, YDIMTILES, maxPooling = 1):
@@ -398,6 +421,13 @@ def createTopLinePixels(csvFilePath, XDIMTILES, YDIMTILES, maxPooling = 1):
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
         Writer.writerow(["fileName"]+ [f"pixelx{x}y{y}" for y in np.arange(XDIMTILES//maxPooling) for x in np.arange(YDIMTILES//maxPooling)])
         Writer = None    
+
+
+def createTopLineAllPositions(csvFilePath):
+    with open(csvFilePath, 'w+', newline='') as csvfile:
+        Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        Writer.writerow(["fileName"]+ [f"pixelx{x}y{y}" for y in np.arange(75) for x in np.arange(75)])
+        Writer = None
 
 def writeAllRows(rows, trainOrTest, XDIMTILES, YDIMTILES, processID = "", createTopRow = None, timeStamp = 0, maxPooling = 1):
     """
@@ -415,7 +445,8 @@ def writeAllRows(rows, trainOrTest, XDIMTILES, YDIMTILES, processID = "", create
     """
     csvFilePath = os.path.join(f'measurements_{trainOrTest}',f'labels_{processID}_{timeStamp}.csv')
     if createTopRow is None: createTopRow = not os.path.exists(csvFilePath)
-    if createTopRow: createTopLineRelative(csvFilePath)
+    if createTopRow: createTopLineAllPositions(csvFilePath)
+    #if createTopRow: createTopLineRelative(csvFilePath)
     # if createTopRow: createTopLinePixels(csvFilePath, XDIMTILES, YDIMTILES, maxPooling = maxPooling)
     with open(csvFilePath, 'a', newline='') as csvfile:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
@@ -436,13 +467,13 @@ if __name__ == "__main__":
     args = vars(ap.parse_args())
 
 
-    XDIMTILES = 11
-    YDIMTILES = 11
+    XDIMTILES = 10
+    YDIMTILES = 10
     maxPooling = 3
     BFDdiameter = 18 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
     # assert(XDIMTILES % maxPooling == 0)
     testDivider = {"train":1, "test":0.25}
-    for i in tqdm(range(max(args["iterations"],1)), disable=True):
+    for i in tqdm(range(max(args["iterations"],1)), disable=False, desc = f"Running {args['iterations']} iterations on process {args['id']}"):
         for trainOrTest in ["train", "test"]:
             if trainOrTest not in args["trainOrTest"]:
                 continue
@@ -450,7 +481,8 @@ if __name__ == "__main__":
             with(open(f"progress_{args['id']}.txt", "w")) as file:
                 file.write(f"PID {os.getpid()} on step {i+1} of {trainOrTest}-data at {datetime.datetime.now()}\n")
             timeStamp = int(str(time()).replace('.', ''))
-            rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling, structure = args["structure"])
+            rows = saveAllPosDifPatterns(trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, structure = args["structure"])
+            #rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling, structure = args["structure"])
             writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], timeStamp = timeStamp, maxPooling=maxPooling)
   
     print(f"PID {os.getpid()} done.")
