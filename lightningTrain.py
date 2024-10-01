@@ -10,7 +10,7 @@ import torch
 import faulthandler
 import signal
 from tqdm import tqdm
-from Zernike.dqn import DQNLightning
+from Zernike.dqn import DQN, DQNLightning
 from datasets import ptychographicDataLightning
 import torch.nn.functional as F
 import lightning.pytorch as pl
@@ -61,7 +61,7 @@ class lightnModelClass(pl.LightningModule):
 		x, y = batch
 		y_hat = self.model(x)
 		loss = self.lossFct(y_hat, y)
-		self.log("val_loss", loss, sync_dist=True)
+		self.log("val_loss", loss)
 		return loss
 
 	def configure_optimizers(self):
@@ -152,14 +152,13 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 		
 		# loop over the test set
 		for (x, y) in tqdm(testDataLoader, desc="Going through test data"):
+
 			# make the predictions and add them to the list
 			pred = model(x.to('cuda'))
 			y.to("cuda")
 			if not classifier:
 				for predEntry, yEntry in zip(pred.tolist(), y.tolist()):
-					predScaled = predEntry
-					yScaled = yEntry
-					Writer.writerow(list(predScaled) +  list(yScaled))
+					Writer.writerow(list(predEntry) +  list(yEntry))
 			else:
 				for predEntry,yEntry in zip(pred.cpu().numpy(), y.cpu().numpy()):
 					Writer.writerow([int(predEntry.argmax() == yEntry.argmax())])
@@ -173,11 +172,17 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 	for modelName in models:
 		if modelString and modelString not in modelName:
 			continue
-		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile)
+		batch_size = 2048
+		if modelName == "DQN": 
+			lightnModel = DQNLightning()
+			batch_size = 512
+		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size)
 		lightnDataLoader.setup()
-		# model = loadModel(lightnDataLoader.val_dataloader(), modelName)
-		#lightnModel = lightnModelClass(model)
-		lightnModel = DQNLightning()
+		
+			
+		if modelName != "DQN":
+			model = loadModel(lightnDataLoader.val_dataloader(), modelName)
+			lightnModel = lightnModelClass(model)
 		early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=0.00, patience=5, verbose=False, mode="min", stopping_threshold = 1e-10)
 		swa = StochasticWeightAveraging(swa_lrs=1e-2) #faster but a bit worse
 		chkpPath = os.path.join("checkpoints",f"{modelName}_{version}")
@@ -212,7 +217,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 					lightnModel.lr = new_lr
 			trainer.fit(lightnModel, datamodule = lightnDataLoader)
 		trainer.save_checkpoint(os.path.join("models",f"{modelName}_{version}.ckpt"))
-		lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
+		lightnModel.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
 		evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, lightnModel, indicesToPredict, modelName, version, classifier)
 		torch.save(lightnModel.state_dict(), os.path.join("models",f"{modelName}_{version}.m"))
 		numberOfModels += 1
@@ -220,7 +225,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 	if numberOfModels == 0: raise Exception("No model fits the required String.")
 
 if __name__ == '__main__':
-	models = ["FullPixelGridML", "ZernikeNormal", "ZernikeBottleneck", "ZernikeComplex"]
+	models = ["FullPixelGridML", "ZernikeNormal", "ZernikeBottleneck", "ZernikeComplex", "DQN"]
 	# construct the argument parser and parse the arguments
 	ap = argparse.ArgumentParser()
 	ap.add_argument("-v", "--version", type=str, required=True,
