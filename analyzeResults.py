@@ -31,8 +31,6 @@ def returnFullRowContent(fullRowIndices, fullRow, startInd, endInd):
 #     fileNames = test_data.image_names
 #     return fileNames
 
-errors = [["modelName", "average error in predicting thickness", "element prediction accuracy", "MSE distance"]]
-
 # fileNames = grabFileNames()
 if len(sys.argv) > 1:
     onlyThisFile = sys.argv[1]
