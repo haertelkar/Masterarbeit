@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 
 # Iterate over all CSV files in the directory
-for filename in tqdm(glob("measurements_*/labels*.csv"), desc="Splitting train and validation sets"):
+for filename in tqdm(glob("measurements_train/labels*.csv"), desc="Splitting train and validation sets"):
     # Read the CSV file
     df = pd.read_csv(filename)
     
