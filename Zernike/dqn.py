@@ -3,15 +3,16 @@ from collections import OrderedDict, deque, namedtuple
 from typing import Iterator, List, Tuple
 import gymnasium as gym
 from gymnasium import spaces
+from matplotlib import pyplot as plt
 import numpy as np
 import torch
 from IPython.core.display import display
 from lightning.pytorch import LightningModule
 from torch import Tensor, nn
 from torch.optim import Adam, Optimizer
-from gymEnvironPtycho import pytchoEnv
+from Zernike.gymEnvironPtycho import ptychoEnv
 
-PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
+device = "cuda"
 
 class DQN(nn.Module):
     def __init__(self, obs_size : int = 0, size_output: int = 75*75 + 2, hidden_size: int = 250):
@@ -27,44 +28,55 @@ class DQN(nn.Module):
 
 
         if obs_size == 0:
-            numberOfOSAANSIMoments = 20	
+            numberOfOSAANSIMoments = 10	
             for n in range(numberOfOSAANSIMoments + 1):
                 for mShifted in range(2*n+1):
                     m = mShifted - n
                     if (n-m)%2 != 0:
                         continue
                     obs_size += 1
+            obs_size += 2 # 2 for x and y position of the agent
 
-        
+        self.gru = nn.GRU(input_size=obs_size, hidden_size=hidden_size, num_layers=3, batch_first=True)
 
-        self.cnn = nn.Sequential(
-            nn.Conv2d(in_channels=1, out_channels=5,kernel_size=(3, 3)),   
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2)),
-            # initialize second set of CONV => RELU => POOL layers
-            nn.Conv2d(in_channels=5, out_channels=10,kernel_size=(5, 5)),
-            nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2)),
-            #linear layers
-            nn.Linear(in_features=75*75*10, out_features=500))
+        # self.cnn = nn.Sequential(
+        #     nn.Conv2d(in_channels=1, out_channels=5,kernel_size=(3, 3)),   
+        #     nn.ReLU(),
+        #     nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2)),
+        #     # initialize second set of CONV => RELU => POOL layers
+        #     nn.Conv2d(in_channels=5, out_channels=10,kernel_size=(5, 5)),
+        #     nn.MaxPool2d(kernel_size=(2, 2), stride=(2, 2)))
 
-        self.net = nn.Sequential(
-            nn.Linear(obs_size, hidden_size),
+        # self.net = nn.Sequential(
+        #     nn.Linear(obs_size, hidden_size),
+        #     nn.ReLU(),
+        #     nn.Linear(hidden_size, 500),
+        #     nn.ReLU(),
+        #     nn.Linear(500, 500),            
+        # )
+
+        self.finalLayer = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
             nn.ReLU(),
             nn.Linear(hidden_size, 500),
+            nn.ReLU(),
+            nn.Linear(500, size_output)
         )
 
-        self.finalLayer = nn.Linear(in_features=1000, out_features=size_output)
-        
-    def forward(self, x):
-        currentWorldState, zernikeValues = x
-        cwsl = self.cnn(currentWorldState)
-        zv = self.net(zernikeValues)
-        x = torch.cat((cwsl, zv), 1)
-        return torch.reshape(self.finalLayer(x),(75,75))
+    def forward(self, x) -> Tensor:
+        zernikeValues_and_Pos = x
+        # currentWorldState = currentWorldState.unsqueeze(1)
+        # cwsl = self.cnn(currentWorldState)
+        #             #linear layers
+        # cwsl = torch.flatten(cwsl, 1)
+        # cwsl = nn.Linear(in_features=2560, out_features=500, device = device)(cwsl)
+        y, _  = self.gru(zernikeValues_and_Pos)
+        # y = torch.cat((cwsl, zv), 1)
+        return self.finalLayer(y)
 
 
 class Agent:
-    def __init__(self, env:gym.Env) -> None:
+    def __init__(self, env:ptychoEnv) -> None:
         """Base Agent class handling the interaction with the environment.
 
         Args:
@@ -73,18 +85,18 @@ class Agent:
 
         """
         self.env = env
-        self.state = self.env.reset()
         
 
     def reset(self, ptychoImages,atomProbabilityGrid) -> None:
         """Resents the environment and updates the state."""
         options = {"ptychoImages": ptychoImages, "atomProbabilityGrid": atomProbabilityGrid}
-        self.state = self.env.reset(seed=0, options=options)
-        self.atomGridAlreadyVisited = np.zeros_like(atomProbabilityGrid)
-        self.currentGrid  = np.zeros((75,75))
+        self.zernikeObs_and_Pos, _ = self.env.reset(seed=0, options=options)
+        # self.atomGridAlreadyVisited = np.zeros((75,75))
+        batchSize = self.zernikeObs_and_Pos.shape[0]
+        self.currentGrid  = torch.zeros((batchSize, 75, 75), device=device)
     
 
-    def get_new_modeled_grid(self, net: nn.Module):
+    def get_new_modeled_grid(self, net: nn.Module) -> "torch.Tensor":
         """Using the given network, decide what action to carry out using an epsilon-greedy policy.
 
         Args:
@@ -95,14 +107,17 @@ class Agent:
 
         """
 
-        output = net([self.state, self.currentGrid])
-        newGrid = output[:75*75]
-        newPosition = (output[-2:] * 75).to(int)
+        output = net(self.zernikeObs_and_Pos)
+        self.currentGrid = torch.clamp(output[:,:75*75].reshape(-1,75,75), min = 0, max = 1)
+
+        if not torch.all(torch.isfinite(output)):
+            raise Exception("Nan in output")
+        newPosition = torch.round(torch.clamp(output[:,-2:] * 75, min = 0, max = 74)).to(dtype = torch.long)
 
 
-        return newGrid, newPosition
+        return newPosition
     
-    def get_action(self, epsilon: float, newPosition : torch.Tensor):
+    def get_action(self, epsilon: float, newPosition : torch.Tensor) -> Tensor:
         """Using the given network, decide what action to carry out using an epsilon-greedy policy.
 
         Args:
@@ -112,17 +127,17 @@ class Agent:
             action
 
         """
-
-        if np.random.random() < epsilon:
-            action = np.random.randint(75, size=2)
-        else:
-            action = newPosition.numpy()
         
-        self.atomGridAlreadyVisited[action] = 999999
+        if np.random.random() < epsilon:
+            action = torch.randint(75, size=(newPosition.shape[0],2), device = device)
+        else:
+            action = newPosition
+
+        # self.atomGridAlreadyVisited[action] = 999999
 
         return action
 
-    @torch.no_grad()
+    #@torch.no_grad()
     def play_step(
         self,
         net: nn.Module,
@@ -139,14 +154,14 @@ class Agent:
 
         """
 
-        modeledGrid, newPosition = self.get_new_modeled_grid(net)
+        newPosition = self.get_new_modeled_grid(net)
         action = self.get_action(epsilon, newPosition)
 
         # do step in the environment
-        new_state, reward, terminated, truncated, _ = self.env.step(action)
+        new_zernikeObs_and_Pos, reward, _ = self.env.step(action)
 
-        self.state = new_state
-        return float(reward), modeledGrid
+        self.zernikeObs_and_Pos = new_zernikeObs_and_Pos
+        return reward, self.currentGrid
 
 class DQNLightning(LightningModule):
     def __init__(
@@ -156,7 +171,7 @@ class DQNLightning(LightningModule):
         eps_last_frame: int = 1000,
         eps_start: float = 1.0,
         eps_end: float = 0.01,
-        episode_length: int = 200,
+        episode_length: int = 1000,
     ) -> None:
         """Basic DQN Model.
 
@@ -177,12 +192,11 @@ class DQNLightning(LightningModule):
         self.eps_start = eps_start
         self.eps_end=eps_end
         self.episode_length=episode_length
-        self.env = pytchoEnv()
-        obs_shape = self.env.observation_space.shape[0] 
+        self.env = ptychoEnv()
+        obs_shape = self.env.observation_space_size
         obs_size = np.prod(obs_shape)
-        n_actions = self.env.action_space.n
 
-        self.net = DQN(obs_size, n_actions)
+        self.net = DQN()
 
 
         self.agent = Agent(self.env)
@@ -199,8 +213,16 @@ class DQNLightning(LightningModule):
             q values
 
         """
-        output = self.net(x)
-        return output
+        ptychoImages = x 
+        atomProbabilityGrid = torch.zeros((x.shape[0], 75, 75), device=device)
+        self.agent.reset(ptychoImages,atomProbabilityGrid)
+
+        # step through environment with agent multple times
+        for _ in range(self.episode_length):
+            reward, modeledGrid = self.agent.play_step(self.net, epsilon= 0 )
+
+
+        return modeledGrid.flatten(start_dim=1)
 
     def mse_loss(self) -> Tensor:
         """Calculates the mse loss as a difference between the maximum reward possible in one step and the current reward
@@ -216,6 +238,11 @@ class DQNLightning(LightningModule):
         if self.global_step > frames:
             return end
         return start - (self.global_step / frames) * (start - end)
+
+    def validation_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> OrderedDict:
+        loss = self.training_step(batch)
+        self.log("val_loss", loss)
+        return loss
 
     def training_step(self, batch: Tuple[Tensor, Tensor]) -> OrderedDict:
         """Carries out an episode worth of steps through the environment using the DQN
@@ -238,11 +265,11 @@ class DQNLightning(LightningModule):
         # step through environment with agent multple times
         for _ in range(self.episode_length):
             reward, modeledGrid = self.agent.play_step(self.net, epsilon)
-            self.episode_reward += reward
+            self.episode_reward += float(torch.mean(reward))
             self.log("episode reward", self.episode_reward)
 
         # calculates training loss
-        loss = nn.MSELoss()(modeledGrid.flatten(), torch.tensor(self.env.atomProbabilityGrid).float().flatten())
+        loss = nn.MSELoss()(modeledGrid.flatten(), self.env.atomProbabilityGrid.flatten()/100)
 
 
                                    
@@ -251,12 +278,11 @@ class DQNLightning(LightningModule):
 
         self.log_dict(
             {
-                "reward": reward,
+                "reward": reward.mean(),
                 "train_loss": loss,
             }
         )
         self.log("total_reward", self.total_reward, prog_bar=True)
-        self.log("steps", self.global_step, logger=False, prog_bar=True)
 
         return loss
 
