@@ -33,7 +33,7 @@ class ptychographicDataLightning(pl.LightningDataModule):
 		if self.setupDone: return
 		folderName = None
 		if self.model_name == "FullPixelGridML" or self.model_name == "unet":	folderName = "FullPixelGridML"
-		elif self.model_name == "ZernikeNormal" or self.model_name == "ZernikeBottleneck" or self.model_name == "ZernikeComplex": folderName = "Zernike"
+		elif self.model_name == "ZernikeNormal" or self.model_name == "ZernikeBottleneck" or self.model_name == "ZernikeComplex" or self.model_name == "DQN": folderName = "Zernike"
 		else:
 			raise Exception(f"model name '{self.model_name}' unknown")
 		self.train_dataset = ptychographicData(
