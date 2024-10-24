@@ -131,12 +131,13 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 	# we can now evaluate the network on the test set
 	print("[INFO] evaluating network...")
 	model.to('cuda')
+
 	# turn off autograd for testing evaluation
 	with torch.inference_mode(), open(os.path.join("testDataEval",f'results_{modelName}_{version}.csv'), 'w+', newline='') as resultsTest:
 		Writer = csv.writer(resultsTest, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
 		if not classifier and indicesToPredict is None:
 			predColumnNames = []
-			for columnName in list(test_data.columns[1:]):
+			for columnName in list(test_data.columns[1:]): 
 				predColumnNames.append(f"{columnName}_pred")
 			Writer.writerow(predColumnNames + list(test_data.columns[1:]))
 		elif not classifier:
@@ -176,7 +177,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 		if modelName == "DQN": 
 			lightnModel = DQNLightning()
 			batch_size = 512
-		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size)
+		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size, weighted = False)
 		lightnDataLoader.setup()
 		
 			
@@ -184,7 +185,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 			model = loadModel(lightnDataLoader.val_dataloader(), modelName)
 			lightnModel = lightnModelClass(model)
 		early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=0.00, patience=5, verbose=False, mode="min", stopping_threshold = 1e-10)
-		swa = StochasticWeightAveraging(swa_lrs=1e-2) #faster but a bit worse
+		#swa = StochasticWeightAveraging(swa_lrs=1e-2) #faster but a bit worse (fails, says problem with deepcopy)
 		chkpPath = os.path.join("checkpoints",f"{modelName}_{version}")
 		if not os.path.exists(chkpPath):
 			os.makedirs(chkpPath)
@@ -194,27 +195,30 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 			checkPointExists = True
 		checkpoint_callback = ModelCheckpoint(dirpath=chkpPath, save_top_k=1, monitor="val_loss")
 		#profiler = AdvancedProfiler(dirpath=".", filename=f"perf_logs_{modelName}_{version}")
-		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=[early_stop_callback, swa, checkpoint_callback])
+		callbacks=[checkpoint_callback]#,early_stop_callback]
+		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", log_graph=True,name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=callbacks)
 		if checkPointExists:
 			trainer.fit(lightnModel, datamodule = lightnDataLoader, ckpt_path="last")
 		else:
 			#Create a Tuner
 			tuner = Tuner(trainer)
 			# Auto-scale batch size by growing it exponentially
-			# if world_size == 1: 
-			# 	new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, init_val=512, max_trials= 25) 
-			# 	print(f"New batch size: {new_batch_size}")
+			if world_size == 1: 
+				new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, init_val=512, max_trials= 25) 
+				print(f"New batch size: {new_batch_size}")
 				# leads to crashing with slurm but has worked with 2048 batch size
 				# lightnDataLoader.batch_size is automatically set to new_batch_size
 			# finds learning rate automatically
 			if world_size == 1:
-				lr_finder = tuner.lr_find(lightnModel, num_training=100, datamodule = lightnDataLoader, min_lr = 1e-8, max_lr = 1 * np.sqrt(lightnDataLoader.batch_size/16), early_stop_threshold=4)
-				assert(lr_finder is not None)
-				new_lr = lr_finder.suggestion()
+				# lr_finder = tuner.lr_find(lightnModel, num_training=100, datamodule = lightnDataLoader, min_lr = 1e-11, max_lr = 1 * np.sqrt(lightnDataLoader.batch_size/16), early_stop_threshold=4)
+				# assert(lr_finder is not None)
+				# new_lr = lr_finder.suggestion()
+				new_lr = None
 				if (new_lr is None):
-					new_lr = 1e-7
+					new_lr = 1e-9
 				else:
 					lightnModel.lr = new_lr
+				print(f"New learning rate: {new_lr}")
 			trainer.fit(lightnModel, datamodule = lightnDataLoader)
 		trainer.save_checkpoint(os.path.join("models",f"{modelName}_{version}.ckpt"))
 		lightnModel.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
