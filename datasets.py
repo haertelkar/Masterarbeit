@@ -85,11 +85,11 @@ class ptychographicDataLightning(pl.LightningDataModule):
 	
 	def train_dataloader(self) -> TRAIN_DATALOADERS:
 		if self.weights is None: 
-			return DataLoader(self.train_dataset, shuffle=True, batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True)
+			return DataLoader(self.train_dataset,  batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, drop_last=True, shuffle=True)
 		else:
 			samples_weight = self.weights
 			sampler = WeightedRandomSampler(samples_weight, self.numTrainSamples)
-			return DataLoader(self.train_dataset, shuffle=False, batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, sampler = sampler)
+			return DataLoader(self.train_dataset, shuffle=False, batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, sampler = sampler, drop_last=True)
 	
 	def val_dataloader(self) -> EVAL_DATALOADERS:
 		return DataLoader(self.val_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True)
@@ -136,7 +136,8 @@ class ptychographicData(Dataset):
 
 	def __getitem__(self, idx):
 		label = self.getLabel(idx)
-		imageOrZernikeMoments = self.getImageOrZernike(idx)
+		# print(self.getImageOrZernike(idx).shape)
+		imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((15,15, -1))[1::5,1::5].reshape((9,-1))
 		#print(f"data type: {imageOrZernikeMoments}, data size: {np.shape(imageOrZernikeMoments)}")
 		return imageOrZernikeMoments, label
 	

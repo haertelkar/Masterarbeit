@@ -61,24 +61,37 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
                 atomNo = int(column.replace("xAtomRel",""))
                 xGTs[atomNo] = np.array(csvFile[column]).astype(float)
                 xPreds[atomNo] = np.array(csvFile[column + "_pred"]).astype(float)
+            elif "Xcoord" in column:
+                atomNo = int(column.replace("Xcoord",""))
+                xGTs[atomNo] = np.array(csvFile[column]).astype(float)
+                xPreds[atomNo] = np.array(csvFile[column + "_pred"]).astype(float)
             elif "yAtomRel" in column:
                 atomNo = int(column.replace("yAtomRel",""))
+                yGTs[atomNo] = np.array(csvFile[column]).astype(float)
+                yPreds[atomNo] = np.array(csvFile[column + "_pred"]).astype(float)
+            elif "Ycoord" in column:
+                atomNo = int(column.replace("Ycoord",""))
                 yGTs[atomNo] = np.array(csvFile[column]).astype(float)
                 yPreds[atomNo] = np.array(csvFile[column + "_pred"]).astype(float)
             elif "element" in column:
                 atomNo = int(column.replace("element",""))
                 elementsGT[atomNo] = np.array(csvFile[column]).astype(float)
                 elementsPred[atomNo] = np.array(csvFile[column + "_pred"]).astype(float)
+            elif "elem" in column:
+                atomNo = int(column.replace("elem",""))
+                elementsGT[atomNo] = np.array(csvFile[column]).astype(float)
+                elementsPred[atomNo] = np.array(csvFile[column + "_pred"]).astype(float)
         
         #get the distance between the atoms and the scan position
         for atomNo in xGTs.keys():
             xGT = xGTs[atomNo]
-            xPred = xPreds[atomNo]
+            xPred : np.ndarray = xPreds[atomNo]
             yGT = yGTs[atomNo]
             yPred = yPreds[atomNo]
+
             distancePredictionDelta = np.sqrt((xGT - xPred)**2 + (yGT - yPred)**2)
             distance = np.sqrt(xGT**2 + yGT**2)
-            distanceToBeAccurate = 0.2
+            distanceToBeAccurate = 1
 
             plt.scatter(distance, distancePredictionDelta)
             plt.xlabel(f"Distance between atom nr.{atomNo} and scan position")
@@ -86,8 +99,8 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
             # plt.legend()
             plt.savefig(os.path.join("DeltaToDistance", file + f"distanceToAccuracy_atom{atomNo}_labeled.png"))
             plt.close()
-            binDistance = int((max(distance) - min(distance)) // 0.2)
-            binDistanceDelta = int((max(distancePredictionDelta) - min(distancePredictionDelta)) // 0.2)
+            binDistance = int((max(distance) - min(distance)) // distanceToBeAccurate)
+            binDistanceDelta = int((max(distancePredictionDelta) - min(distancePredictionDelta)) // distanceToBeAccurate)
             if binDistance == 0 or binDistanceDelta == 0:
                 print(f"All predicted distances are the same for atom nr.{atomNo}. Skipped.")
                 continue
@@ -105,7 +118,34 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
             print(f"Distance between atom nr.{atomNo} and scan position less than {distanceToBeAccurate} in {100*len(distance[np.array(distancePredictionDelta) < distanceToBeAccurate])/len(distance):.2f}% of cases over all structure")
             print(f"Distance between atom nr.{atomNo} and scan position less than {distanceToBeAccurate}*2 in {100*len(distance[np.array(distancePredictionDelta) < 2*distanceToBeAccurate])/len(distance):.2f}% of cases over all structure")
             print(f"Distance between atom nr.{atomNo} and scan position less than {distanceToBeAccurate}*3 in {100*len(distance[np.array(distancePredictionDelta) < 3*distanceToBeAccurate])/len(distance):.2f}% of cases over all structure")
+        if len(xGTs) == 0:
+            print(f"No atoms found in {file}. Skipped.")
+            continue
+        for cnt in range(len(xGTs[0])//10):
+            if cnt % 150 != 0:
+                continue
             
+            predGrid = np.zeros((15,15))
+            GTGrid = np.zeros((15,15))
+            for atomNo in xGTs.keys():
+                xGT = xGTs[atomNo]
+                xPred = xPreds[atomNo]
+                yGT = yGTs[atomNo]
+                yPred = yPreds[atomNo]
+                predGrid[np.clip(np.round(xPred[cnt]),0,14).astype(int), np.clip(np.round(yPred[cnt]),0,14).astype(int)] = 1
+                GTGrid[np.clip(np.round(xGT[cnt]),0,14).astype(int), np.clip(np.round(yGT[cnt]),0,14).astype(int)] = 1
+            
+        
+            plt.figure()
+            plt.subplot(1,2,1)
+            plt.imshow(predGrid)
+            plt.colorbar()
+            plt.subplot(1,2,2)
+            plt.imshow(GTGrid)
+            plt.colorbar()
+            plt.suptitle(f"Model: {modelName}")
+            plt.savefig(os.path.join("testDataEval", file + f"row{cnt}_comparison.png"))
+            plt.close()
         #analyze the element prediction accuracy
         for atomNo in  elementsGT.keys():
             elementsCorrect = np.around(elementsGT[atomNo]).astype(int) == np.around(elementsPred[atomNo]).astype(int)

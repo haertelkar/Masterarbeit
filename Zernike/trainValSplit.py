@@ -37,6 +37,8 @@ for filename in tqdm(glob("measurements_train/labels*.csv"), desc="Splitting tra
         weights = list(1/(hist[xbinPositions[cnt], ybinPositions[cnt]]) for cnt in range(len(train_df)))
         pd.DataFrame(weights).to_csv("/".join(filename.split("/")[:-1]) + "/weights_" + filename.split("/")[-1], index=False, header=False)
 
+    
+
     elif "labels_only_Elem_" in filename:
         tqdm.write(f"Creating element histograms")
         hist, xbins = np.histogram(train_df.iloc[:,1], bins=100)

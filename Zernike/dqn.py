@@ -11,6 +11,7 @@ from lightning.pytorch import LightningModule
 from torch import Tensor, nn
 from torch.optim import Adam, Optimizer
 from Zernike.gymEnvironPtycho import ptychoEnv
+from pytorch3d.loss import chamfer_distance
 
 device = "cuda"
 grid_size = 15
@@ -31,7 +32,7 @@ class DQN(nn.Module):
 
 
         if obs_size == 0:
-            numberOfOSAANSIMoments = 15	
+            numberOfOSAANSIMoments = 15
             for n in range(numberOfOSAANSIMoments + 1):
                 for mShifted in range(2*n+1):
                     m = mShifted - n
@@ -197,7 +198,7 @@ class DQNLightning(LightningModule):
         obs_size = np.prod(obs_shape)
 
         self.net = DQN()
-        self.finalLayer = FinalLayer(hidden_size*9,label_size)
+        self.finalLayer = FinalLayer(9*hidden_size,label_size) 
 
 
         self.agent = Agent(self.env)
@@ -205,7 +206,7 @@ class DQNLightning(LightningModule):
         self.episode_reward = 0
 
         obs_size = 0
-        numberOfOSAANSIMoments = 15	
+        numberOfOSAANSIMoments = 15
         for n in range(numberOfOSAANSIMoments + 1):
             for mShifted in range(2*n+1):
                 m = mShifted - n
@@ -232,9 +233,13 @@ class DQNLightning(LightningModule):
         # for stepNr in range(self.episode_length):
         #     reward, currentLabelPred = self.agent.play_step(self.net, epsilon= 0, stepNr=stepNr )
         currentHiddenState = self.net(x).flatten(start_dim=1)
-        currentLabel = self.finalLayer(currentHiddenState)
+        currentLabel :Tensor= self.finalLayer(currentHiddenState)
 
-        return grid_size *currentLabel.flatten(start_dim=1) +grid_size /2
+        labelOrdered = currentLabel.flatten(start_dim=1).reshape((-1, 10, 2))
+        sorted_indices = torch.argsort(labelOrdered[:, :, 0], dim=1)
+        labelOrdered = torch.gather(labelOrdered, 1, sorted_indices.unsqueeze(-1).expand(-1, -1, 2))
+
+        return  labelOrdered.flatten(start_dim=1)*grid_size+grid_size/2
 
     def get_epsilon(self, start, end, frames) -> float:
         if self.global_step > frames:
@@ -270,14 +275,15 @@ class DQNLightning(LightningModule):
         # for stepNr in range(self.episode_length):
         #     reward, currentHiddenState = self.agent.play_step(self.net, epsilon, stepNr)
         #     self.episode_reward += 0
-        currentHiddenState = self.net(x).flatten(start_dim=1)
-        currentLabel = self.finalLayer(currentHiddenState)
+        currentHiddenState :Tensor= self.net(x).flatten(start_dim=1)
+        currentLabel :Tensor= self.finalLayer(currentHiddenState)
 
         # currentLabelReshaped = currentLabel.reshape((-1,int(label_size/2),2))
         # indices = torch.argsort(currentLabelReshaped[:,:,0])
 
-        
-        loss = nn.MSELoss()(atomPositionsLabel.flatten(start_dim=1) /grid_size -0.5, currentLabel.flatten(start_dim=1))
+
+        # loss = torch.nn.MSELoss()(currentLabel.flatten(start_dim=1), atomPositionsLabel.flatten(start_dim=1)/grid_size-0.5)
+        loss, _ = chamfer_distance(currentLabel.flatten(start_dim=1).reshape((-1,10,2)), atomPositionsLabel.flatten(start_dim=1).reshape((-1,10,2))/grid_size-0.5)
 
 
                                    
@@ -295,5 +301,5 @@ class DQNLightning(LightningModule):
 
     def configure_optimizers(self) -> Optimizer:
         """Initialize Adam optimizer."""
-        optimizer = Adam(self.net.parameters(), lr=self.lr)
+        optimizer = torch.optim.AdamW(self.net.parameters(), lr=self.lr)
         return optimizer

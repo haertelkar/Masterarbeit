@@ -14,5 +14,5 @@
 
 
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
-python3 SimulateTilesOneFile.py -it 1 -id $SLURM_ARRAY_TASK_ID$RANDOM 
+python3 SimulateTilesOneFile.py -it 30 -id $SLURM_ARRAY_TASK_ID$RANDOM 
 echo "finished tileSimulate.sh$SLURM_ARRAY_TASK_ID"

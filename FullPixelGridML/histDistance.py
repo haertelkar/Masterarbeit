@@ -13,8 +13,8 @@ with open(filename, 'r') as file:
 
     print(next(reader))  # Skip the header row
     for row in reader:
-        x_values.append(float(row[5]))
-        y_values.append(float(row[9]))
+        x_values.append(float(row[1]))
+        y_values.append(float(row[2]))
 
 x_values = np.array(x_values)#-10*0.2/2
 y_values = np.array(y_values)#-10*0.2/2
@@ -24,7 +24,7 @@ distances = [math.sqrt(x**2 + y**2) for x, y in zip(x_values, y_values)]
 print("Median distance: ", np.median(distances))
 print("Median distance: ", np.average(distances))
 
-heatmap, xedges, yedges = np.histogram2d(x_values, y_values, bins=1000)
+heatmap, xedges, yedges = np.histogram2d(x_values, y_values, bins=15)
 xIndexZero, yIndexZero = np.digitize([0], xedges)[0], np.digitize([0], yedges)[0]
 xIndexMax, yIndexMax = np.unravel_index(heatmap.argmax(), heatmap.shape)
 print(f"Zero index: {xIndexZero}, {yIndexZero}")

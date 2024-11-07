@@ -73,13 +73,13 @@ def createAtomPillar(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,1
     #(random() -  1/2) * maxShiftFactorPerLayer * ylen #slant of atom pillar
     # xAtomPillarAngle = np.arcsin(xAtomShift/1)
     # yAtomPillarAngle = np.arcsin(yAtomShift/1)
-    positions = [np.array([0, 0, 0])]
+    positions = [np.array([xPos or 0, yPos or 0, zPos or 0])]
     for atomBefore in range(zAtoms-1):
         positions += [positions[atomBefore] + np.array([xAtomShift, yAtomShift, 1])]
     atomPillar = Atoms(numbers = [element] * zAtoms , positions=positions, cell = [xlen, ylen, zAtoms,90,90,90])
     #atomPillar_101 = surface(atomPillar, indices=(1, 0, 1), layers=2, periodic=True)
-    atomPillar_slab = moveAndRotateAtomsAndOrthogonalizeAndRepeat(atomPillar, xPos, yPos, zPos, ortho=True)
-    return atomPillar_slab
+    # atomPillar = moveAndRotateAtomsAndOrthogonalizeAndRepeat(atomPillar, xPos, yPos, zPos, ortho=True)
+    return atomPillar
 
 #BROKEN #TODO use poisson disk
 def multiPillars(xAtomShift = 0, yAtomShift = 0, element = None, numberOfRandomAtomPillars = None) -> Atoms:
@@ -125,6 +125,13 @@ def createStructure(specificStructure : str = "random", trainOrTest = None, **kw
     Returns:
         Atoms: Ase Atoms object of specified structure
     """
+
+    nameStruct = "createAtomPillar"
+    structFinished = createAtomPillar(xPos=5+random()*3, yPos=5+random()*3, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100))
+    for _ in range(9):
+        structFinished.extend(createAtomPillar(xPos=5+random()*3, yPos=5+random()*3, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
+    structFinished = orthogonalize_cell(structFinished, max_repetitions=10)
+    return nameStruct, structFinished
     predefinedFunctions = {
         "createAtomPillar" : createAtomPillar,
         "multiPillars" : multiPillars,
@@ -309,14 +316,51 @@ def generateAtomGrid(datasetStructID, rows, atomStruct, start, end, silence):
     rows.append([f"{datasetStructID}"]+list(atomGridInterpolated.flatten()))
     return rows
     
+def generateAtomGridNoInterp(datasetStructID, rows, atomStruct, start, end, silence, maxPooling = 1):
+    allPositions = atomStruct.get_positions()
+    allPositionsShifted = allPositions - np.array([start[0], start[1], 0])
+    numberOfPositionsInOneAngstrom = 5
+    xMaxCoord, yMaxCoord = (end[0] - start[0])* numberOfPositionsInOneAngstrom//maxPooling, (end[1] - start[1]) * numberOfPositionsInOneAngstrom//maxPooling
 
+    atomGrid= np.zeros((xMaxCoord, yMaxCoord))
+    silence = False
 
-def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter, processID = 99999, silence = False, structure = "random", fileWrite = True, difArrays = None):
+    for (x, y), atomNo in tqdm(zip(allPositionsShifted[:,0:2], atomStruct.get_atomic_numbers()), leave=False, desc = f"Going through diffraction Pattern in atoms.", total= len(allPositionsShifted), disable=silence):
+        xRound = np.round(x*numberOfPositionsInOneAngstrom/maxPooling)
+        yRound = np.round(y*numberOfPositionsInOneAngstrom/maxPooling)
+        if xRound < 0 or yRound < 0: continue
+        if xRound >= xMaxCoord or yRound >= yMaxCoord: continue
+        atomGrid[int(xRound), int(yRound)] += atomNo
+    np.clip(atomGrid, 0, 1, out=atomGrid) #clip to 1 for classifier
+    rows.append([f"{datasetStructID}"]+list(atomGrid.flatten()))
+    return rows
+
+#a function that appends the xy positions of the atoms to the rows
+def generateXYE(datasetStructID, rows, atomStruct, start, end, silence):
+    allPositions = atomStruct.get_positions()
+    allPositionsShifted = allPositions - np.array([start[0], start[1], 0])
+    numberOfPositionsInOneAngstrom = 5
+    silence = False
+    xMaxCoord, yMaxCoord = (end[0] - start[0])* numberOfPositionsInOneAngstrom, (end[1] - start[1]) * numberOfPositionsInOneAngstrom
+    xyes = np.zeros((10,3))
+    cnt = 0
+    for (x, y), atomNo in tqdm(zip(allPositionsShifted[:,0:2], atomStruct.get_atomic_numbers()), leave=False, desc = f"Going through diffraction Pattern in atoms.", total= len(allPositionsShifted), disable=silence):
+        xCoordinate = x*numberOfPositionsInOneAngstrom
+        yCoordinate = y*numberOfPositionsInOneAngstrom
+        
+        if xCoordinate < 0 or yCoordinate < 0: continue
+        if xCoordinate > xMaxCoord or yCoordinate > yMaxCoord: continue
+        xyes[cnt] = np.array([xCoordinate,yCoordinate,atomNo])
+        cnt += 1
+    xyes = xyes[xyes[:,0].argsort()] #sort by x coordinate
+    rows.append([f"{datasetStructID}"]+list(xyes.flatten().astype(str)))    
+    return rows
+
+def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,maxPooling = 1, processID = 99999, silence = False, structure = "random", fileWrite = True, difArrays = None,     start = (5,5), end = (8,8)):
     rows = []
     # rowsPixel = []
     dim = 50
-    start = (5,5)
-    end = (20,20)
+
 
     if fileWrite: file = h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w')
     else: dataArray = []
@@ -327,7 +371,8 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         difPatternsOnePosition = measurement_thick.array.copy() # type: ignore
         difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
         
-        rows = generateAtomGrid(datasetStructID, rows, atomStruct, start, end, silence)
+        rows = generateXYE(datasetStructID, rows, atomStruct, start, end, silence)
+        # rows = generateAtomGridNoInterp(datasetStructID, rows, atomStruct, start, end, silence, maxPooling=maxPooling)
         difPatternsOnePositionResized = []
         for cnt, difPattern in enumerate(difPatternsOnePosition): 
             difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(dim, dim), interpolation=cv2.INTER_LINEAR))  # type: ignore
@@ -346,16 +391,14 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
     else:
         return rows, np.array(dataArray) 
 
-def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, timeStamp, BFDdiameter, processID = 99999, silence = False, maxPooling = 1, structure = "random", fileWrite = True, difArrays = None):
+def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, timeStamp, BFDdiameter, processID = 99999, silence = False, maxPooling = 1, structure = "random", fileWrite = True, difArrays = None, start = (5,5), end = (20,20)):
     rowsRelative = []
     # rowsPixel = []
     stepsPerTile = 3
     xStepSize = (XDIMTILES-1)//stepsPerTile
     yStepSize = (YDIMTILES-1)//stepsPerTile
     dim = 50
-    start = (5,5)
-    end = (20,20)
-
+    
     if fileWrite: file = h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w')
     else: dataArray = []
     difArrays = difArrays or (generateDiffractionArray(trainOrTest = trainOrTest, structure=structure, start=start, end=end) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))
@@ -408,6 +451,14 @@ def saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, numberOfPatterns, time
     else:
         return rowsRelative, np.array(dataArray) 
 
+def createTopLineCoords(csvFilePath):
+    with open(csvFilePath, 'w+', newline='') as csvfile:
+        Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
+        row = ["fileName"]
+        for i in range(10):
+            row = row + [f"xAtomRel{i}", f"yAtomRel{i}", f"element{i}"]
+        Writer.writerow(row)
+        Writer = None
 
 def createTopLineRelative(csvFilePath):
     with open(csvFilePath, 'w+', newline='') as csvfile:
@@ -423,13 +474,13 @@ def createTopLinePixels(csvFilePath, XDIMTILES, YDIMTILES, maxPooling = 1):
         Writer = None    
 
 
-def createTopLineAllPositions(csvFilePath):
+def createTopLineAllPositions(csvFilePath, size, maxPooling = 1):
     with open(csvFilePath, 'w+', newline='') as csvfile:
         Writer = csv.writer(csvfile, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
-        Writer.writerow(["fileName"]+ [f"pixelx{x}y{y}" for y in np.arange(75) for x in np.arange(75)])
+        Writer.writerow(["fileName"]+ [f"pixelx{x}y{y}" for y in np.arange(size//maxPooling) for x in np.arange(size//maxPooling)])
         Writer = None
 
-def writeAllRows(rows, trainOrTest, XDIMTILES, YDIMTILES, processID = "", createTopRow = None, timeStamp = 0, maxPooling = 1):
+def writeAllRows(rows, trainOrTest, XDIMTILES, YDIMTILES, processID = "", createTopRow = None, timeStamp = 0, maxPooling = 1, size = 15):
     """
     Writes the given rows to a CSV file.
 
@@ -445,7 +496,9 @@ def writeAllRows(rows, trainOrTest, XDIMTILES, YDIMTILES, processID = "", create
     """
     csvFilePath = os.path.join(f'measurements_{trainOrTest}',f'labels_{processID}_{timeStamp}.csv')
     if createTopRow is None: createTopRow = not os.path.exists(csvFilePath)
-    if createTopRow: createTopLineAllPositions(csvFilePath)
+    if createTopRow: createTopLineCoords(csvFilePath)
+    # if createTopRow: createTopLineAllPositions(csvFilePath, size, maxPooling=maxPooling)
+    
     #if createTopRow: createTopLineRelative(csvFilePath)
     # if createTopRow: createTopLinePixels(csvFilePath, XDIMTILES, YDIMTILES, maxPooling = maxPooling)
     with open(csvFilePath, 'a', newline='') as csvfile:
@@ -469,21 +522,23 @@ if __name__ == "__main__":
 
     XDIMTILES = 10
     YDIMTILES = 10
-    maxPooling = 3
+    maxPooling = 1
+    start = (5,5)
+    end = (8,8)
+    numberOfPositionsInOneAngstrom = 5
+    size = (end[0] - start[0]) * numberOfPositionsInOneAngstrom
     BFDdiameter = 18 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
-    # assert(XDIMTILES % maxPooling == 0)
+    assert(size % maxPooling == 0)
     testDivider = {"train":1, "test":0.25}
     for i in tqdm(range(max(args["iterations"],1)), disable=False, desc = f"Running {args['iterations']} iterations on process {args['id']}"):
         for trainOrTest in ["train", "test"]:
             if trainOrTest not in args["trainOrTest"]:
                 continue
             print(f"PID {os.getpid()} on step {i+1} of {trainOrTest}-data at {datetime.datetime.now()}")
-            with(open(f"progress_{args['id']}.txt", "w")) as file:
-                file.write(f"PID {os.getpid()} on step {i+1} of {trainOrTest}-data at {datetime.datetime.now()}\n")
             timeStamp = int(str(time()).replace('.', ''))
-            rows = saveAllPosDifPatterns(trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, structure = args["structure"])
-            #rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling, structure = args["structure"])
-            writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], timeStamp = timeStamp, maxPooling=maxPooling)
+            rows = saveAllPosDifPatterns(trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, structure = args["structure"], start=start, end=end, maxPooling=maxPooling)
+            #rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling, structure = args["structure"], start=start, end=end)
+            writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], timeStamp = timeStamp, maxPooling=maxPooling, size = size)
   
     print(f"PID {os.getpid()} done.")
 

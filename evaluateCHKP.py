@@ -1,3 +1,4 @@
+from Zernike.dqn import DQNLightning
 from lightningTrain import loadModel, lightnModelClass, evaluater, ptychographicDataLightning
 import os
 import lightning.pytorch as pl
@@ -5,7 +6,7 @@ import sys
 from tqdm import tqdm
 
 resultVectorLength = 0 
-numberOfOSAANSIMoments = 20	
+numberOfOSAANSIMoments = 15	
 for n in range(numberOfOSAANSIMoments + 1):
     for mShifted in range(2*n+1):
         m = mShifted - n
@@ -30,8 +31,8 @@ for folder in tqdm(os.listdir("checkpoints")):
         if not file.endswith(".ckpt"):
             continue
 
-        if "Zernike" in version:
-            numChannels=resultVectorLength * DIMENSION**2
+        if "Zernike" in version or True:
+            numChannels=resultVectorLength * 9#DIMENSION**2
             modelName = "ZernikeNormal"
         else:
             numChannels = DIMENSION**2
@@ -49,8 +50,8 @@ for folder in tqdm(os.listdir("checkpoints")):
                 tqdm.write(f"Skipping {version} as it is not implemented")
                 continue
         else:
-            if "onlyDist" in version:
-                numLabels = 4 * 2
+            if "onlyDist" in version or True:
+                numLabels = 10 * 2
                 labelFile = "labels_only_Dist.csv"
             elif "onlyElem" in version:
                 numLabels = 4
@@ -58,15 +59,15 @@ for folder in tqdm(os.listdir("checkpoints")):
             else:
                 numLabels = 4 * 3
                 labelFile = "labels.csv"
-
-        model = loadModel(modelName = modelName, numChannels=numChannels, numLabels = numLabels)
+        lightnModel = DQNLightning()
+        #model = loadModel(modelName = modelName, numChannels=numChannels, numLabels = numLabels)
 
 
         epochAndStep = file
         tqdm.write(f"Evaluating {epochAndStep} of {version}")
         checkpoint_path = os.path.join("checkpoints",f"{version}",f"{epochAndStep}")
-        model = lightnModelClass.load_from_checkpoint(checkpoint_path = checkpoint_path, model = model)
-        lightnModel = lightnModelClass(model)
+        lightnModel.load_from_checkpoint(checkpoint_path = checkpoint_path)
+        #lightnModel = lightnModelClass(model)
 
         lightnDataLoader = ptychographicDataLightning(modelName, labelFile=labelFile, testDirectory="measurements_test", onlyTest=True)
         lightnDataLoader.setup()
@@ -74,4 +75,4 @@ for folder in tqdm(os.listdir("checkpoints")):
         # trainer = pl.Trainer(accelerator='gpu')
         # trainer.test(model, dataloaders=lightnDataLoader.test_dataloader())
 
-        evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, model.to('cuda'), indicesToPredict = None, modelName = modelName, version = f"evaluation_{version}_{epochAndStep}", classifier=False)
+        evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, lightnModel.to('cuda'), indicesToPredict = None, modelName = modelName, version = f"evaluation_{version}_{epochAndStep}", classifier=False)

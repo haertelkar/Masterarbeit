@@ -65,7 +65,7 @@ def readProgressAcrossAllRuns(path:str):
     return fileNamesDone
 
 
-def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMoments = 10, leave = True): #radius set below & noOfMoment = 10 tested works, noOfMoment = 40 optimal performance
+def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMoments = 15, leave = True): #radius set below & noOfMoment = 10 tested works, noOfMoment = 40 optimal performance
     oldDir = os.getcwd() 
     os.chdir(pathToZernikeFolder)
     ZernikeObject = None

@@ -176,7 +176,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 		batch_size = 2048
 		if modelName == "DQN": 
 			lightnModel = DQNLightning()
-			batch_size = 512
+			batch_size = 4096
 		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size, weighted = False)
 		lightnDataLoader.setup()
 		
@@ -198,14 +198,16 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 		callbacks=[checkpoint_callback]#,early_stop_callback]
 		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", log_graph=True,name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=callbacks)
 		if checkPointExists:
+			new_lr = 1e-9
+			lightnModel.lr = new_lr
 			trainer.fit(lightnModel, datamodule = lightnDataLoader, ckpt_path="last")
 		else:
 			#Create a Tuner
 			tuner = Tuner(trainer)
 			# Auto-scale batch size by growing it exponentially
-			if world_size == 1: 
-				new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, init_val=512, max_trials= 25) 
-				print(f"New batch size: {new_batch_size}")
+			# if world_size == 1: 
+			# 	new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, init_val=512, max_trials= 25) 
+			# 	print(f"New batch size: {new_batch_size}")
 				# leads to crashing with slurm but has worked with 2048 batch size
 				# lightnDataLoader.batch_size is automatically set to new_batch_size
 			# finds learning rate automatically
@@ -218,7 +220,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 					new_lr = 1e-9
 				else:
 					lightnModel.lr = new_lr
-				print(f"New learning rate: {new_lr}")
+			print(f"New learning rate: {lightnModel.lr}")
 			trainer.fit(lightnModel, datamodule = lightnDataLoader)
 		trainer.save_checkpoint(os.path.join("models",f"{modelName}_{version}.ckpt"))
 		lightnModel.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
