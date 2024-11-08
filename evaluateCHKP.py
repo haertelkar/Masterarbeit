@@ -1,5 +1,5 @@
 from Zernike.dqn import DQNLightning
-from lightningTrain import loadModel, lightnModelClass, evaluater, ptychographicDataLightning
+from lightningTrain import evaluater, ptychographicDataLightning
 import os
 import lightning.pytorch as pl
 import sys
@@ -59,20 +59,23 @@ for folder in tqdm(os.listdir("checkpoints")):
             else:
                 numLabels = 4 * 3
                 labelFile = "labels.csv"
-        lightnModel = DQNLightning()
+        # = DQNLightning()
         #model = loadModel(modelName = modelName, numChannels=numChannels, numLabels = numLabels)
 
 
         epochAndStep = file
         tqdm.write(f"Evaluating {epochAndStep} of {version}")
-        checkpoint_path = os.path.join("checkpoints",f"{version}",f"{epochAndStep}")
-        lightnModel.load_from_checkpoint(checkpoint_path = checkpoint_path)
+        # checkpoint_path = os.path.join("checkpoints",f"{version}",f"{epochAndStep}")
+        checkpoint_path = os.path.join("models/DQN_0711_chamfer_1e-9_BatS4096_AdamW_1343.ckpt")
+        lightnModel = DQNLightning().load_from_checkpoint(checkpoint_path = checkpoint_path)
         #lightnModel = lightnModelClass(model)
 
-        lightnDataLoader = ptychographicDataLightning(modelName, labelFile=labelFile, testDirectory="measurements_test", onlyTest=True)
-        lightnDataLoader.setup()
+        lightnDataLoader = ptychographicDataLightning(modelName, indicesToPredict = None, labelFile = labelFile, batch_size=4096, weighted = False)
+        lightnDataLoader.setup(stage = "predict")
 
-        # trainer = pl.Trainer(accelerator='gpu')
-        # trainer.test(model, dataloaders=lightnDataLoader.test_dataloader())
+        # lightnDataLoader = ptychographicDataLightning(modelName, labelFile=labelFile, testDirectory="measurements_test", onlyTest=True)
+        # lightnDataLoader.setup()
 
-        evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, lightnModel.to('cuda'), indicesToPredict = None, modelName = modelName, version = f"evaluation_{version}_{epochAndStep}", classifier=False)
+        trainer = pl.Trainer(accelerator='gpu')
+        trainer.test(lightnModel, dataloaders=lightnDataLoader.test_dataloader())
+        evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, lightnModel, indicesToPredict = None, modelName = modelName, version = f"evaluation_{version}_{epochAndStep}", classifier=False)
