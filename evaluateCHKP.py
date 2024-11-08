@@ -65,8 +65,8 @@ for folder in tqdm(os.listdir("checkpoints")):
 
         epochAndStep = file
         tqdm.write(f"Evaluating {epochAndStep} of {version}")
-        # checkpoint_path = os.path.join("checkpoints",f"{version}",f"{epochAndStep}")
-        checkpoint_path = os.path.join("models/DQN_0711_chamfer_1e-9_BatS4096_AdamW_1343.ckpt")
+        checkpoint_path = os.path.join("checkpoints",f"{version}",f"{epochAndStep}")
+        # checkpoint_path = os.path.join("models/DQN_0711_chamfer_1e-9_BatS4096_AdamW_1343.ckpt")
         lightnModel = DQNLightning().load_from_checkpoint(checkpoint_path = checkpoint_path)
         #lightnModel = lightnModelClass(model)
 
