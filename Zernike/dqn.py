@@ -225,14 +225,14 @@ class DQNLightning(LightningModule):
             q values
 
         """
-        ptychoImages = x 
+        ptychoImages = x
         atomPositionsLabel = torch.zeros((x.shape[0], label_size), device=device)
         # self.agent.reset(ptychoImages,atomPositionsLabel)
 
         # step through environment with agent multiple times
         # for stepNr in range(self.episode_length):
         #     reward, currentLabelPred = self.agent.play_step(self.net, epsilon= 0, stepNr=stepNr )
-        currentHiddenState = self.net(x).flatten(start_dim=1)
+        currentHiddenState = self.net(x ).flatten(start_dim=1)
         currentLabel :Tensor= self.finalLayer(currentHiddenState)
 
         labelOrdered = currentLabel.flatten(start_dim=1).reshape((-1, 10, 2))
@@ -297,6 +297,11 @@ class DQNLightning(LightningModule):
         )
 
 
+        return loss
+    
+    def test_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> OrderedDict:
+        loss = self.training_step(batch)
+        self.log("test_loss", loss)
         return loss
 
     def configure_optimizers(self) -> Optimizer:
