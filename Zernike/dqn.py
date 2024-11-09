@@ -39,7 +39,7 @@ class DQN(nn.Module):
                     if (n-m)%2 != 0:
                         continue
                     obs_size += 1
-            #obs_size += 2+ hidden_size# 2 for x and y position of the agent
+            obs_size += 2# 2 for x and y position of the agent
 
         self.gru = nn.GRU(input_size=obs_size, hidden_size=hidden_size, num_layers=3, batch_first=True)
         self.hidden_state = None
@@ -198,7 +198,7 @@ class DQNLightning(LightningModule):
         obs_size = np.prod(obs_shape)
 
         self.net = DQN()
-        self.finalLayer = FinalLayer(9*hidden_size,label_size) 
+        self.finalLayer = FinalLayer(hidden_size*9,label_size) 
 
 
         self.agent = Agent(self.env)
@@ -213,7 +213,7 @@ class DQNLightning(LightningModule):
                 if (n-m)%2 != 0:
                     continue
                 obs_size += 1
-        self.example_input_array = torch.zeros((1, 9, obs_size), device=device)
+        self.example_input_array = torch.zeros((1, 9, obs_size + 2), device=device)
 
     def forward(self, x: Tensor) -> Tensor:
         """Passes in a state x through the network and gets the q_values of each action as an output.
@@ -232,7 +232,7 @@ class DQNLightning(LightningModule):
         # step through environment with agent multiple times
         # for stepNr in range(self.episode_length):
         #     reward, currentLabelPred = self.agent.play_step(self.net, epsilon= 0, stepNr=stepNr )
-        currentHiddenState = self.net(x ).flatten(start_dim=1)
+        currentHiddenState = self.net(x )[:,:].flatten(start_dim=1)
         currentLabel :Tensor= self.finalLayer(currentHiddenState)
 
         labelOrdered = currentLabel.flatten(start_dim=1).reshape((-1, 10, 2))
@@ -247,11 +247,11 @@ class DQNLightning(LightningModule):
         return start - (self.global_step / frames) * (start - end)
 
     def validation_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> OrderedDict:
-        loss = self.training_step(batch)
+        loss = self.training_step(batch, log=False)
         self.log("val_loss", loss)
         return loss
 
-    def training_step(self, batch: Tuple[Tensor, Tensor]) -> OrderedDict:
+    def training_step(self, batch: Tuple[Tensor, Tensor], log = True) -> OrderedDict:
         """Carries out an episode worth of steps through the environment using the DQN
 
         Args:
@@ -265,6 +265,7 @@ class DQNLightning(LightningModule):
         x, y = batch
         ptychoImages = x 
         atomPositionsLabel = y
+        
         # print(atomPositionsLabel)
         # exit()
         # self.agent.reset(ptychoImages,atomPositionsLabel)
@@ -275,7 +276,7 @@ class DQNLightning(LightningModule):
         # for stepNr in range(self.episode_length):
         #     reward, currentHiddenState = self.agent.play_step(self.net, epsilon, stepNr)
         #     self.episode_reward += 0
-        currentHiddenState :Tensor= self.net(x).flatten(start_dim=1)
+        currentHiddenState :Tensor= self.net(x)[:,:].flatten(start_dim=1)
         currentLabel :Tensor= self.finalLayer(currentHiddenState)
 
         # currentLabelReshaped = currentLabel.reshape((-1,int(label_size/2),2))
@@ -289,18 +290,18 @@ class DQNLightning(LightningModule):
                                    
         self.total_reward = 0
         self.episode_reward = 0
-
-        self.log_dict(
-            {
-                "train_loss": loss,
-            }
-        )
+        if log:
+            self.log_dict(
+                {
+                    "train_loss": loss,
+                }
+            )
 
 
         return loss
     
     def test_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> OrderedDict:
-        loss = self.training_step(batch)
+        loss = self.training_step(batch, log=False)
         self.log("test_loss", loss)
         return loss
 

@@ -137,9 +137,14 @@ class ptychographicData(Dataset):
 	def __getitem__(self, idx):
 		label = self.getLabel(idx)
 		# print(self.getImageOrZernike(idx).shape)
-		imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((15,15, -1))[1::5,1::5].reshape((9,-1))
+		randCoords = torch.randperm(225)[:9]
+		randXCoords = (randCoords % 15)
+		randYCoords = torch.div(randCoords, 15, rounding_mode='floor') 
+		imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((15,15, -1))[randXCoords,randYCoords].reshape((9,-1))
+		imageOrZernikeMomentsWithCoords = torch.cat((imageOrZernikeMoments, torch.stack([randXCoords, randYCoords]).T), dim = 1)
+		return imageOrZernikeMomentsWithCoords, label
 		#print(f"data type: {imageOrZernikeMoments}, data size: {np.shape(imageOrZernikeMoments)}")
-		return imageOrZernikeMoments, label
+		#return imageOrZernikeMoments, label
 	
 	# def get2Dhist(self):
 	# 	xIndex = np.where(self.columns == "xAtomRel")[0][0] - 1
