@@ -50,15 +50,15 @@ for folder in tqdm(os.listdir("checkpoints")):
                 tqdm.write(f"Skipping {version} as it is not implemented")
                 continue
         else:
-            if "onlyDist" in version or True:
-                numLabels = 10 * 2
-                labelFile = "labels_only_Dist.csv"
-            elif "onlyElem" in version:
-                numLabels = 4
-                labelFile = "labels_only_Elem.csv"
-            else:
-                numLabels = 4 * 3
-                labelFile = "labels.csv"
+            # if "onlyDist" in version :
+            numLabels = 10 * 2
+            labelFile = "labels_only_Dist.csv"
+            # elif "onlyElem" in version:
+            #     numLabels = 10
+            #     labelFile = "labels_only_Elem.csv"
+            # else:
+            #     numLabels = 10 * 3
+            #     labelFile = "labels.csv"
         # = DQNLightning()
         #model = loadModel(modelName = modelName, numChannels=numChannels, numLabels = numLabels)
 
@@ -70,12 +70,12 @@ for folder in tqdm(os.listdir("checkpoints")):
         lightnModel = DQNLightning().load_from_checkpoint(checkpoint_path = checkpoint_path)
         #lightnModel = lightnModelClass(model)
 
-        lightnDataLoader = ptychographicDataLightning(modelName, indicesToPredict = None, labelFile = labelFile, batch_size=4096, weighted = False)
+        lightnDataLoader = ptychographicDataLightning(modelName, indicesToPredict = None, labelFile = labelFile, batch_size=512, weighted = False)
         lightnDataLoader.setup(stage = "predict")
 
         # lightnDataLoader = ptychographicDataLightning(modelName, labelFile=labelFile, testDirectory="measurements_test", onlyTest=True)
         # lightnDataLoader.setup()
 
-        trainer = pl.Trainer(accelerator='gpu')
-        trainer.test(lightnModel, dataloaders=lightnDataLoader.test_dataloader())
+        # trainer = pl.Trainer(accelerator='gpu')
+        # trainer.test(lightnModel, dataloaders=lightnDataLoader.test_dataloader())
         evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, lightnModel, indicesToPredict = None, modelName = modelName, version = f"evaluation_{version}_{epochAndStep}", classifier=False)

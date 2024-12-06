@@ -18,4 +18,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun python3 -u  evaluateCHKP.py 1e-9_BatS4096_AdamW_1343
+srun python3 -u  evaluateCHKP.py DQN_0412_ZNN_chamfer_1555

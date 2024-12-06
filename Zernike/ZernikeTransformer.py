@@ -108,8 +108,13 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMom
                 if cnt%worldsize != rank:
                     continue
                 #tqdm.write(f"rank: {rank}\nfileName: {fileName} \nram usage: {resource.getrusage(resource.RUSAGE_SELF).ru_maxrss}")
-                with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
-                    groupOfPatterns = np.array(totalImages[fileName])
+                try:
+                    with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
+                        groupOfPatterns = np.array(totalImages[fileName])
+                except KeyError as e:
+                    print(f"KeyError in {fileName} in measurements_{testOrTrain}. Trying with 0{fileName}")
+                    with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
+                        groupOfPatterns = np.array(totalImages[f"0{fileName}"])                    
                 ZernikeObject.zernikeTransform(fileName, groupOfPatterns, zernikeTotalImages)
                 groupOfPatterns = None
                 gc.collect()

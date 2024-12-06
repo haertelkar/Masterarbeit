@@ -45,6 +45,7 @@ from mp_api.client import MPRester
 device = "gpu" if torch.cuda.is_available() else "cpu"
 print(f"Calculating on {device}")
 xlen = ylen = 25
+pixelOutput = False
 
 def calc_diameter_bfd(image):
     brightFieldDisk = np.zeros_like(image)
@@ -130,38 +131,42 @@ def createStructure(specificStructure : str = "random", trainOrTest = None, **kw
     structFinished = createAtomPillar(xPos=5+random()*3, yPos=5+random()*3, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100))
     for _ in range(9):
         structFinished.extend(createAtomPillar(xPos=5+random()*3, yPos=5+random()*3, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
+    # structFinished = createAtomPillar(xPos=5.1, yPos=5.1, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100))
+    # for _ in range(9):
+    #     structFinished.extend(createAtomPillar(xPos=5.3+_*0.2, yPos=5.3+_*0.2, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
+    
     structFinished = orthogonalize_cell(structFinished, max_repetitions=10)
     return nameStruct, structFinished
-    predefinedFunctions = {
-        "createAtomPillar" : createAtomPillar,
-        "multiPillars" : multiPillars,
-        "MarcelsEx" : MarcelsEx,
-        "grapheneC" : grapheneC,
-    }
-    if specificStructure != "random":
-        nameStruct = specificStructure
-        structFinished = predefinedFunctions[nameStruct](**kwargs)
-    else:
-        if os.path.exists('FullPixelGridML/structures'):
-            path = 'FullPixelGridML/structures'
-        else:
-            path = 'structures'
-        cifFiles = glob.glob(os.path.join(path,"*.cif"))
-        randomNumber = randint(0, len(cifFiles) - 1 + 3)
-        if randomNumber >= len(cifFiles):
-            nameStruct = choice(list(predefinedFunctions.keys()))
-            structFinished = predefinedFunctions[nameStruct](**kwargs)
-        else:
-            cifFile = cifFiles[randomNumber]
-            struct = read(cifFile)
-            nameStruct = cifFile.split("\\")[-1].split(".")[0]
-            #create a tuple with 3 random numbers, either one or zero
-            # random_numbers = (randint(0, 1), randint(0, 1), randint(0, 1))
-            # if random_numbers == (0,0,0):
-            #     random_numbers = (1,1,1)
-            #surfaceStruct = surface(struct, indices=random_numbers, layers=3, periodic=True)
-            structFinished = moveAndRotateAtomsAndOrthogonalizeAndRepeat(struct)
-    return nameStruct, structFinished
+    # predefinedFunctions = {
+    #     "createAtomPillar" : createAtomPillar,
+    #     "multiPillars" : multiPillars,
+    #     "MarcelsEx" : MarcelsEx,
+    #     "grapheneC" : grapheneC,
+    # }
+    # if specificStructure != "random":
+    #     nameStruct = specificStructure
+    #     structFinished = predefinedFunctions[nameStruct](**kwargs)
+    # else:
+    #     if os.path.exists('FullPixelGridML/structures'):
+    #         path = 'FullPixelGridML/structures'
+    #     else:
+    #         path = 'structures'
+    #     cifFiles = glob.glob(os.path.join(path,"*.cif"))
+    #     randomNumber = randint(0, len(cifFiles) - 1 + 3)
+    #     if randomNumber >= len(cifFiles):
+    #         nameStruct = choice(list(predefinedFunctions.keys()))
+    #         structFinished = predefinedFunctions[nameStruct](**kwargs)
+    #     else:
+    #         cifFile = cifFiles[randomNumber]
+    #         struct  = read(cifFile)
+    #         nameStruct = cifFile.split("\\")[-1].split(".")[0]
+    #         #create a tuple with 3 random numbers, either one or zero
+    #         # random_numbers = (randint(0, 1), randint(0, 1), randint(0, 1))
+    #         # if random_numbers == (0,0,0):
+    #         #     random_numbers = (1,1,1)
+    #         #surfaceStruct = surface(struct, indices=random_numbers, layers=3, periodic=True)
+    #         structFinished = moveAndRotateAtomsAndOrthogonalizeAndRepeat(struct)
+    # return nameStruct, structFinished
 
 def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3, structure = "random", pbar = False, start = (5,5), end = (20,20)) -> Tuple[str, Tuple[float, float], Atoms, Measurement, Potential]:
 
@@ -320,7 +325,7 @@ def generateAtomGridNoInterp(datasetStructID, rows, atomStruct, start, end, sile
     allPositions = atomStruct.get_positions()
     allPositionsShifted = allPositions - np.array([start[0], start[1], 0])
     numberOfPositionsInOneAngstrom = 5
-    xMaxCoord, yMaxCoord = (end[0] - start[0])* numberOfPositionsInOneAngstrom//maxPooling, (end[1] - start[1]) * numberOfPositionsInOneAngstrom//maxPooling
+    xMaxCoord, yMaxCoord = int((end[0] - start[0])* numberOfPositionsInOneAngstrom//maxPooling), int((end[1] - start[1]) * numberOfPositionsInOneAngstrom//maxPooling)
 
     atomGrid= np.zeros((xMaxCoord, yMaxCoord))
     silence = False
@@ -341,8 +346,8 @@ def generateXYE(datasetStructID, rows, atomStruct, start, end, silence):
     allPositionsShifted = allPositions - np.array([start[0], start[1], 0])
     numberOfPositionsInOneAngstrom = 5
     silence = False
-    xMaxCoord, yMaxCoord = (end[0] - start[0])* numberOfPositionsInOneAngstrom, (end[1] - start[1]) * numberOfPositionsInOneAngstrom
-    xyes = np.zeros((10,3))
+    xMaxCoord, yMaxCoord = int((end[0] - start[0])* numberOfPositionsInOneAngstrom), int((end[1] - start[1]) * numberOfPositionsInOneAngstrom)
+    xyes = []
     cnt = 0
     for (x, y), atomNo in tqdm(zip(allPositionsShifted[:,0:2], atomStruct.get_atomic_numbers()), leave=False, desc = f"Going through diffraction Pattern in atoms.", total= len(allPositionsShifted), disable=silence):
         xCoordinate = x*numberOfPositionsInOneAngstrom
@@ -350,9 +355,11 @@ def generateXYE(datasetStructID, rows, atomStruct, start, end, silence):
         
         if xCoordinate < 0 or yCoordinate < 0: continue
         if xCoordinate > xMaxCoord or yCoordinate > yMaxCoord: continue
-        xyes[cnt] = np.array([xCoordinate,yCoordinate,atomNo])
+        xyes.append([xCoordinate,yCoordinate,atomNo])
         cnt += 1
+    xyes = np.array(xyes)
     xyes = xyes[xyes[:,0].argsort()] #sort by x coordinate
+
     rows.append([f"{datasetStructID}"]+list(xyes.flatten().astype(str)))    
     return rows
 
@@ -370,9 +377,10 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
 
         difPatternsOnePosition = measurement_thick.array.copy() # type: ignore
         difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
-        
-        rows = generateXYE(datasetStructID, rows, atomStruct, start, end, silence)
-        # rows = generateAtomGridNoInterp(datasetStructID, rows, atomStruct, start, end, silence, maxPooling=maxPooling)
+        if pixelOutput:
+            rows = generateAtomGridNoInterp(datasetStructID, rows, atomStruct, start, end, silence, maxPooling=maxPooling)
+        else:
+            rows = generateXYE(datasetStructID, rows, atomStruct, start, end, silence)
         difPatternsOnePositionResized = []
         for cnt, difPattern in enumerate(difPatternsOnePosition): 
             difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(dim, dim), interpolation=cv2.INTER_LINEAR))  # type: ignore
@@ -496,8 +504,13 @@ def writeAllRows(rows, trainOrTest, XDIMTILES, YDIMTILES, processID = "", create
     """
     csvFilePath = os.path.join(f'measurements_{trainOrTest}',f'labels_{processID}_{timeStamp}.csv')
     if createTopRow is None: createTopRow = not os.path.exists(csvFilePath)
-    if createTopRow: createTopLineCoords(csvFilePath)
-    # if createTopRow: createTopLineAllPositions(csvFilePath, size, maxPooling=maxPooling)
+
+    if createTopRow:
+        if pixelOutput:     
+            createTopLineAllPositions(csvFilePath, size, maxPooling=maxPooling)
+        else: 
+            createTopLineCoords(csvFilePath)
+    
     
     #if createTopRow: createTopLineRelative(csvFilePath)
     # if createTopRow: createTopLinePixels(csvFilePath, XDIMTILES, YDIMTILES, maxPooling = maxPooling)
@@ -526,7 +539,7 @@ if __name__ == "__main__":
     start = (5,5)
     end = (8,8)
     numberOfPositionsInOneAngstrom = 5
-    size = (end[0] - start[0]) * numberOfPositionsInOneAngstrom
+    size = int((end[0] - start[0]) * numberOfPositionsInOneAngstrom)
     BFDdiameter = 18 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
     assert(size % maxPooling == 0)
     testDivider = {"train":1, "test":0.25}

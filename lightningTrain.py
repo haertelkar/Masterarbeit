@@ -170,13 +170,13 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 	world_size = getMPIWorldSize()
 	numberOfModels = 0
 
-	for modelName in models:
+	for modelName in models:  
 		if modelString and modelString not in modelName:
 			continue
 		batch_size = 2048
 		if modelName == "DQN": 
 			lightnModel = DQNLightning()
-			batch_size = 4096
+			batch_size = 512
 		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size, weighted = False)
 		lightnDataLoader.setup()
 		
@@ -196,9 +196,9 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 		checkpoint_callback = ModelCheckpoint(dirpath=chkpPath, save_top_k=1, monitor="val_loss")
 		#profiler = AdvancedProfiler(dirpath=".", filename=f"perf_logs_{modelName}_{version}")
 		callbacks=[checkpoint_callback]#,early_stop_callback]
-		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", log_graph=True,name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=callbacks)
+		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", log_graph=True,name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=callbacks, log_every_n_steps=1)
 		if checkPointExists:
-			new_lr = 1e-9
+			new_lr = 1e-7
 			lightnModel.lr = new_lr
 			trainer.fit(lightnModel, datamodule = lightnDataLoader, ckpt_path="last")
 		else:
@@ -217,13 +217,16 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 				# new_lr = lr_finder.suggestion()
 				new_lr = None
 				if (new_lr is None):
-					new_lr = 1e-9
+					new_lr = 1e-7
 				else:
 					lightnModel.lr = new_lr
 			print(f"New learning rate: {lightnModel.lr}")
 			trainer.fit(lightnModel, datamodule = lightnDataLoader)
 		trainer.save_checkpoint(os.path.join("models",f"{modelName}_{version}.ckpt"))
-		lightnModel.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
+		if "DQN" in modelName:
+			lightnModel = DQNLightning().load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
+		elif "Zernike" in modelName:
+			lightnModel = lightnModelClass(loadModel(lightnDataLoader.val_dataloader(), modelName)).load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
 		evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, lightnModel, indicesToPredict, modelName, version, classifier)
 		torch.save(lightnModel.state_dict(), os.path.join("models",f"{modelName}_{version}.m"))
 		numberOfModels += 1

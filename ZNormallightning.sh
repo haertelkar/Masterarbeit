@@ -21,4 +21,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun python3 -u lightningTrain.py -v 0811_chamfer_4000E_correctedLoss_2215 -e 4000 -m DQN -l labels_only_Dist.csv
+srun python3 -u lightningTrain.py -v 0412_chamfer_1648 -e 1500 -m DQN -l labels_only_Dist.csv

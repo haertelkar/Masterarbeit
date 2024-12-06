@@ -8,14 +8,14 @@ import cv2
 from matplotlib import pyplot as plt
 import torch
 from tqdm import tqdm
-from FullPixelGridML.SimulateTilesOneFile import generateDiffractionArray, createAllXYCoordinates, saveAllDifPatterns
+from FullPixelGridML.SimulateTilesOneFile import generateDiffractionArray, createAllXYCoordinates, saveAllPosDifPatterns
 import numpy as np
 from ase.io import write
 from ase.visualize.plot import plot_atoms
 from abtem.measure import Measurement
 from datasets import ptychographicDataLightning
 from torch import nn
-from lightningTrain import loadModel, lightnModelClass
+from lightningTrain import loadModel, lightnModelClass, DQNLightning
 from Zernike.ZernikeTransformer import Zernike, calc_diameter_bfd
 
 
@@ -109,7 +109,7 @@ def writeParamsCNF(ScanX,ScanY, beamPositions, diameterBFD, conv_angle_in_mrad= 
 
 
 def createMeasurementArray(DIMTILES, energy, conv_angle_in_mrad, structure):
-    nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick = generateDiffractionArray(conv_angle= conv_angle_in_mrad, energy=energy,structure=structure, pbar = True, start=[5, 5], end=[20, 20])
+    nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick = generateDiffractionArray(conv_angle= conv_angle_in_mrad, energy=energy,structure=structure, pbar = True, start=[5, 5], end=[8, 8])
     assert(measurement_thick.array.shape[2] == measurement_thick.array.shape[3])
     CBEDDim = measurement_thick.array.shape[2]
     measurementArray = np.zeros((measurement_thick.array.shape[0],measurement_thick.array.shape[1],CBEDDim,CBEDDim))
@@ -161,7 +161,7 @@ def plotGTandPred(atomStruct, groundTruth, Predictions):
     """Create plots of the ground truth and the predictions. 
     They are transposed because the reconstruction is also transposed.
     """
-    extent=  [5,20,5,20]
+    extent=  [5,8,5,8]
     plt.imshow(Predictions.T, origin = "lower", interpolation="none", extent=extent)
     plt.colorbar()
     plt.savefig("Predictions.png")
@@ -200,17 +200,17 @@ def createAndPlotReconstructedPotential(potential_thick):
     plt.tight_layout()
     plt.savefig("testStructureFullRec.png")
 
-def groundTruthCalculator(DIMTILES, LabelCSV, groundTruth, Predictions, cnt, xCNT, yCNT):
-    for i in range(4):
-        gtDist = [LabelCSV[cnt][-8 + i], LabelCSV[cnt][-4 + i]]
-        xGT = int(np.around(float(gtDist[0])/0.2)) + xCNT + DIMTILES//2
-        yGT = int(np.around(float(gtDist[1])/0.2)) + yCNT + DIMTILES//2
-        element = int(float(LabelCSV[cnt][1+i]))
+def groundTruthCalculator(DIMTILES, LabelCSV, groundTruth, Predictions):
+    for i in range(10):
+        gtDist = [LabelCSV[i*3], LabelCSV[1 + i*3]]
+        xGT = int(np.around(float(gtDist[0])))
+        yGT = int(np.around(float(gtDist[1])))
+        element = int(float(LabelCSV[2+i*3]))
         print(f"atom no. {i}: gt element: {element}, Ground truth position: {xGT}, {yGT}, Ground truth values: {gtDist}")
         if xGT < 0 or xGT >= Predictions.shape[0] or yGT < 0 or yGT >= Predictions.shape[1]:
             print("Ground truth out of bounds")
         else:
-            groundTruth[int(xGT), int(yGT)] += element
+            groundTruth[int(xGT), int(yGT)] += 1#element
 
 
 # measurementArray.astype('float').flatten().tofile("testMeasurement.bin")
@@ -223,23 +223,13 @@ dim = 50
 diameterBFD50Pixels = 18
 print("Calculating the number of Zernike moments:")
 resultVectorLength = 0 
-numberOfOSAANSIMoments = 20	
+numberOfOSAANSIMoments = 15	
 for n in range(numberOfOSAANSIMoments + 1):
     for mShifted in range(2*n+1):
         m = mShifted - n
         if (n-m)%2 != 0:
             continue
         resultVectorLength += 1
-print("load model")
-modelName = "ZernikeNormal"
-if "Zernike" in modelName:
-    numChannels=resultVectorLength * DIMENSION**2
-    numLabels = 2
-    modelName = "ZernikeNormal"
-else:
-    numChannels = DIMENSION**2
-    numLabels = 2
-    modelName = "FullPixelGridML"
 
 
 
@@ -256,22 +246,22 @@ print(f"Actually used BFD with margin: {diameterBFD50Pixels}")
 
 # createAndPlotReconstructedPotential(potential_thick)
 
-model = loadModel(modelName = modelName, numChannels=numChannels, numLabels = numLabels)
+#model = loadModel(modelName = modelName, numChannels=numChannels, numLabels = numLabels)
 
-model = lightnModelClass.load_from_checkpoint(checkpoint_path = os.path.join("checkpoints",f"ZernikeNormal_2707_onlyDist_atom1_2305","epoch=31-step=27168.ckpt"), model = model)
+model = DQNLightning().load_from_checkpoint(checkpoint_path = os.path.join("checkpoints/DQN_0711_chamfer_1e-9_BatS4096_AdamW_1343/epoch=331-step=996.ckpt"))
 model.eval()
 
 #initiate Zernike
 print("generating the zernike moments")
 xMaxCNT, yMaxCNT = np.shape(measurement_thick.array)[:2] # type: ignore
-xStepSize = (DIMTILES-1)//3
-yStepSize = (DIMTILES-1)//3
-xMaxStartCoord = (xMaxCNT-DIMTILES)//xStepSize
-yMaxStartCoord = (yMaxCNT-DIMTILES)//yStepSize
+
 
 #ZernikeTransform
 difArrays = [[nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick]]
-RelLabelCSV, dataArray = saveAllDifPatterns(DIMTILES, DIMTILES, None, -1, None, diameterBFD50Pixels, processID = 99999, silence = False, maxPooling = 1, structure = "None", fileWrite = False, difArrays = difArrays) # type: ignore
+
+RelLabelCSV, dataArray = saveAllPosDifPatterns(None, -1, None, diameterBFD50Pixels, processID = 99999, silence = False, maxPooling = 1, structure = "None", fileWrite = False, difArrays = difArrays, start = (5,5), end = (8,8)) # type: ignore
+RelLabelCSV, dataArray = RelLabelCSV[0][1:], dataArray[0]
+print(f"RelLabelCSV : {RelLabelCSV}")
 radius = dataArray.shape[-1] #already removed everything outside BFD in saveAllDifPatterns 
 ZernikeObject = Zernike(radius, numberOfOSAANSIMoments= numberOfOSAANSIMoments)
 #poolingFactor = int(3)
@@ -279,41 +269,50 @@ groundTruth = np.zeros((measurementArray.shape[0], measurementArray.shape[1]))
 # loop over the all positions and apply the model to the data
 Predictions = np.zeros_like(groundTruth)
 
-predictions = []
+# predictions = []
 
-for cnt, (xSteps, ySteps) in tqdm(enumerate(createAllXYCoordinates(yMaxStartCoord,xMaxStartCoord))   , desc= "Going through all positions and predicting"):
-    zernikeValues = ZernikeObject.zernikeTransform(fileName = None, groupOfPatterns = dataArray[cnt], zernikeTotalImages = None)
-    pred = model(torch.tensor(zernikeValues).float())
-    pred = pred.detach().numpy()
+# for cnt, (xSteps, ySteps) in tqdm(enumerate(createAllXYCoordinates(yMaxStartCoord,xMaxStartCoord))   , desc= "Going through all positions and predicting"):
+#     zernikeValues = ZernikeObject.zernikeTransform(fileName = None, groupOfPatterns = dataArray[cnt], zernikeTotalImages = None)
+#     pred = model(torch.tensor(zernikeValues).float())
+#     pred = pred.detach().numpy()
     
-    xCNT = xStepSize * xSteps
-    yCNT = yStepSize * ySteps
-    predictions.append(pred)
+#     xCNT = xStepSize * xSteps
+#     yCNT = yStepSize * ySteps
+#     predictions.append(pred)
 
-predictionArray = np.array(predictions)
-medianPredicitionX = np.median(predictionArray[:,0])
-print(f"Median prediction for x: {medianPredicitionX}")
-medianPredicitionY = np.median(predictionArray[:,1])
-print(f"Median prediction for y: {medianPredicitionY}")
+# predictionArray = np.array(predictions)
+# medianPredicitionX = np.median(predictionArray[:,0])
+# print(f"Median prediction for x: {medianPredicitionX}")
+# medianPredicitionY = np.median(predictionArray[:,1])
+# print(f"Median prediction for y: {medianPredicitionY}")
 
 
-for cnt, (xSteps, ySteps) in tqdm(enumerate(createAllXYCoordinates(yMaxStartCoord,xMaxStartCoord))   , desc= "Going through all positions and predicting"):
-    zernikeValues = ZernikeObject.zernikeTransform(fileName = None, groupOfPatterns = dataArray[cnt], zernikeTotalImages = None)
-    pred = model(torch.tensor(zernikeValues).float())
-    pred = pred.detach().numpy()
-    
-    xCNT = xStepSize * xSteps
-    yCNT = yStepSize * ySteps
-    xMostLikely = int(np.around((pred[0]+0.05)/0.2)) + xCNT + DIMTILES//2
-    yMostLikely = int(np.around(pred[1]/0.2)) + yCNT + DIMTILES//2
+# for cnt, (xSteps, ySteps) in tqdm(enumerate(createAllXYCoordinates(yMaxStartCoord,xMaxStartCoord))   , desc= "Going through all positions and predicting"):
 
-    print(f"Predicted position: {xMostLikely}, {yMostLikely}, Predicted values: {pred}")
+zernikeValues = ZernikeObject.zernikeTransform(fileName = None, groupOfPatterns = dataArray, zernikeTotalImages = None)
+zernikeValues = torch.tensor(zernikeValues).float()
+# randCoords = torch.randperm(225)[:9]
+# randXCoords = (randCoords % 15)
+# randYCoords = torch.div(randCoords, 15, rounding_mode='floor') 
+randXCoords = torch.tensor([0, 0, 0, 7, 7, 7, 14, 14, 14])
+randYCoords = torch.tensor([0, 7, 14, 0, 7, 14, 0, 7, 14])
+imageOrZernikeMoments = zernikeValues.reshape((15,15, -1))[randXCoords,randYCoords].reshape((9,-1))
+# imageOrZernikeMomentsWithCoords = torch.cat((imageOrZernikeMoments, torch.stack([randXCoords, randYCoords]).T), dim = 1)
+with torch.inference_mode():
+    pred = model(imageOrZernikeMoments.unsqueeze(0))
+    pred = pred.detach().numpy().reshape((10,2))
+
+for predXY in pred:
+    xMostLikely = np.clip(np.round(predXY[0]),0,14).astype(int)
+    yMostLikely = np.clip(np.round(predXY[1]),0,14).astype(int)
+
+    print(f"Predicted position: {xMostLikely}, {yMostLikely}, Predicted values: {predXY}")
     if xMostLikely < 0 or xMostLikely >= Predictions.shape[0] or yMostLikely < 0 or yMostLikely >= Predictions.shape[1]:
         print("Prediction out of bounds")
     else:
-        Predictions[int(xMostLikely), int(yMostLikely)] += (pred[0]-medianPredicitionX)/0.07 >=1 or (pred[1]-medianPredicitionY)/0.07 >=1 #for some reason the reconstruction is transposed. Is adjusted later when plotted
+        Predictions[xMostLikely, yMostLikely] += 1 #for some reason the reconstruction is transposed. Is adjusted later when plotted
 
-    groundTruthCalculator(DIMTILES, RelLabelCSV, groundTruth, Predictions, cnt, xCNT, yCNT)
+groundTruthCalculator(DIMTILES, RelLabelCSV, groundTruth, Predictions)
         # groundTruth[xCNT + DIMTILES//2, yCNT + DIMTILES//2] += 1 only for plotting the tile centers
     # predExpanded = np.zeros((DIMTILES, DIMTILES))
     # for n in range(poolingFactor):

@@ -137,12 +137,14 @@ class ptychographicData(Dataset):
 	def __getitem__(self, idx):
 		label = self.getLabel(idx)
 		# print(self.getImageOrZernike(idx).shape)
-		randCoords = torch.randperm(225)[:9]
-		randXCoords = (randCoords % 15)
-		randYCoords = torch.div(randCoords, 15, rounding_mode='floor') 
-		imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((15,15, -1))[randXCoords,randYCoords].reshape((9,-1))
-		imageOrZernikeMomentsWithCoords = torch.cat((imageOrZernikeMoments, torch.stack([randXCoords, randYCoords]).T), dim = 1)
-		return imageOrZernikeMomentsWithCoords, label
+		# randCoords = torch.randperm(32*32)[:36]
+		# randXCoords = (randCoords % 32)
+		# randYCoords = torch.div(randCoords, 32, rounding_mode='floor') 
+		randXCoords = torch.tensor([0, 0, 0, 7, 7, 7, 14, 14, 14])
+		randYCoords = torch.tensor([0, 7, 14, 0, 7, 14, 0, 7, 14])
+		imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((-1,15,15))[:,randXCoords,randYCoords].reshape((9,-1))
+		#imageOrZernikeMomentsWithCoords = torch.cat((imageOrZernikeMoments, torch.stack([randXCoords, randYCoords]).T), dim = 1)
+		return imageOrZernikeMoments, label
 		#print(f"data type: {imageOrZernikeMoments}, data size: {np.shape(imageOrZernikeMoments)}")
 		#return imageOrZernikeMoments, label
 	

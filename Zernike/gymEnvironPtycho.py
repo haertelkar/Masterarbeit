@@ -10,7 +10,7 @@ import torch
 
 device = "cuda"
 grid_size = 15
-size_label = 20
+size_label = 30
 
 class ptychoEnv(gym.Env):
     def __init__(self):

@@ -85,6 +85,7 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
         #get the distance between the atoms and the scan position
         for atomNo in xGTs.keys():
             xGT = xGTs[atomNo]
+            # print(f"Atom nr.{atomNo} xGT: {xGT}")
             xPred : np.ndarray = xPreds[atomNo]
             yGT = yGTs[atomNo]
             yPred = yPreds[atomNo]
@@ -118,6 +119,11 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
             print(f"Distance between atom nr.{atomNo} and scan position less than {distanceToBeAccurate} in {100*len(distance[np.array(distancePredictionDelta) < distanceToBeAccurate])/len(distance):.2f}% of cases over all structure")
             print(f"Distance between atom nr.{atomNo} and scan position less than {distanceToBeAccurate}*2 in {100*len(distance[np.array(distancePredictionDelta) < 2*distanceToBeAccurate])/len(distance):.2f}% of cases over all structure")
             print(f"Distance between atom nr.{atomNo} and scan position less than {distanceToBeAccurate}*3 in {100*len(distance[np.array(distancePredictionDelta) < 3*distanceToBeAccurate])/len(distance):.2f}% of cases over all structure")
+        #analyze the element prediction accuracy
+        for atomNo in  elementsGT.keys():
+            elementsCorrect = np.around(elementsGT[atomNo]).astype(int) == np.around(elementsPred[atomNo]).astype(int)
+            print("element ", atomNo, " prediction accuracy: {:.2f}%".format(np.sum(elementsCorrect)/len(elementsCorrect)*100))
+
         if len(xGTs) == 0:
             print(f"No atoms found in {file}. Skipped.")
             continue
@@ -146,10 +152,6 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
             plt.suptitle(f"Model: {modelName}")
             plt.savefig(os.path.join("testDataEval", file + f"row{cnt}_comparison.png"))
             plt.close()
-        #analyze the element prediction accuracy
-        for atomNo in  elementsGT.keys():
-            elementsCorrect = np.around(elementsGT[atomNo]).astype(int) == np.around(elementsPred[atomNo]).astype(int)
-            print("element ", atomNo, " prediction accuracy: {:.2f}%".format(np.sum(elementsCorrect)/len(elementsCorrect)*100))
     except Exception as e:
         print(f"Error in {file}: {e}")
         continue

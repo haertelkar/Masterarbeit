@@ -2,11 +2,22 @@ import random
 import numpy as np
 import torch
 
+import torch
+from swd import swd
 
-labelPred= torch.randint(0,15,(3,20))
+torch.manual_seed(123) # fix seed
+x1 = torch.rand(1024, 1, 59, 50)  # 1024 images, 3 chs, 128x128 resolution
+x2 = torch.rand(1024, 1, 50, 50)
+out = swd(x1, x2, device="cuda") # Fast estimation if device="cuda"
+print(out) # tensor(53.6950)
+# a = torch.ones((5,4,3))
 
-print(labelPred)
-print(labelPred.reshape(-1,10,2))
+# print(a/torch.tensor([1,2,3], dtype = torch.float32))
+
+# labelPred= torch.randint(0,15,(3,20))
+
+# print(labelPred)
+# print(labelPred.reshape(-1,10,2))
 
 
 # world = torch.zeros((2,15,15))

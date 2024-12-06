@@ -60,7 +60,7 @@ def combineLabelsAndCSV(workingDir):
             if f"{id}.hdf5" in filesToIgnore:
                 cntCor += 1
                 continue
-            data = pd.read_csv(os.path.join(f"measurements_{testOrTrain}",file))
+            data = pd.read_csv(os.path.join(f"measurements_{testOrTrain}",file), converters={'File Name': str})
             df = pd.concat([df, data], axis = 0)
         df.to_csv(os.path.join(f"measurements_{testOrTrain}","labels.csv"), index= False)
 
