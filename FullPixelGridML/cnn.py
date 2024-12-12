@@ -2,7 +2,7 @@ from torch.nn import Module, Conv2d, Linear, MaxPool2d, ReLU, LogSoftmax
 from torch import flatten, round, Tensor
 
 class cnn(Module):
-    def __init__(self, numChannels, classes):
+    def __init__(self, numChannels, outputFeatureCount):
         # call the parent constructor
         super(cnn, self).__init__()
         # initialize first set of CONV => RELU => POOL layers
@@ -24,7 +24,7 @@ class cnn(Module):
 
         self.fc2 = Linear(in_features=3000, out_features=500)
 
-        self.fc3 = Linear(in_features=500, out_features=classes)
+        self.fc3 = Linear(in_features=500, out_features=outputFeatureCount)
 
     def forward(self, x: Tensor):
         x = self.conv1(x)

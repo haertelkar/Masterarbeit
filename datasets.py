@@ -11,7 +11,7 @@ import h5py
 from torch.utils.data import random_split, DataLoader, WeightedRandomSampler
 
 class ptychographicDataLightning(pl.LightningDataModule):
-	def __init__(self, model_name, batch_size = 2048, num_workers = 20, classifier = False, indicesToPredict = None, labelFile = "labels.csv", testDirectory = "measurements_test", onlyTest = False, weighted  = True):
+	def __init__(self, model_name, batch_size = 1024, num_workers = 20, classifier = False, indicesToPredict = None, labelFile = "labels.csv", testDirectory = "measurements_test", onlyTest = False, weighted  = True):
 		super().__init__()
 		self.batch_size = batch_size
 		self.num_workers = num_workers
@@ -135,16 +135,21 @@ class ptychographicData(Dataset):
 		return file_count
 
 	def __getitem__(self, idx):
+		numberOfAtoms = 9
 		label = self.getLabel(idx)
-		# print(self.getImageOrZernike(idx).shape)
-		# randCoords = torch.randperm(32*32)[:36]
-		# randXCoords = (randCoords % 32)
-		# randYCoords = torch.div(randCoords, 32, rounding_mode='floor') 
-		randXCoords = torch.tensor([0, 0, 0, 7, 7, 7, 14, 14, 14])
-		randYCoords = torch.tensor([0, 7, 14, 0, 7, 14, 0, 7, 14])
-		imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((-1,15,15))[:,randXCoords,randYCoords].reshape((9,-1))
-		#imageOrZernikeMomentsWithCoords = torch.cat((imageOrZernikeMoments, torch.stack([randXCoords, randYCoords]).T), dim = 1)
-		return imageOrZernikeMoments, label
+		print(self.getImageOrZernike(idx).shape)
+		randCoords = torch.randperm(15*15)[:numberOfAtoms]
+		randXCoords = (randCoords % 15)
+		randYCoords = torch.div(randCoords, 15, rounding_mode='floor') 
+		# randXCoords = torch.tensor([0, 0, 0, 7, 7, 7, 14, 14, 14])
+		# randYCoords = torch.tensor([0, 7, 14, 0, 7, 14, 0, 7, 14])
+		if "Zernike" in self.img_dir:
+			imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((15,15,-1))[randXCoords,randYCoords].reshape((numberOfAtoms,-1))
+		else:
+			# imageOrZernikeMoments = torch.ones((9,20,20),dtype=torch.float32)
+			imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((15,15,20,20))[randXCoords,randYCoords].reshape((numberOfAtoms,20,20))
+		imageOrZernikeMomentsWithCoords = torch.cat((imageOrZernikeMoments, torch.stack([randXCoords, randYCoords]).T), dim = 1)
+		return imageOrZernikeMomentsWithCoords , label
 		#print(f"data type: {imageOrZernikeMoments}, data size: {np.shape(imageOrZernikeMoments)}")
 		#return imageOrZernikeMoments, label
 	

@@ -15,7 +15,7 @@ from ase.visualize.plot import plot_atoms
 from abtem.measure import Measurement
 from datasets import ptychographicDataLightning
 from torch import nn
-from lightningTrain import loadModel, lightnModelClass, DQNLightning
+from lightningTrain import loadModel, lightnModelClass, TwoPartLightning
 from Zernike.ZernikeTransformer import Zernike, calc_diameter_bfd
 
 
@@ -248,7 +248,7 @@ print(f"Actually used BFD with margin: {diameterBFD50Pixels}")
 
 #model = loadModel(modelName = modelName, numChannels=numChannels, numLabels = numLabels)
 
-model = DQNLightning().load_from_checkpoint(checkpoint_path = os.path.join("checkpoints/DQN_0711_chamfer_1e-9_BatS4096_AdamW_1343/epoch=331-step=996.ckpt"))
+model = TwoPartLightning().load_from_checkpoint(checkpoint_path = os.path.join("checkpoints/DQN_1112_1521_Z_GRU_moreData_13000E/epoch=383-step=5760.ckpt"))
 model.eval()
 
 #initiate Zernike
@@ -262,7 +262,7 @@ difArrays = [[nameStruct, gridSampling, atomStruct, measurement_thick, potential
 RelLabelCSV, dataArray = saveAllPosDifPatterns(None, -1, None, diameterBFD50Pixels, processID = 99999, silence = False, maxPooling = 1, structure = "None", fileWrite = False, difArrays = difArrays, start = (5,5), end = (8,8)) # type: ignore
 RelLabelCSV, dataArray = RelLabelCSV[0][1:], dataArray[0]
 print(f"RelLabelCSV : {RelLabelCSV}")
-radius = dataArray.shape[-1] #already removed everything outside BFD in saveAllDifPatterns 
+radius = dataArray.shape[-1]//2 #already removed everything outside BFD in saveAllDifPatterns 
 ZernikeObject = Zernike(radius, numberOfOSAANSIMoments= numberOfOSAANSIMoments)
 #poolingFactor = int(3)
 groundTruth = np.zeros((measurementArray.shape[0], measurementArray.shape[1]))
@@ -289,18 +289,20 @@ Predictions = np.zeros_like(groundTruth)
 
 # for cnt, (xSteps, ySteps) in tqdm(enumerate(createAllXYCoordinates(yMaxStartCoord,xMaxStartCoord))   , desc= "Going through all positions and predicting"):
 
+plt.imsave("detectorImage.png",dataArray.reshape(15,15,20,20)[0,0])
+
 zernikeValues = ZernikeObject.zernikeTransform(fileName = None, groupOfPatterns = dataArray, zernikeTotalImages = None)
 zernikeValues = torch.tensor(zernikeValues).float()
 # randCoords = torch.randperm(225)[:9]
 # randXCoords = (randCoords % 15)
 # randYCoords = torch.div(randCoords, 15, rounding_mode='floor') 
-randXCoords = torch.tensor([0, 0, 0, 7, 7, 7, 14, 14, 14])
-randYCoords = torch.tensor([0, 7, 14, 0, 7, 14, 0, 7, 14])
-imageOrZernikeMoments = zernikeValues.reshape((15,15, -1))[randXCoords,randYCoords].reshape((9,-1))
+XCoords = torch.tensor([0, 0, 0, 7, 7, 7, 14, 14, 14])
+YCoords = torch.tensor([0, 7, 14, 0, 7, 14, 0, 7, 14])
+imageOrZernikeMoments = zernikeValues.reshape((-1,15,15))[:,XCoords,YCoords].reshape((9,-1))
 # imageOrZernikeMomentsWithCoords = torch.cat((imageOrZernikeMoments, torch.stack([randXCoords, randYCoords]).T), dim = 1)
 with torch.inference_mode():
     pred = model(imageOrZernikeMoments.unsqueeze(0))
-    pred = pred.detach().numpy().reshape((10,2))
+    pred = pred.detach().numpy().reshape((1,10,2))[0]
 
 for predXY in pred:
     xMostLikely = np.clip(np.round(predXY[0]),0,14).astype(int)

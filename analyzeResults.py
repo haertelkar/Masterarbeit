@@ -81,7 +81,7 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
                 atomNo = int(column.replace("elem",""))
                 elementsGT[atomNo] = np.array(csvFile[column]).astype(float)
                 elementsPred[atomNo] = np.array(csvFile[column + "_pred"]).astype(float)
-        
+
         #get the distance between the atoms and the scan position
         for atomNo in xGTs.keys():
             xGT = xGTs[atomNo]
@@ -94,11 +94,16 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
             distance = np.sqrt(xGT**2 + yGT**2)
             distanceToBeAccurate = 1
 
+            try:
+                os.mkdir(os.path.join("DeltaToDistance",file))
+            except FileExistsError:
+                pass
+
             plt.scatter(distance, distancePredictionDelta)
             plt.xlabel(f"Distance between atom nr.{atomNo} and scan position")
             plt.ylabel("Delta between distance prediction and actual distance")
             # plt.legend()
-            plt.savefig(os.path.join("DeltaToDistance", file + f"distanceToAccuracy_atom{atomNo}_labeled.png"))
+            plt.savefig(os.path.join("DeltaToDistance",file, file + f"distanceToAccuracy_atom{atomNo}_labeled.png"))
             plt.close()
             binDistance = int((max(distance) - min(distance)) // distanceToBeAccurate)
             binDistanceDelta = int((max(distancePredictionDelta) - min(distancePredictionDelta)) // distanceToBeAccurate)
@@ -111,10 +116,10 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
             logHeatmap[heatmap.T == 0] = np.log(1) - 1 #to make zero the lowest value
             plt.clf()
             plt.imshow(logHeatmap, extent=extent, origin='lower')
-            plt.savefig(os.path.join("DeltaToDistance", file + f"dTdeltaHeatmap_atom{atomNo}_labeled.png"))
+            plt.savefig(os.path.join("DeltaToDistance", file, file + f"dTdeltaHeatmap_atom{atomNo}_labeled.png"))
             plt.close()
             plt.hist(distancePredictionDelta, bins = 100)
-            plt.savefig(os.path.join("DeltaToDistance", file + f"hist_atom{atomNo}_labeled.png"))
+            plt.savefig(os.path.join("DeltaToDistance", file, file + f"hist_atom{atomNo}_labeled.png"))
             plt.close()
             print(f"Distance between atom nr.{atomNo} and scan position less than {distanceToBeAccurate} in {100*len(distance[np.array(distancePredictionDelta) < distanceToBeAccurate])/len(distance):.2f}% of cases over all structure")
             print(f"Distance between atom nr.{atomNo} and scan position less than {distanceToBeAccurate}*2 in {100*len(distance[np.array(distancePredictionDelta) < 2*distanceToBeAccurate])/len(distance):.2f}% of cases over all structure")
@@ -140,7 +145,11 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
                 yPred = yPreds[atomNo]
                 predGrid[np.clip(np.round(xPred[cnt]),0,14).astype(int), np.clip(np.round(yPred[cnt]),0,14).astype(int)] = 1
                 GTGrid[np.clip(np.round(xGT[cnt]),0,14).astype(int), np.clip(np.round(yGT[cnt]),0,14).astype(int)] = 1
-            
+
+            try:
+                os.mkdir(os.path.join("testDataEval",file[:-4]))
+            except FileExistsError:
+                pass
         
             plt.figure()
             plt.subplot(1,2,1)
@@ -150,7 +159,7 @@ for file in os.listdir(os.path.join(os.getcwd(), "testDataEval")):
             plt.imshow(GTGrid)
             plt.colorbar()
             plt.suptitle(f"Model: {modelName}")
-            plt.savefig(os.path.join("testDataEval", file + f"row{cnt}_comparison.png"))
+            plt.savefig(os.path.join("testDataEval", file[:-4], file + f"row{cnt}_comparison.png"))
             plt.close()
     except Exception as e:
         print(f"Error in {file}: {e}")

@@ -10,7 +10,8 @@ import torch
 import faulthandler
 import signal
 from tqdm import tqdm
-from Zernike.dqn import DQN, DQNLightning
+from FullPixelGridML.CNNFullNN import TwoPartLightningCNN
+from Zernike.dqn import preCompute, TwoPartLightning
 from datasets import ptychographicDataLightning
 import torch.nn.functional as F
 import lightning.pytorch as pl
@@ -92,7 +93,7 @@ def loadModel(trainDataLoader = None, modelName = "ZernikeNormal", numChannels =
 		print("[INFO] initializing the cnn model...")
 		model = cnn(
 			numChannels=numChannels,
-			classes=numLabels)
+			outputFeatureCount=numLabels)
 		
 	elif modelName == "unet":
 		from FullPixelGridML.unet import unet
@@ -173,17 +174,20 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 	for modelName in models:  
 		if modelString and modelString not in modelName:
 			continue
-		batch_size = 2048
-		if modelName == "DQN": 
-			lightnModel = DQNLightning()
-			batch_size = 512
+		# if modelName == "DQN": 
+		if "FullPixelGridML" in modelName:
+			lightnModel = TwoPartLightningCNN()
+		elif "DQN" in modelName:
+			lightnModel = TwoPartLightning()
+		batch_size = 1024
+		
 		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size, weighted = False)
 		lightnDataLoader.setup()
 		
 			
-		if modelName != "DQN":
-			model = loadModel(lightnDataLoader.val_dataloader(), modelName)
-			lightnModel = lightnModelClass(model)
+		# if modelName != "DQN":
+		# 	model = loadModel(lightnDataLoader.val_dataloader(), modelName)
+		# 	lightnModel = lightnModelClass(model)
 		early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=0.00, patience=5, verbose=False, mode="min", stopping_threshold = 1e-10)
 		#swa = StochasticWeightAveraging(swa_lrs=1e-2) #faster but a bit worse (fails, says problem with deepcopy)
 		chkpPath = os.path.join("checkpoints",f"{modelName}_{version}")
@@ -198,7 +202,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 		callbacks=[checkpoint_callback]#,early_stop_callback]
 		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", log_graph=True,name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=callbacks, log_every_n_steps=1)
 		if checkPointExists:
-			new_lr = 1e-7
+			new_lr = 1e-4
 			lightnModel.lr = new_lr
 			trainer.fit(lightnModel, datamodule = lightnDataLoader, ckpt_path="last")
 		else:
@@ -217,14 +221,13 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 				# new_lr = lr_finder.suggestion()
 				new_lr = None
 				if (new_lr is None):
-					new_lr = 1e-7
-				else:
-					lightnModel.lr = new_lr
+					new_lr = 1e-4
+				lightnModel.lr = new_lr
 			print(f"New learning rate: {lightnModel.lr}")
 			trainer.fit(lightnModel, datamodule = lightnDataLoader)
 		trainer.save_checkpoint(os.path.join("models",f"{modelName}_{version}.ckpt"))
 		if "DQN" in modelName:
-			lightnModel = DQNLightning().load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
+			lightnModel = TwoPartLightning().load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
 		elif "Zernike" in modelName:
 			lightnModel = lightnModelClass(loadModel(lightnDataLoader.val_dataloader(), modelName)).load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
 		evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, lightnModel, indicesToPredict, modelName, version, classifier)

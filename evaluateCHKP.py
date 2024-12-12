@@ -1,4 +1,4 @@
-from Zernike.dqn import DQNLightning
+from Zernike.dqn import TwoPartLightning
 from lightningTrain import evaluater, ptychographicDataLightning
 import os
 import lightning.pytorch as pl
@@ -67,7 +67,7 @@ for folder in tqdm(os.listdir("checkpoints")):
         tqdm.write(f"Evaluating {epochAndStep} of {version}")
         checkpoint_path = os.path.join("checkpoints",f"{version}",f"{epochAndStep}")
         # checkpoint_path = os.path.join("models/DQN_0711_chamfer_1e-9_BatS4096_AdamW_1343.ckpt")
-        lightnModel = DQNLightning().load_from_checkpoint(checkpoint_path = checkpoint_path)
+        lightnModel = TwoPartLightning().load_from_checkpoint(checkpoint_path = checkpoint_path)
         #lightnModel = lightnModelClass(model)
 
         lightnDataLoader = ptychographicDataLightning(modelName, indicesToPredict = None, labelFile = labelFile, batch_size=512, weighted = False)
