@@ -166,7 +166,7 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 					Writer.writerow([int(predEntry.argmax() == yEntry.argmax())])
 	
 
-def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
+def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, numberOfPositions = 9):
 	print(f"Training model version {version} for {epochs} epochs.")
 	world_size = getMPIWorldSize()
 	numberOfModels = 0
@@ -178,10 +178,10 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile):
 		if "FullPixelGridML" in modelName:
 			lightnModel = TwoPartLightningCNN()
 		elif "DQN" in modelName:
-			lightnModel = TwoPartLightning()
+			lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions)
 		batch_size = 1024
 		
-		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size, weighted = False)
+		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size, weighted = False, numberOfPositions = numberOfPositions)
 		lightnDataLoader.setup()
 		
 			
@@ -247,6 +247,7 @@ if __name__ == '__main__':
 	ap.add_argument("-m" ,"--models", type=str, required=False, help = "only use models with this String in their name")
 	ap.add_argument("-c" ,"--classifier", type=int, required=False, default=0, help = "Use if the model is to be a classfier. Choose the label index to be classified")
 	ap.add_argument("-i" ,"--indices", type=str, required=False, default="all", help = "specify indices of labels to predict (eg. '1, 2, 5'). Default is all.")
+	ap.add_argument("-np" ,"--numberOfPositions", type=int, required=False, default=9, help = "Specify the number of Positions that the nn gets as input. Default is 9.")
 	ap.add_argument("-l" ,"--labelsFile", type=str, required=False, default="labels.csv", help = "Specify the name of the labels-file. Default is labels.csv.")
 	args = vars(ap.parse_args())
 
@@ -262,4 +263,4 @@ if __name__ == '__main__':
 	if args["indices"] != "all":
 		indices = args["indices"].split(",")
 		indicesToPredict = [int(i) for i in indices]
-	main(args["epochs"], args["version"], classifier, indicesToPredict, args["models"], args["labelsFile"])     
+	main(args["epochs"], args["version"], classifier, indicesToPredict, args["models"], args["labelsFile"], numberOfPositions=args["numberOfPositions"])     

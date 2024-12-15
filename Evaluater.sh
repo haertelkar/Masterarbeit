@@ -7,6 +7,7 @@
 #SBATCH --time=48:00:00
 #SBATCH --signal=SIGUSR1@90
 #SBATCH -J "Evaluater"   # job name
+#SBATCH --exclusive
 
 # Debugging flags (optional)
 export NCCL_DEBUG=INFO
@@ -18,4 +19,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun python3 -u  evaluateCHKP.py DQN_1112_1521_Z_GRU_moreData_13000E
+srun python3 -u  evaluateCHKP.py onlyLastHid

@@ -33,17 +33,14 @@ else:
     scaler = grid_size
 
 
-hidden_size = 1024
-
-
 class preCompute(nn.Module):
-    def __init__(self, obs_size : int = 0, hidden_size: int = hidden_size):
+    def __init__(self, obs_size : int = 0, hidden_size: int = 1024):
         """Simple network that takes the Zernike moments and the last prediction as input and outputs a probability like map of atom positions.
 
         Args:
             obs_size: number of zernike moments
             n_actions: number of coordinates to predict (2 for x and y)
-            hidden_size: size of hidden layers (should be big enough to store where atoms have been found, maybe 75x75)
+            hidden_size: size of hidden layers (should be big enough to store where atoms have been found, maybe 15x15)
 
         """
         super().__init__()
@@ -53,7 +50,8 @@ class preCompute(nn.Module):
 
     def forward(self, x) -> Tensor:
         zernikeValues_and_Pos = x
-        y, _ = self.gru(zernikeValues_and_Pos)
+        y, _ = self.gru(zernikeValues_and_Pos) 
+        y = y[:,-1]
         # if self.hidden_state is None:
         #     y, hidden_state  = self.gru(zernikeValues_and_Pos)
         #     self.hidden_state = hidden_state.detach()
@@ -85,6 +83,7 @@ class TwoPartLightning(LightningModule):
     def __init__(
         self,
         lr: float = 1e-2,
+        numberOfPositions = 9
     ) -> None:
         """Basic DQN Model.
 
@@ -111,14 +110,14 @@ class TwoPartLightning(LightningModule):
                 self.obs_size += 1
 
         self.obs_size += 2 # 2 for x and y position of the agent
-        self.example_input_array = torch.zeros((1, 9, self.obs_size), device=device)
+        self.example_input_array = torch.zeros((1, numberOfPositions, self.obs_size), device=device)
 
         self.preComputeNN = preCompute(obs_size=self.obs_size)
         self.finalLayerNN = FinalLayer(label_size) 
 
         self.loss_fct = geomloss.SamplesLoss()
 
-        # self.finalLayer = znn(9*self.obs_size, label_size)#
+        # self.finalLayer = znn(numberOfPositions*self.obs_size, label_size)#
 
     def forward(self, ptychoImages: Tensor) -> Tensor:
         """Passes in a state x through the network and gets the coordinates of the atoms.

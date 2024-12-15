@@ -11,7 +11,7 @@ import h5py
 from torch.utils.data import random_split, DataLoader, WeightedRandomSampler
 
 class ptychographicDataLightning(pl.LightningDataModule):
-	def __init__(self, model_name, batch_size = 1024, num_workers = 20, classifier = False, indicesToPredict = None, labelFile = "labels.csv", testDirectory = "measurements_test", onlyTest = False, weighted  = True):
+	def __init__(self, model_name, batch_size = 1024, num_workers = 20, classifier = False, indicesToPredict = None, labelFile = "labels.csv", testDirectory = "measurements_test", onlyTest = False, weighted  = True, numberOfPositions = 9):
 		super().__init__()
 		self.batch_size = batch_size
 		self.num_workers = num_workers
@@ -28,6 +28,7 @@ class ptychographicDataLightning(pl.LightningDataModule):
 		self.weights = None
 		self.onlyTest = onlyTest
 		self.weighted = weighted
+		self.numberOfPositions = numberOfPositions
 
 	def setup(self, stage = None) -> None:
 		if self.setupDone: return
@@ -39,12 +40,12 @@ class ptychographicDataLightning(pl.LightningDataModule):
 		self.train_dataset = ptychographicData(
 					os.path.abspath(os.path.join(folderName,"measurements_train", "train_"+self.labelFile)), 
 					os.path.abspath(os.path.join(folderName,"measurements_train")), transform=torch.as_tensor, 
-					target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
+					target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions
 				)		
 		self.val_dataset = ptychographicData(
 			os.path.abspath(os.path.join(folderName,"measurements_train", "vali_"+self.labelFile)), 
 			os.path.abspath(os.path.join(folderName,"measurements_train")), transform=torch.as_tensor, 
-			target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
+			target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions
 		)	
 		
 		self.numTrainSamples = len(self.train_dataset)
@@ -58,7 +59,7 @@ class ptychographicDataLightning(pl.LightningDataModule):
 					os.path.abspath(os.path.join(folderName,self.testDirectory, self.labelFile)), 
 					os.path.abspath(os.path.join(folderName,self.testDirectory)), transform=torch.as_tensor,
 					target_transform=torch.as_tensor, scalingFactors = self.train_dataset.scalingFactors, 
-					shift = self.train_dataset.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier
+					shift = self.train_dataset.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions
 				)
 		# initialize the train, validation, and test data loaders
 		warnings.filterwarnings("ignore", ".*This DataLoader will create 20 worker processes in total. Our suggested max number of worker in current system is 10.*") #this is an incorrect warning as we have 20 cores
@@ -98,7 +99,7 @@ class ptychographicDataLightning(pl.LightningDataModule):
 		return DataLoader(self.test_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True)
 
 class ptychographicData(Dataset):
-	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors = None, shift = None, labelIndicesToPredict = None, classifier = False):
+	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors = None, shift = None, labelIndicesToPredict = None, classifier = False, numberOfPositions = 9):
 		img_labels_pd = pd.read_csv(annotations_file).dropna()
 		self.image_labels = img_labels_pd[img_labels_pd.columns[1:]].to_numpy('float32')
 		self.image_names = img_labels_pd[img_labels_pd.columns[0]].astype(str)
@@ -113,6 +114,7 @@ class ptychographicData(Dataset):
 		self.shift = None
 		self.dataPath = os.path.join(self.img_dir, "training_data.hdf5")
 		self.dataset = None
+		self.numberOfPositions = numberOfPositions
 
 		#removed option to classify
 		#removed option to select labels to predict
@@ -135,9 +137,8 @@ class ptychographicData(Dataset):
 		return file_count
 
 	def __getitem__(self, idx):
-		numberOfAtoms = 9
+		numberOfAtoms = self.numberOfPositions
 		label = self.getLabel(idx)
-		print(self.getImageOrZernike(idx).shape)
 		randCoords = torch.randperm(15*15)[:numberOfAtoms]
 		randXCoords = (randCoords % 15)
 		randYCoords = torch.div(randCoords, 15, rounding_mode='floor') 
