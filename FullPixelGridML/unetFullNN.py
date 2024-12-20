@@ -11,19 +11,19 @@ from IPython.core.display import display
 from lightning.pytorch import LightningModule
 from torch import Tensor, nn
 from torch.optim import Adam, Optimizer
+from FullPixelGridML.unet import unet
 from Zernike.gymEnvironPtycho import ptychoEnv
 # from pytorch3d.loss import chamfer_distance
 from Zernike.znn import znn
 from swd import swd
 from sinkhorn import sinkhorn
 import itertools
-from torchmetrics import StructuralSimilarityIndexMeasure
 
 device = "cuda"
 grid_size = 15
 pixelOutput = False
 if pixelOutput == True:
-    label_dims = None
+    label_dims = 2
     label_size = grid_size*grid_size
     shift = 0
     scaler = 1
@@ -32,59 +32,13 @@ else:
     label_size = label_dims*10
     shift = 0.5
     scaler = grid_size
+#label_size  = 225t
+channels = 3*3
 
-
-class preCompute(nn.Module):
-    def __init__(self, obs_size : int = 0, hidden_size: int = 1024):
-        """Simple network that takes the Zernike moments and the last prediction as input and outputs a probability like map of atom positions.
-
-        Args:
-            obs_size: number of zernike moments
-            n_actions: number of coordinates to predict (2 for x and y)
-            hidden_size: size of hidden layers (should be big enough to store where atoms have been found, maybe 15x15)
-
-        """
-        super().__init__()
-
-        self.gru = nn.GRU(input_size=obs_size, hidden_size=hidden_size, num_layers=3, batch_first=True)
-        self.hidden_state = None
-
-    def forward(self, zernikeValues_and_Pos) -> Tensor:
-        y , x = self.gru(zernikeValues_and_Pos) 
-        #y = y.permute(1, 0, 2)
-        y = y[:,-1,:]
-        # if self.hidden_state is None:
-        #     y, hidden_state  = self.gru(zernikeValues_and_Pos)
-        #     self.hidden_state = hidden_state.detach()
-        # else:
-        #     y, hidden_state  = self.gru(zernikeValues_and_Pos, self.hidden_state)
-        #     self.hidden_state = hidden_state.detach()
-
-        return  y
-
-
-
-
-class FinalLayer(nn.Module):
-    def __init__(self, output_size: int):
-        super().__init__() 
-        self.net = nn.Sequential(
-            nn.LazyLinear(1000),
-            nn.ReLU(),
-            nn.Linear(1000, 500),
-            nn.ReLU(),
-            nn.Linear(500, output_size)
-        )
-
-    def forward(self, x: Tensor) -> Tensor:
-        return self.net(x) 
-
-
-class TwoPartLightning(LightningModule):
+class TwoPartLightningCNN(LightningModule):
     def __init__(
         self,
         lr: float = 1e-2,
-        numberOfPositions = 9
     ) -> None:
         """Basic DQN Model.
 
@@ -100,26 +54,10 @@ class TwoPartLightning(LightningModule):
         super().__init__()
     
         self.lr = lr
+        self.cnn = unet(channels,20)
+        self.example_input_array = torch.zeros((1, channels, 20, 20), device=device)
+        self.loss_fct = geomloss.SamplesLoss()
 
-        self.obs_size = 0
-        numberOfOSAANSIMoments = 15
-        for n in range(numberOfOSAANSIMoments + 1):
-            for mShifted in range(2*n+1):
-                m = mShifted - n
-                if (n-m)%2 != 0:
-                    continue
-                self.obs_size += 1
-
-        self.obs_size += 2 # 2 for x and y position of the agent
-        # self.example_input_array = torch.zeros((1, numberOfPositions, self.obs_size), device=device, requires_grad=True)
-
-        self.preComputeNN = preCompute(obs_size=self.obs_size)
-        self.finalLayerNN = FinalLayer(label_size) 
-
-        if pixelOutput: self.loss_fct = nn.BCEWithLogitsLoss()#nn.MSELoss()
-        else: self.loss_fct = geomloss.SamplesLoss()
-
-        # self.finalLayer = znn(numberOfPositions*self.obs_size, label_size)#
 
     def forward(self, ptychoImages: Tensor) -> Tensor:
         """Passes in a state x through the network and gets the coordinates of the atoms.
@@ -132,18 +70,15 @@ class TwoPartLightning(LightningModule):
 
         """
 
-        currentHiddenState = self.preComputeNN(ptychoImages ).flatten(start_dim=1)
+        currentHiddenState = self.cnn(ptychoImages)
 
-        currentLabel :Tensor= self.finalLayerNN(currentHiddenState)
-        # currentLabel : Tensor = self.finalLayer(ptychoImages.flatten(start_dim=1))
-
-        labelOrdered = currentLabel
+        labelOrdered = currentHiddenState
         if not pixelOutput:
-            labelOrdered = currentLabel.flatten(start_dim=1).reshape((-1, 10, label_dims))
+            labelOrdered = currentHiddenState.flatten(start_dim=1).reshape((-1, 10, label_dims))
             sorted_indices = torch.argsort(labelOrdered[:, :, 0], dim=1)
-            labelOrdered = torch.gather(labelOrdered, 1, sorted_indices.unsqueeze(-1).expand(-1, -1, label_dims))*scaler
+            labelOrdered = torch.gather(labelOrdered, 1, sorted_indices.unsqueeze(-1).expand(-1, -1, label_dims))
 
-        return  (labelOrdered.flatten(start_dim=1) )
+        return  (labelOrdered.flatten(start_dim=1) )*scaler
 
     def validation_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Tensor:
         loss = self.training_step(batch, log=False)
@@ -163,19 +98,16 @@ class TwoPartLightning(LightningModule):
         """
         ptychoImages, atomPositionsLabel = batch
 
+        currentLabel = self.cnn(ptychoImages)
 
-        currentHiddenState :Tensor= self.preComputeNN(ptychoImages)[:,:].flatten(start_dim=1)
-
-        currentLabel :Tensor= self.finalLayerNN(currentHiddenState)
-        # currentLabel : Tensor = self.finalLayer(ptychoImages.flatten(start_dim=1))
-        
 
         # loss = torch.nn.MSELoss()(currentLabel.flatten(start_dim=1), atomPositionsLabel.flatten(start_dim=1)/grid_size)
-        if pixelOutput: loss = self.loss_fct(torch.clip(currentLabel.flatten(start_dim=1),0,1), atomPositionsLabel.flatten(start_dim=1))
+        if pixelOutput: loss = swd(currentLabel.flatten(start_dim=1).reshape((-1,1,grid_size,grid_size)), atomPositionsLabel.flatten(start_dim=1).reshape((-1,1,grid_size,grid_size))/scaler,  device=device)
         else: 
             currentLabelReshaped = currentLabel.flatten(start_dim=1).reshape((-1,10,label_dims))
             atomPositionsLabelReshapedAndScaled = atomPositionsLabel.flatten(start_dim=1).reshape((-1,10,label_dims))/scaler
             loss = torch.mean(self.loss_fct(currentLabelReshaped, atomPositionsLabelReshapedAndScaled))
+
             # lossGen = (sinkhorn(currentLabelReshaped[i], atomPositionsLabelReshapedAndScaled[i])[0] for i in range(len(currentLabel.flatten(start_dim=1).reshape((-1,10,label_dims)))))
             # loss = torch.mean(torch.stack(list(lossGen)))
 
@@ -192,7 +124,5 @@ class TwoPartLightning(LightningModule):
 
     def configure_optimizers(self) -> Optimizer:
         """Initialize Adam optimizer."""
-        # params = []#self.dqn.parameters(), self.finalLayer.parameters()]
-        # params = [self.finalLayer.parameters()]
-        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        optimizer = torch.optim.AdamW(self.cnn.parameters(), lr=self.lr)
         return optimizer

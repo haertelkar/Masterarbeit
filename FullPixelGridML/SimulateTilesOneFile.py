@@ -126,47 +126,48 @@ def createStructure(specificStructure : str = "random", trainOrTest = None, **kw
     Returns:
         Atoms: Ase Atoms object of specified structure
     """
-
-    nameStruct = "createAtomPillar"
-    structFinished = createAtomPillar(xPos=5+random()*3, yPos=5+random()*3, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100))
-    for _ in range(9):
-        structFinished.extend(createAtomPillar(xPos=5+random()*3, yPos=5+random()*3, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
-    # structFinished = createAtomPillar(xPos=5.1, yPos=5.1, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100))
-    # for _ in range(9):
-    #     structFinished.extend(createAtomPillar(xPos=5.3+_*0.2, yPos=5.3+_*0.2, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
-    
-    structFinished = orthogonalize_cell(structFinished, max_repetitions=10)
+    simple = False
+    if simple:
+        nameStruct = "createAtomPillar"
+        structFinished = createAtomPillar(xPos=5+random()*3, yPos=5+random()*3, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100))
+        for _ in range(9):
+            structFinished.extend(createAtomPillar(xPos=5+random()*3, yPos=5+random()*3, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
+        # structFinished = createAtomPillar(xPos=5.1, yPos=5.1, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100))
+        # for _ in range(9):
+        #     structFinished.extend(createAtomPillar(xPos=5.3+_*0.2, yPos=5.3+_*0.2, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
+        
+        structFinished = orthogonalize_cell(structFinished, max_repetitions=10)
+        return nameStruct, structFinished
+    predefinedFunctions = {
+        "createAtomPillar" : createAtomPillar,
+        "multiPillars" : multiPillars,
+        "MarcelsEx" : MarcelsEx,
+        "grapheneC" : grapheneC,
+    }
+    if specificStructure != "random":
+        nameStruct = specificStructure
+        structFinished = predefinedFunctions[nameStruct](**kwargs)
+    else:
+        if os.path.exists('FullPixelGridML/structures'):
+            path = 'FullPixelGridML/structures'
+        else:
+            path = 'structures'
+        cifFiles = glob.glob(os.path.join(path,"*.cif"))
+        randomNumber = randint(0, len(cifFiles) - 1 + 3)
+        if randomNumber >= len(cifFiles):
+            nameStruct = choice(list(predefinedFunctions.keys()))
+            structFinished = predefinedFunctions[nameStruct](**kwargs)
+        else:
+            cifFile = cifFiles[randomNumber]
+            struct  = read(cifFile)
+            nameStruct = cifFile.split("\\")[-1].split(".")[0]
+            #create a tuple with 3 random numbers, either one or zero
+            # random_numbers = (randint(0, 1), randint(0, 1), randint(0, 1))
+            # if random_numbers == (0,0,0):
+            #     random_numbers = (1,1,1)
+            #surfaceStruct = surface(struct, indices=random_numbers, layers=3, periodic=True)
+            structFinished = moveAndRotateAtomsAndOrthogonalizeAndRepeat(struct)
     return nameStruct, structFinished
-    # predefinedFunctions = {
-    #     "createAtomPillar" : createAtomPillar,
-    #     "multiPillars" : multiPillars,
-    #     "MarcelsEx" : MarcelsEx,
-    #     "grapheneC" : grapheneC,
-    # }
-    # if specificStructure != "random":
-    #     nameStruct = specificStructure
-    #     structFinished = predefinedFunctions[nameStruct](**kwargs)
-    # else:
-    #     if os.path.exists('FullPixelGridML/structures'):
-    #         path = 'FullPixelGridML/structures'
-    #     else:
-    #         path = 'structures'
-    #     cifFiles = glob.glob(os.path.join(path,"*.cif"))
-    #     randomNumber = randint(0, len(cifFiles) - 1 + 3)
-    #     if randomNumber >= len(cifFiles):
-    #         nameStruct = choice(list(predefinedFunctions.keys()))
-    #         structFinished = predefinedFunctions[nameStruct](**kwargs)
-    #     else:
-    #         cifFile = cifFiles[randomNumber]
-    #         struct  = read(cifFile)
-    #         nameStruct = cifFile.split("\\")[-1].split(".")[0]
-    #         #create a tuple with 3 random numbers, either one or zero
-    #         # random_numbers = (randint(0, 1), randint(0, 1), randint(0, 1))
-    #         # if random_numbers == (0,0,0):
-    #         #     random_numbers = (1,1,1)
-    #         #surfaceStruct = surface(struct, indices=random_numbers, layers=3, periodic=True)
-    #         structFinished = moveAndRotateAtomsAndOrthogonalizeAndRepeat(struct)
-    # return nameStruct, structFinished
 
 def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3, structure = "random", pbar = False, start = (5,5), end = (20,20)) -> Tuple[str, Tuple[float, float], Atoms, Measurement, Potential]:
 

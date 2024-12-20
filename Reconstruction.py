@@ -201,7 +201,7 @@ def createAndPlotReconstructedPotential(potential_thick):
     plt.savefig("testStructureFullRec.png")
 
 def groundTruthCalculator(DIMTILES, LabelCSV, groundTruth, Predictions):
-    for i in range(10):
+    for i in range(len(LabelCSV)//3):
         gtDist = [LabelCSV[i*3], LabelCSV[1 + i*3]]
         xGT = int(np.around(float(gtDist[0])))
         yGT = int(np.around(float(gtDist[1])))
@@ -248,7 +248,7 @@ print(f"Actually used BFD with margin: {diameterBFD50Pixels}")
 
 #model = loadModel(modelName = modelName, numChannels=numChannels, numLabels = numLabels)
 
-model = TwoPartLightning().load_from_checkpoint(checkpoint_path = os.path.join("checkpoints/DQN_1112_1521_Z_GRU_moreData_13000E/epoch=383-step=5760.ckpt"))
+model = TwoPartLightning().load_from_checkpoint(checkpoint_path = os.path.join("checkpoints/DQN_1312_1044_Z_GRU_onlyLastHid_30RandPosWithCoords_9000E/epoch=1609-step=24150.ckpt"))
 model.eval()
 
 #initiate Zernike
@@ -293,12 +293,14 @@ plt.imsave("detectorImage.png",dataArray.reshape(15,15,20,20)[0,0])
 
 zernikeValues = ZernikeObject.zernikeTransform(fileName = None, groupOfPatterns = dataArray, zernikeTotalImages = None)
 zernikeValues = torch.tensor(zernikeValues).float()
-# randCoords = torch.randperm(225)[:9]
-# randXCoords = (randCoords % 15)
-# randYCoords = torch.div(randCoords, 15, rounding_mode='floor') 
-XCoords = torch.tensor([0, 0, 0, 7, 7, 7, 14, 14, 14])
-YCoords = torch.tensor([0, 7, 14, 0, 7, 14, 0, 7, 14])
-imageOrZernikeMoments = zernikeValues.reshape((-1,15,15))[:,XCoords,YCoords].reshape((9,-1))
+numberOfPositions = 225
+randCoords = torch.randperm(225)[:numberOfPositions]
+XCoords = (randCoords % 15)
+YCoords = torch.div(randCoords, 15, rounding_mode='floor') 
+# XCoords = torch.tensor([0, 0, 0, 7, 7, 7, 14, 14, 14])
+# YCoords = torch.tensor([0, 7, 14, 0, 7, 14, 0, 7, 14])
+imageOrZernikeMoments = zernikeValues.reshape((15,15,-1))[XCoords,YCoords].reshape((numberOfPositions,-1))
+imageOrZernikeMoments = torch.cat((imageOrZernikeMoments, torch.stack([XCoords, YCoords]).T), dim = 1)
 # imageOrZernikeMomentsWithCoords = torch.cat((imageOrZernikeMoments, torch.stack([randXCoords, randYCoords]).T), dim = 1)
 with torch.inference_mode():
     pred = model(imageOrZernikeMoments.unsqueeze(0))

@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=10
 #SBATCH --partition=defq
 #SBATCH --time=165:00:00
-#SBATCH -J "9ZNN"   # job name
+#SBATCH -J "30ZNN"   # job name
 #SBATCH --mail-user=haertelk@physik.hu-berlin.de   # email address
 #SBATCH --exclusive
 
@@ -22,4 +22,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun python3 -u lightningTrain.py -v 1312_1108_Z_GRU_onlyLastHid_9RandPosWithCoords_9000E -e 9000 -m DQN -l labels_only_Dist.csv -np 9
+srun python3 -u lightningTrain.py -v 1912_1554_Z_GRU_BCEwL_30RP_PixelOut_TEST_9000E -e 9000 -m DQN -l labels_only_Dist.csv -np 30

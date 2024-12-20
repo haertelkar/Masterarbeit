@@ -40,12 +40,14 @@ class ptychographicDataLightning(pl.LightningDataModule):
 		self.train_dataset = ptychographicData(
 					os.path.abspath(os.path.join(folderName,"measurements_train", "train_"+self.labelFile)), 
 					os.path.abspath(os.path.join(folderName,"measurements_train")), transform=torch.as_tensor, 
-					target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions
+					target_transform=None,#torch.as_tensor,
+					labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions
 				)		
 		self.val_dataset = ptychographicData(
 			os.path.abspath(os.path.join(folderName,"measurements_train", "vali_"+self.labelFile)), 
 			os.path.abspath(os.path.join(folderName,"measurements_train")), transform=torch.as_tensor, 
-			target_transform=torch.as_tensor, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions
+			target_transform=None,#torch.as_tensor, 
+			labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions
 		)	
 		
 		self.numTrainSamples = len(self.train_dataset)
@@ -58,7 +60,8 @@ class ptychographicDataLightning(pl.LightningDataModule):
 		self.test_dataset = ptychographicData(
 					os.path.abspath(os.path.join(folderName,self.testDirectory, self.labelFile)), 
 					os.path.abspath(os.path.join(folderName,self.testDirectory)), transform=torch.as_tensor,
-					target_transform=torch.as_tensor, scalingFactors = self.train_dataset.scalingFactors, 
+					target_transform=None,#torch.as_tensor,
+					scalingFactors = self.train_dataset.scalingFactors, 
 					shift = self.train_dataset.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions
 				)
 		# initialize the train, validation, and test data loaders
@@ -187,7 +190,7 @@ class ptychographicData(Dataset):
 		# 	label = self.scaleDown(label)
 		if self.target_transform:
 			label = self.target_transform(label)
-		return np.array(label)
+		return torch.as_tensor(np.array(label))
 
 	def getImageOrZernike(self, idx):
 		datasetStructIDWithCoords = self.image_names[idx]

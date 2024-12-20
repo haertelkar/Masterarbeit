@@ -13,7 +13,7 @@ from torch import Tensor, nn
 from torch.optim import Adam, Optimizer
 from FullPixelGridML.cnn import cnn
 from Zernike.gymEnvironPtycho import ptychoEnv
-from pytorch3d.loss import chamfer_distance
+# from pytorch3d.loss import chamfer_distance
 from Zernike.znn import znn
 from swd import swd
 from sinkhorn import sinkhorn
@@ -34,8 +34,6 @@ else:
     scaler = grid_size
 #label_size  = 225t
 channels = 3*3
-
-hidden_size = 2592
 
 class TwoPartLightningCNN(LightningModule):
     def __init__(

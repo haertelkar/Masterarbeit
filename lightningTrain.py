@@ -179,7 +179,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 			lightnModel = TwoPartLightningCNN()
 		elif "DQN" in modelName:
 			lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions)
-		batch_size = 1024
+		batch_size = 512
 		
 		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size, weighted = False, numberOfPositions = numberOfPositions)
 		lightnDataLoader.setup()
