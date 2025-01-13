@@ -23,7 +23,7 @@ device = "cuda"
 grid_size = 15
 pixelOutput = False
 if pixelOutput == True:
-    label_dims = None
+    label_dims = 0
     label_size = grid_size*grid_size
     shift = 0
     scaler = 1
