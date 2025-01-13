@@ -63,8 +63,8 @@ def moveAndRotateAtomsAndOrthogonalizeAndRepeat(atoms : Atoms, xPos = None, yPos
     atoms.rotate("y", randint(0,360))  
     atoms.rotate("z", randint(0,360))
     if ortho: atoms = orthogonalize_cell(atoms, max_repetitions=10)
-    xLength, yLength, zLength = atoms.cell.lengths()
-    atoms_slab = atoms.repeat((int(max(xlen/xLength, 1)), int(max(ylen/yLength,1)), 1))
+    xLength, yLength, zLength = np.max(atoms.positions, axis = 0)
+    atoms_slab = atoms.repeat((int(max(np.ceil(xlen/xLength), 1)), int(max(np.ceil(ylen/yLength),1)), 1))
     return atoms_slab # type: ignore
 
 def createAtomPillar(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), xAtomShift = 0, yAtomShift = 0, element = None) -> Atoms:
