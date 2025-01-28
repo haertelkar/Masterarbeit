@@ -3,9 +3,30 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 
+import os
+import re
+
+def find_highest_numbered_file(directory, pattern=r"PotentialReal(\d+)\.bin"):
+    highest_number = -1
+    highest_file = None
+
+    # Iterate through the files in the directory
+    for filename in os.listdir(directory):
+        match = re.match(pattern, filename)
+        if match:
+            number = int(match.group(1))  # Extract the number
+            if number > highest_number:
+                highest_number = number
+                highest_file = filename
+
+    return highest_file
+
+
+
 ###Specify file Dimension and path
 Dimension = 400
-path = 'PotentialReal200.bin'
+path = find_highest_numbered_file(".")
+print("Reading file: ", path)
 ###Open file
 data = open(path, 'rb').read()
 ###Generate 2D array
