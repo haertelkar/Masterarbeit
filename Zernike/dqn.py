@@ -15,7 +15,6 @@ from Zernike.gymEnvironPtycho import ptychoEnv
 # from pytorch3d.loss import chamfer_distance
 from Zernike.znn import znn
 from swd import swd
-from sinkhorn import sinkhorn
 import itertools
 from torchmetrics import StructuralSimilarityIndexMeasure
 
