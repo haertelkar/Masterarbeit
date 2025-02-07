@@ -117,18 +117,21 @@ def createMeasurementArray(energy, conv_angle_in_mrad, structure, start, end, DI
     print(f"nameStruct: {nameStruct}")
     CBEDDim = measurement_thick.array.shape[2]
     measurementArray = np.zeros((measurement_thick.array.shape[0],measurement_thick.array.shape[1],CBEDDim,CBEDDim))
-
+     
     realPositions = np.zeros((measurementArray.shape[0],measurementArray.shape[1]), dtype = object)   
-    for i in range(measurementArray.shape[0]): 
-        for j in range(measurementArray.shape[1]):
-            realPositions[i,j] = ((i-measurementArray.shape[0]/2)*0.2*1e-10,(j-measurementArray.shape[1]/2)*0.2*1e-10)
+    allCoords = np.copy(realPositions)
+
+    for j in range(measurementArray.shape[1]): 
+        for i in range(measurementArray.shape[0]): #TODO check if this is correct (x and y are changed)
+            realPositions[i,j] = ((j-measurementArray.shape[1]/2)*0.2*1e-10,(i-measurementArray.shape[0]/2)*0.2*1e-10)
+            allCoords[i,j] = (i,j)  
     for i in range(measurementArray.shape[0]):
         for j in range(measurementArray.shape[1]):
             measurementArray[i,j,:,:] = measurement_thick.array[i,j,:,:]
 
     assert(measurementArray.shape[0] > DIMTILES)
     assert(measurementArray.shape[1] > DIMTILES)
-    return nameStruct,gridSampling,atomStruct,measurement_thick,potential_thick,CBEDDim,measurementArray, realPositions.flatten()
+    return nameStruct,gridSampling,atomStruct,measurement_thick,potential_thick,CBEDDim,measurementArray, realPositions.flatten(), allCoords.flatten()
 
 
 
@@ -138,15 +141,17 @@ def createMeasurementArray(energy, conv_angle_in_mrad, structure, start, end, DI
 
 def CleanUpROP():
     #remove ROP clutter
-    for folder in [".","PredROP","TotalPosROP","TotalGridROP"]:
-        for filename in glob.glob('Probe*.bin'):
-            os.remove(f"{folder}/{filename}")
-        for filename in glob.glob('Potential*.bin'):
-            os.remove(f"{folder}/{filename}")
-        for filename in glob.glob('Positions*.txt'):
-            os.remove(f"{folder}/{filename}")
-        for filename in glob.glob('Potential*.png'):
-            os.remove(f"{folder}/{filename}")
+    folders = [".","TotalPosROP","TotalGridROP"]
+    folders += [f"PredROP{i}" for i in range(2,10)]
+    for folder in folders:
+        for filename in glob.glob(f"{folder}/Probe*.bin"):
+            os.remove(f"{filename}")
+        for filename in glob.glob(f"{folder}/Potential*.bin"):
+            os.remove(f"{filename}")
+        for filename in glob.glob(f"{folder}/Positions*.txt"):
+            os.remove(f"{filename}")
+        for filename in glob.glob(f"{folder}/Potential*.png"):
+            os.remove(f"{filename}")
 
 def createROPFiles(energy, conv_angle_in_mrad, CBEDDim, measurementArrayToFile, allKnownPositionsInA, diameterBFD, fullLengthX, fullLengthY, folder = ".", grid = False):
     CleanUpROP()
@@ -156,13 +161,13 @@ def createROPFiles(energy, conv_angle_in_mrad, CBEDDim, measurementArrayToFile, 
     # measurementArrayToFile /= (np.sum(measurementArrayToFile)/(measurementArrayToFile.shape[0] * measurementArrayToFile.shape[1]))
     # measurementArrayToFile /= np.sum(measurementArrayToFile)/len(allKnownPositionsMeasurements)
     #Convert to binary format
-    for name in dir():
-        try:
-            if not name.startswith('_'):
-                print(f"Name: {name}")
-                print(f"\tsize: {asizeof.asizeof(eval(name))}")
-        except:
-            pass
+    # for name in dir():
+    #     try:
+    #         if not name.startswith('_'):
+    #             print(f"Name: {name}")
+    #             print(f"\tsize: {asizeof.asizeof(eval(name))}")
+    #     except:
+    #         pass
     
     chunk_size = 1024 * 1024  # Number of floats per chunk, adjust as needed
     num_elements = len(measurementArrayToFile)  # Total number of elements
@@ -241,6 +246,77 @@ def groundTruthCalculator(LabelCSV, groundTruth):
         else:
             groundTruth[int(xGT), int(yGT)] += 1#element
 
+def createPredictionsWithFiles(energy, conv_angle_in_mrad, start, end, atomStruct, CBEDDim, measurementArray, allCoords, diameterBFDNotScaled, groundTruth, allInitialPositions, Predictions, minPredLimitIndex, minPredLimit):
+    print(f"Calculating PredROP{minPredLimitIndex} with a minimum prediction limit of {minPredLimit}")
+    allKnownPositions = []
+    for x, y in tqdm(allCoords, "Going through all known positions"):
+        xBefore = min(x,15)
+        xAfter = min(Predictions.T.shape[0]-x,15)
+        yBefore = min(y,15)
+        yAfter = min(Predictions.T.shape[1]-y,15)
+        
+        posValScaler = (xBefore+xAfter)*(yBefore+yAfter)/30/30
+        posVal = Predictions.T[x,y]
+
+        # if : #9 times 9 predictions are looking at every pixel, factor 3 because of the circle
+        #     continue
+        if (x,y) in allInitialPositions or posVal >= 9*9*minPredLimit*posValScaler+1:
+            allKnownPositions.append((x,y))
+        
+
+    #remove duplicates from allKnownPositions
+    #allKnownPositions = list(set(allKnownPositions))
+    plotGTandPred(atomStruct, groundTruth, Predictions, start, end, allKnownPositions)
+    print(f"number of all known positions: {len(allKnownPositions)}")
+    print(f"number of all positions: {Predictions.shape[0]*Predictions.shape[1]}")
+    # del groundTruth
+    # del Predictions
+
+    allKnownPositionsInA = []
+    allKnownPositionsMeasurements = []
+    xRange = np.max(np.array(allKnownPositions)[:,0]) 
+    yRange = np.max(np.array(allKnownPositions)[:,1]) 
+    for pos in allKnownPositions:
+        allKnownPositionsInA.append(((pos[1]-yRange/2)*0.2*1e-10, (pos[0]-xRange/2)*0.2*1e-10))
+        allKnownPositionsMeasurements.append(measurementArray[pos[0],pos[1],:,:])
+
+
+
+    del allKnownPositions
+
+    fullLengthY = measurementArray.shape[1]
+    fullLengthX = measurementArray.shape[0]
+    print("Saving the measurementArray and realPositions")
+    # with open('measurementArray.npy', 'wb') as f:
+
+    #     np.save(f, measurementArray)
+    #     np.save(f, realPositions)
+    # del measurementArray
+    # del realPositions
+
+    # print("Finished saving the measurementArray and realPositions")
+
+
+
+    allKnownPositionsMeasurements = np.array(allKnownPositionsMeasurements) 
+    allKnownPositionsMeasurements /= np.sum(allKnownPositionsMeasurements)/len(allKnownPositionsMeasurements)
+    measurementArrayToFile = np.ravel(allKnownPositionsMeasurements)
+
+    try:
+        os.mkdir(f"PredROP{minPredLimitIndex}")
+    except FileExistsError:
+        pass
+
+
+    #create ROP Files which take in the predicted positions
+    createROPFiles(energy, conv_angle_in_mrad, CBEDDim, measurementArrayToFile,
+                allKnownPositionsInA, diameterBFDNotScaled, fullLengthX = fullLengthX, 
+                fullLengthY = fullLengthY, folder = f"PredROP{minPredLimitIndex}", grid = False)
+
+    del allKnownPositionsInA
+    del allKnownPositionsMeasurements
+    del measurementArrayToFile
+    return fullLengthY,fullLengthX
 
 # measurementArray.astype('float').flatten().tofile("testMeasurement.bin")
 energy = 60e3
@@ -263,7 +339,7 @@ for n in range(numberOfOSAANSIMoments + 1):
 
 
 
-nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick, CBEDDim, measurementArray, realPositions = createMeasurementArray(energy, conv_angle_in_mrad, structure, start, end) 
+nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick, CBEDDim, measurementArray, realPositions, allCoords = createMeasurementArray(energy, conv_angle_in_mrad, structure, start, end) 
 diameterBFDNotScaled = calc_diameter_bfd(measurementArray[0,0,:,:])
 plt.imsave("detectorImage.png",measurementArray[0,0,:,:])
 
@@ -289,7 +365,7 @@ xMaxCNT, yMaxCNT = np.shape(measurement_thick.array)[:2] # type: ignore
 difArrays = [[nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick]]
 del measurement_thick, potential_thick
 
-RelLabelCSV, dataArray = saveAllPosDifPatterns(None, -1, None, diameterBFD50Pixels, processID = 99999, silence = False, maxPooling = 1, structure = "None", fileWrite = False, difArrays = difArrays, start = (5,5), end = (20,20)) # type: ignore
+RelLabelCSV, dataArray = saveAllPosDifPatterns(None, -1, None, diameterBFD50Pixels, processID = 99999, silence = False, maxPooling = 1, structure = "None", fileWrite = False, difArrays = difArrays, start = (5,5), end = (25,25)) # type: ignore
 del difArrays
 RelLabelCSV, dataArray = RelLabelCSV[0][1:], dataArray[0]
 print(f"RelLabelCSV : {RelLabelCSV}")
@@ -317,7 +393,7 @@ del dataArray
 zernikeValuesTotal = torch.tensor(zernikeValuesTotal).float().reshape(int(end[0]-start[1])*5,int(end[0]-start[1])*5, -1)
 
 # loop over the all positions and apply the model to the data
-allKnownPositions = []
+allInitialPositions = []
 Predictions = np.zeros_like(groundTruth)
 PositionsToScanXSingle = np.arange(0, Predictions.shape[0], 3)
 PositionsToScanYSingle = np.arange(0, Predictions.shape[1], 3)
@@ -367,84 +443,24 @@ for indexX in tqdm(range(Predictions.shape[0]-15), desc  = "Going through all po
                         pass
                     else:
                         Predictions[xMostLikely + indexX, yMostLikely + indexY] += circleWeights[xCircle+2,yCircle+2] #for some reason the reconstruction is transposed. Is adjusted later when plotted
-        allKnownPositions += [(XCoordsLocal[i].item() + indexX, YCoordsLocal[i].item() + indexY) for i in range(len(XCoordsLocal))]
+        allInitialPositions += [(YCoordsLocal[i].item() + indexY, XCoordsLocal[i].item() + indexX) for i in range(len(XCoordsLocal))]
     
 del zernikeValuesTotal
+del ZernikeObject
+
+minPredLimits = [2,3,4,5,5.15,5.3,5.45,5.6]
 
 groundTruthCalculator(RelLabelCSV, groundTruth)
 
+for minPredLimitIndex, minPredLimit in zip(range(2,10), minPredLimits):
+    fullLengthY, fullLengthX = createPredictionsWithFiles(energy, conv_angle_in_mrad, start, end, atomStruct, CBEDDim, measurementArray, allCoords, diameterBFDNotScaled, groundTruth, allInitialPositions, Predictions, minPredLimitIndex, minPredLimit)
 
-for cnt, posVal in tqdm(enumerate(Predictions.flatten()), desc = "Getting all known positions", total = Predictions.shape[0]*Predictions.shape[1]):
-    x = int(np.round(cnt//Predictions.shape[1]))
-    y = int(np.round(cnt%Predictions.shape[1]))
-    
-    xBefore = min(x,15)
-    xAfter = min(Predictions.shape[0]-x,15)
-    yBefore = min(y,15)
-    yAfter = min(Predictions.shape[1]-y,15)
-    
-    posValScaler = (xBefore+xAfter)*(yBefore+yAfter)/30/30
-
-    #TODO: remove
-    #commented out so that all positions are considered
-    # if posVal < 9*9*3*posValScaler+1: #9 times 9 predictions are looking at every pixel, factor 2 because of the circle
-    #     continue
-    if (x,y) in allKnownPositions:
-        continue
-    allKnownPositions.append((x,y))
-
-#remove duplicates from allKnownPositions
-allKnownPositions = list(set(allKnownPositions))
-plotGTandPred(atomStruct, groundTruth, Predictions, start, end, allKnownPositions)
-print(f"number of all known positions: {len(allKnownPositions)}")
-print(f"number of all positions: {Predictions.shape[0]*Predictions.shape[1]}")
-del groundTruth
 del Predictions
 
-allKnownPositionsInA = []
-allKnownPositionsMeasurements = []
-xRange = np.max(np.array(allKnownPositions)[:,0]) 
-yRange = np.max(np.array(allKnownPositions)[:,1]) 
-for pos in allKnownPositions:
-    allKnownPositionsInA.append(((pos[0]-xRange/2)*0.2*1e-10,(pos[1]-yRange/2)*0.2*1e-10))
-    allKnownPositionsMeasurements.append(measurementArray[pos[0],pos[1]])
+# with open('measurementArray.npy', 'rb') as f:
 
-
-
-del allKnownPositions
-
-fullLengthY = measurementArray.shape[1]
-fullLengthX = measurementArray.shape[0]
-print("Saving the measurementArray and realPositions")
-with open('measurementArray.npy', 'wb') as f:
-
-    np.save(f, measurementArray)
-    np.save(f, realPositions)
-del measurementArray
-del realPositions
-del ZernikeObject
-print("Finished saving the measurementArray and realPositions")
-
-
-
-allKnownPositionsMeasurements = np.array(allKnownPositionsMeasurements) 
-allKnownPositionsMeasurements /= np.sum(allKnownPositionsMeasurements)/len(allKnownPositionsMeasurements)
-measurementArrayToFile = np.ravel(allKnownPositionsMeasurements)
-
-#create ROP Files which take in the predicted positions
-createROPFiles(energy, conv_angle_in_mrad, CBEDDim, measurementArrayToFile,
-               allKnownPositionsInA, diameterBFDNotScaled, fullLengthX = fullLengthX, 
-               fullLengthY = fullLengthY, folder = "PredROP", grid = False)
-
-del allKnownPositionsInA
-del allKnownPositionsMeasurements
-del measurementArrayToFile
-
-
-with open('measurementArray.npy', 'rb') as f:
-
-    measurementArray = np.load(f, allow_pickle=True)
-    realPositions = np.load(f, allow_pickle=True)
+#     measurementArray = np.load(f, allow_pickle=True)
+#     realPositions = np.load(f, allow_pickle=True)
 
 measurementArray /= np.sum(measurementArray)/len(realPositions)
 measurementArrayToFile = np.ravel(measurementArray)
@@ -457,3 +473,4 @@ createROPFiles(energy, conv_angle_in_mrad, CBEDDim, measurementArrayToFile,
 createROPFiles(energy, conv_angle_in_mrad, CBEDDim, measurementArrayToFile,
                realPositions, diameterBFDNotScaled, fullLengthX = fullLengthX,
                fullLengthY = fullLengthY, folder = "TotalGridROP", grid = True)
+print("Fertig")
