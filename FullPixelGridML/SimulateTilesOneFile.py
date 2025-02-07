@@ -44,7 +44,7 @@ from mp_api.client import MPRester
 
 device = "gpu" if torch.cuda.is_available() else "cpu"
 print(f"Calculating on {device}")
-xlen = ylen = 25
+xlen = ylen = 30
 pixelOutput = False
 
 def calc_diameter_bfd(image):
@@ -55,13 +55,6 @@ def calc_diameter_bfd(image):
     return diameterBFD
 
 def moveAndRotateAtomsAndOrthogonalizeAndRepeat(atoms : Atoms, xPos = None, yPos = None, zPos = None, ortho = True) -> Atoms:
-    xPos = random()*xlen/3 + xlen/3 if xPos is None else xPos
-    yPos = random()*ylen/3 + ylen/3 if yPos is None else yPos
-    zPos = 0 if zPos is None else zPos
-    atoms.positions += np.array([xPos, yPos, zPos])[None,:]    
-    atoms.rotate("x", randint(0,360)) 
-    atoms.rotate("y", randint(0,360))  
-    atoms.rotate("z", randint(0,360))
     if ortho: atoms = orthogonalize_cell(atoms, max_repetitions=10)
     xLength, yLength, zLength = np.max(atoms.positions, axis = 0)
     atoms_slab = atoms.repeat((int(max(np.ceil(xlen/xLength), 1)), int(max(np.ceil(ylen/yLength),1)), 1))
@@ -538,7 +531,7 @@ if __name__ == "__main__":
     YDIMTILES = 10
     maxPooling = 1
     start = (5,5)
-    end = (8,8)
+    end = (16,16)
     numberOfPositionsInOneAngstrom = 5
     size = int((end[0] - start[0]) * numberOfPositionsInOneAngstrom)
     BFDdiameter = 18 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
