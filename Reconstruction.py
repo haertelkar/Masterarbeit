@@ -1,5 +1,6 @@
 import glob
 import os
+import random
 import shutil
 import struct
 import sys
@@ -143,6 +144,7 @@ def CleanUpROP():
     #remove ROP clutter
     folders = [".","TotalPosROP","TotalGridROP"]
     folders += [f"PredROP{i}" for i in range(2,10)]
+    folders += [f"PredROP{i}_rndm" for i in range(2,10)]
     for folder in folders:
         for filename in glob.glob(f"{folder}/Probe*.bin"):
             os.remove(f"{filename}")
@@ -246,21 +248,13 @@ def groundTruthCalculator(LabelCSV, groundTruth):
         else:
             groundTruth[int(xGT), int(yGT)] += 1#element
 
-def createPredictionsWithFiles(energy, conv_angle_in_mrad, start, end, atomStruct, CBEDDim, measurementArray, allCoords, diameterBFDNotScaled, groundTruth, allInitialPositions, Predictions, minPredLimitIndex, minPredLimit):
-    print(f"Calculating PredROP{minPredLimitIndex} with a minimum prediction limit of {minPredLimit}")
+def createPredictionsWithFiles(indicesSortedByHighestPredicitionMinusInitial, energy, conv_angle_in_mrad, start, end, atomStruct, CBEDDim, measurementArray, allCoords, diameterBFDNotScaled, groundTruth, allInitialPositions, numberOfPosIndex, rndm = False):
+    print(f"\n\nCalculating PredROP{numberOfPosIndex}" + ("_rndm" if rndm else "") )
     allKnownPositions = []
-    for x, y in tqdm(allCoords, "Going through all known positions"):
-        xBefore = min(x,15)
-        xAfter = min(Predictions.T.shape[0]-x,15)
-        yBefore = min(y,15)
-        yAfter = min(Predictions.T.shape[1]-y,15)
-        
-        posValScaler = (xBefore+xAfter)*(yBefore+yAfter)/30/30
-        posVal = Predictions.T[x,y]
 
-        # if : #9 times 9 predictions are looking at every pixel, factor 3 because of the circle
-        #     continue
-        if (x,y) in allInitialPositions or posVal >= 9*9*minPredLimit*posValScaler+1:
+
+    for x, y in tqdm(allCoords, "Going through all known positions"):
+        if (x,y) in allInitialPositions or (x,y) in indicesSortedByHighestPredicitionMinusInitial:
             allKnownPositions.append((x,y))
         
 
@@ -286,7 +280,7 @@ def createPredictionsWithFiles(energy, conv_angle_in_mrad, start, end, atomStruc
 
     fullLengthY = measurementArray.shape[1]
     fullLengthX = measurementArray.shape[0]
-    print("Saving the measurementArray and realPositions")
+    # print("Saving the measurementArray and realPositions")
     # with open('measurementArray.npy', 'wb') as f:
 
     #     np.save(f, measurementArray)
@@ -301,9 +295,9 @@ def createPredictionsWithFiles(energy, conv_angle_in_mrad, start, end, atomStruc
     allKnownPositionsMeasurements = np.array(allKnownPositionsMeasurements) 
     allKnownPositionsMeasurements /= np.sum(allKnownPositionsMeasurements)/len(allKnownPositionsMeasurements)
     measurementArrayToFile = np.ravel(allKnownPositionsMeasurements)
-
+    folder = f"PredROP{numberOfPosIndex}_rndm" if rndm else f"PredROP{numberOfPosIndex}"
     try:
-        os.mkdir(f"PredROP{minPredLimitIndex}")
+        os.mkdir(folder)
     except FileExistsError:
         pass
 
@@ -311,7 +305,7 @@ def createPredictionsWithFiles(energy, conv_angle_in_mrad, start, end, atomStruc
     #create ROP Files which take in the predicted positions
     createROPFiles(energy, conv_angle_in_mrad, CBEDDim, measurementArrayToFile,
                 allKnownPositionsInA, diameterBFDNotScaled, fullLengthX = fullLengthX, 
-                fullLengthY = fullLengthY, folder = f"PredROP{minPredLimitIndex}", grid = False)
+                fullLengthY = fullLengthY, folder = folder, grid = False)
 
     del allKnownPositionsInA
     del allKnownPositionsMeasurements
@@ -444,16 +438,51 @@ for indexX in tqdm(range(Predictions.shape[0]-15), desc  = "Going through all po
                     else:
                         Predictions[xMostLikely + indexX, yMostLikely + indexY] += circleWeights[xCircle+2,yCircle+2] #for some reason the reconstruction is transposed. Is adjusted later when plotted
         allInitialPositions += [(YCoordsLocal[i].item() + indexY, XCoordsLocal[i].item() + indexX) for i in range(len(XCoordsLocal))]
+
+allInitialPositions = list(set(allInitialPositions))
+
+#Scaling the predictions based on the position
+for x, y in allCoords:
+    xBefore = min(x,15)
+    xAfter = min(Predictions.T.shape[0]-x,15)
+    yBefore = min(y,15)
+    yAfter = min(Predictions.T.shape[1]-y,15)
     
+    posValScaler = (xBefore+xAfter)*(yBefore+yAfter)/30/30
+    Predictions.T[x,y] /= posValScaler
+
+# Get the flattened indices sorted in descending order
+sortedIndices = np.argsort(Predictions.T, axis=None)[::-1]
+# Convert them back to 2D indices
+indicesSortedByHighestPredicition = np.array(np.unravel_index(sortedIndices, Predictions.T.shape)).T
+# Remove the initial positions from the sorted indices
+indicesSortedByHighestPredicitionMinusInitial = []
+for x, y in indicesSortedByHighestPredicition:
+    if (x,y) not in allInitialPositions:
+        indicesSortedByHighestPredicitionMinusInitial.append((x,y))
 del zernikeValuesTotal
 del ZernikeObject
 
-minPredLimits = [2,3,4,5,5.15,5.3,5.45,5.6]
+numberOfPositions = [0.9,0.8,0.65,0.5,0.4,0.3,0.2,0.1]
+
 
 groundTruthCalculator(RelLabelCSV, groundTruth)
 
-for minPredLimitIndex, minPredLimit in zip(range(2,10), minPredLimits):
-    fullLengthY, fullLengthX = createPredictionsWithFiles(energy, conv_angle_in_mrad, start, end, atomStruct, CBEDDim, measurementArray, allCoords, diameterBFDNotScaled, groundTruth, allInitialPositions, Predictions, minPredLimitIndex, minPredLimit)
+
+for numberOfPosIndex, ratioPos in zip(range(2,10), numberOfPositions):
+    numberOfPos = max(int(np.around(ratioPos*Predictions.shape[0]*Predictions.shape[1])) - len(allInitialPositions),0)
+    numberOfPreditions = min((numberOfPos, len(indicesSortedByHighestPredicitionMinusInitial)))
+    fullLengthY, fullLengthX = createPredictionsWithFiles(indicesSortedByHighestPredicitionMinusInitial[:numberOfPreditions], energy, conv_angle_in_mrad, start, end, atomStruct, CBEDDim, measurementArray, allCoords, diameterBFDNotScaled, groundTruth, allInitialPositions, numberOfPosIndex)
+
+#now create the ROP files but with random prediction
+#for this randomize the order of indicesSortedByHighestPredicitionMinusInitial
+random.shuffle(indicesSortedByHighestPredicitionMinusInitial)
+for numberOfPosIndex, ratioPos in zip(range(2,10), numberOfPositions):
+    numberOfPos = max(int(np.around(ratioPos*Predictions.shape[0]*Predictions.shape[1])) - len(allInitialPositions),0)
+    numberOfPreditions = min((numberOfPos, len(indicesSortedByHighestPredicitionMinusInitial)))
+    fullLengthY, fullLengthX = createPredictionsWithFiles(indicesSortedByHighestPredicitionMinusInitial[:numberOfPreditions], energy, conv_angle_in_mrad, start, end, atomStruct, CBEDDim, measurementArray, allCoords, diameterBFDNotScaled, groundTruth, allInitialPositions, numberOfPosIndex, rndm = True)
+
+
 
 del Predictions
 
