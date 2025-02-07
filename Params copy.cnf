@@ -46,7 +46,7 @@ ScanY:   75     #Number of steps in Y-direction
 batchSize: 75  #Number of CBEDs that are processed in parallel
 
 #Reconstruction parameters
-its: 201         #Total number of iterations
+its: 3001         #Total number of iterations
 binning: 0      #Binning of input data by specified factor (no binning == 0)
 cgprOrthTest:   0.95  # Threshold value for the test if to consecutive gradients in CG-PR are orthogonal enough
 ###Regularization settings
