@@ -6,6 +6,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --time=24:00:00
 #SBATCH -J "ROP"   # job name
+#SBATCH --exclusive
 
 # Debugging flags (optional)
 export NCCL_DEBUG=INFO
