@@ -22,7 +22,7 @@ def find_highest_numbered_file(directory, pattern=r"PotentialReal(\d+)\.bin"):
     return highest_file, highest_number
 
 
-for folder in ["PredROP","TotalPosROP", "TotalGridROP"] + [f"PredROP{i}" for i in range(2,10)]:
+for folder in ["TotalPosROP", "TotalGridROP"] + [f"PredROP{i}" for i in range(2,10)]+ [f"PredROP{i}_rndm" for i in range(2,10)]:
     ###Specify file Dimension and path
     Dimension = 500
     path , iteration = find_highest_numbered_file(folder)
