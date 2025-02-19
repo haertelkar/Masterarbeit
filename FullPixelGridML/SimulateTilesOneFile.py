@@ -138,10 +138,15 @@ def createStructure(specificStructure : str = "random", trainOrTest = None, **kw
         "grapheneC" : grapheneC,
     }
     if specificStructure != "random":
-        nameStruct = specificStructure
-        structFinished = predefinedFunctions[nameStruct](**kwargs)
+        if ".cif" in specificStructure:
+            struct = read(specificStructure)
+            nameStruct = specificStructure.split("\\")[-1].split(".")[0]
+            structFinished = moveAndRotateAtomsAndOrthogonalizeAndRepeat(struct)
+        else:
+            nameStruct = specificStructure
+            structFinished = predefinedFunctions[nameStruct](**kwargs)
     else:
-        if os.path.exists('FullPixelGridML/structures'):
+        if os.path.exists(f'FullPixelGridML/structures'):
             path = 'FullPixelGridML/structures'
         else:
             path = 'structures'
