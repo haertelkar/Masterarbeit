@@ -16,3 +16,4 @@ export PYTHONFAULTHANDLER=1
 
 # Run your training script
 python3 Reconstruction.py 
+./runAllROPs.sh
