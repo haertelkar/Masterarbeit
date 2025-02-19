@@ -32,6 +32,11 @@ except FileExistsError:
     print("Folder already exists, choose different name")
     exit()
 
+#copy "Predictions.png" to new folder
+import shutil
+shutil.copy("Predictions.png", newFolder)
+shutil.copy("groundTruth.png", newFolder)
+shutil.copy("testStructureOriginal.png", newFolder)
 
 for folder in ["TotalPosROP"] + [f"PredROP{i}" for i in range(2,10)] + [f"PredROP{i}_rndm" for i in range(2,10)]:
     ###Specify file Dimension and path
@@ -75,5 +80,6 @@ for folder in ["TotalPosROP"] + [f"PredROP{i}" for i in range(2,10)] + [f"PredRO
             os.mkdir(f"{newFolder}/NumOfPos_{numberOfPositions}{appendix}")
         except FileExistsError:
             pass
+        shutil.copy(path, f"{newFolder}/NumOfPos_{numberOfPositions}{appendix}")
         plt.savefig(f"{newFolder}/NumOfPos_{numberOfPositions}{appendix}/{fileNameWithOutExtension}.png")
         plt.close()
