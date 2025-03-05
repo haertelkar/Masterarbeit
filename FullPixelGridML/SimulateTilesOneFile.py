@@ -14,7 +14,8 @@ from abtem.scan import GridScan
 from abtem.detect import PixelatedDetector
 from random import random, randint, choice, uniform, randrange
 from abtem.reconstruct import MultislicePtychographicOperator, RegularizedPtychographicOperator
-from abtem import Potential, FrozenPhonons, Probe, CTF
+from abtem import Potential, FrozenPhonons, Probe
+from abtem.transfer import CTF, scherzer_defocus, point_resolution, energy2wavelength
 from abtem.detect import AnnularDetector, PixelatedDetector
 from abtem.scan import GridScan
 from abtem.noise import poisson_noise
@@ -44,7 +45,7 @@ from mp_api.client import MPRester
 
 device = "gpu" if torch.cuda.is_available() else "cpu"
 print(f"Calculating on {device}")
-xlen = ylen = 30
+
 pixelOutput = False
 
 def calc_diameter_bfd(image):
@@ -54,13 +55,15 @@ def calc_diameter_bfd(image):
     diameterBFD = np.sqrt(bfdArea/np.pi) * 2
     return diameterBFD
 
-def moveAndRotateAtomsAndOrthogonalizeAndRepeat(atoms : Atoms, xPos = None, yPos = None, zPos = None, ortho = True) -> Atoms:
-    if ortho: atoms = orthogonalize_cell(atoms, max_repetitions=10)
+def moveAndRotateAtomsAndOrthogonalizeAndRepeat(atoms : Atoms, xlen, ylen, xPos = None, yPos = None, zPos = None, ortho = True, repeat = True) -> Atoms:
+    if ortho: atoms = orthogonalize_cell(atoms, max_repetitions=10) # type: ignore
     xLength, yLength, zLength = np.max(atoms.positions, axis = 0)
-    atoms_slab = atoms.repeat((int(max(np.ceil(xlen/xLength), 1)), int(max(np.ceil(ylen/yLength),1)), 1))
+    
+    if repeat: atoms_slab = atoms.repeat((int(max(np.ceil(xlen/xLength), 1)), int(max(np.ceil(ylen/yLength),1)), 1))
+    else: atoms_slab = atoms
     return atoms_slab # type: ignore
 
-def createAtomPillar(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), xAtomShift = 0, yAtomShift = 0, element = None) -> Atoms:
+def createAtomPillar(xlen, ylen, xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), xAtomShift = 0, yAtomShift = 0, element = None) -> Atoms:
     element = randint(1, 100) if element is None else element
     # maxShiftFactorPerLayer = 0.01
     #(random()  - 1/2) * maxShiftFactorPerLayer * xlen  #slant of atom pillar
@@ -76,19 +79,19 @@ def createAtomPillar(xPos = None, yPos = None, zPos = None, zAtoms = randint(1,1
     return atomPillar
 
 #BROKEN #TODO use poisson disk
-def multiPillars(xAtomShift = 0, yAtomShift = 0, element = None, numberOfRandomAtomPillars = None) -> Atoms:
-    numberOfRandomAtomPillars = numberOfRandomAtomPillars or randint(25,50)
-    xPos = random()*ylen 
-    yPos = random()*xlen
-    zPos = 0
-    atomPillar = createAtomPillar(xPos = xPos, yPos = yPos, zPos = zPos)
-    for _ in range(numberOfRandomAtomPillars - 1):
-        xPos = random()*ylen 
-        yPos = random()*xlen
-        atomPillar.extend(createAtomPillar(xPos = xPos, yPos = yPos, zPos = zPos))
-    #atomPillar_011 = surface(atomPillar, indices=(0, 1, 1), layers=2, periodic=True)
-    atomPillar_slab = moveAndRotateAtomsAndOrthogonalizeAndRepeat(atomPillar, xPos, yPos, zPos, ortho=True)
-    return atomPillar_slab
+# def multiPillars(xAtomShift = 0, yAtomShift = 0, element = None, numberOfRandomAtomPillars = None) -> Atoms:
+#     numberOfRandomAtomPillars = numberOfRandomAtomPillars or randint(25,50)
+#     xPos = random()*ylen 
+#     yPos = random()*xlen
+#     zPos = 0
+#     atomPillar = createAtomPillar(xPos = xPos, yPos = yPos, zPos = zPos)
+#     for _ in range(numberOfRandomAtomPillars - 1):
+#         xPos = random()*ylen 
+#         yPos = random()*xlen
+#         atomPillar.extend(createAtomPillar(xPos = xPos, yPos = yPos, zPos = zPos))
+#     #atomPillar_011 = surface(atomPillar, indices=(0, 1, 1), layers=2, periodic=True)
+#     atomPillar_slab = moveAndRotateAtomsAndOrthogonalizeAndRepeat(atomPillar, xPos, yPos, zPos, ortho=True)
+#     return atomPillar_slab
 
 def MarcelsEx(xPos = None, yPos = None, zPos = None):
     cnt1 = nanotube(10, 4, length=4)
@@ -96,7 +99,7 @@ def MarcelsEx(xPos = None, yPos = None, zPos = None):
     double_walled_cnt =  cnt1 + cnt2
     double_walled_cnt.rotate(-90, 'x', rotate_cell=True)
     double_walled_cnt.center(vacuum=5, axis=(0,1))
-    orthogonal_atoms = moveAndRotateAtomsAndOrthogonalizeAndRepeat(double_walled_cnt,xPos, yPos, zPos, ortho=True)
+    orthogonal_atoms = moveAndRotateAtomsAndOrthogonalizeAndRepeat(double_walled_cnt,xPos, yPos, zPos, ortho=True, repeat=False)
     return orthogonal_atoms
 
 def grapheneC(xPos = None, yPos = None, zPos = None) -> Atoms:
@@ -107,7 +110,7 @@ def grapheneC(xPos = None, yPos = None, zPos = None) -> Atoms:
 def StructureUnknown(**kwargs):
     raise Exception(f"Structure unknown")
 
-def createStructure(specificStructure : str = "random", trainOrTest = None, **kwargs) -> Tuple[str, Atoms]:
+def createStructure(xlen, ylen, specificStructure : str = "random", trainOrTest = None, simple = False, **kwargs) -> Tuple[str, Atoms]:
     """ Creates a specified structure. If structure is unknown an Exception will be thrown. Default is "random" which randomly picks a structure
 
 
@@ -119,21 +122,28 @@ def createStructure(specificStructure : str = "random", trainOrTest = None, **kw
     Returns:
         Atoms: Ase Atoms object of specified structure
     """
-    simple = False
     if simple:
         nameStruct = "createAtomPillar"
-        structFinished = createAtomPillar(xPos=5+random()*3, yPos=5+random()*3, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100))
+        # structFinished = createAtomPillar(xlen = xlen, ylen = ylen, xPos=6+random(), yPos=6+random(), zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100))
+        # for _ in range(2):
+        #     structFinished.extend(createAtomPillar(xlen = xlen, ylen = ylen, xPos=6+random(), yPos=6+random(), zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
+        # for _ in range(7):
+        #     xShift = 2 *randint(0,1)
+        #     yShift = 2 *randint(0,1)
+        #     if random() > 0.5:
+        #         if random() > 0.5:
+        #             xShift = 1
+        #         else:
+        #             yShift = 1
+        #     structFinished.extend(createAtomPillar(xlen = xlen, ylen = ylen, xPos=5+random()+ xShift, yPos=5+random()+ yShift, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
+        structFinished = createAtomPillar(xlen = xlen, ylen = ylen, xPos=5+random()*3, yPos=5+random()*3, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100))
         for _ in range(9):
-            structFinished.extend(createAtomPillar(xPos=5+random()*3, yPos=5+random()*3, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
-        # structFinished = createAtomPillar(xPos=5.1, yPos=5.1, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100))
-        # for _ in range(9):
-        #     structFinished.extend(createAtomPillar(xPos=5.3+_*0.2, yPos=5.3+_*0.2, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
-        
+            structFinished.extend(createAtomPillar(xlen = xlen, ylen = ylen, xPos=5+random()*3, yPos=5+random()*3, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
         structFinished = orthogonalize_cell(structFinished, max_repetitions=10)
-        return nameStruct, structFinished
+        return nameStruct, structFinished # type: ignore
     predefinedFunctions = {
         "createAtomPillar" : createAtomPillar,
-        "multiPillars" : multiPillars,
+        #"multiPillars" : multiPillars,
         "MarcelsEx" : MarcelsEx,
         "grapheneC" : grapheneC,
     }
@@ -141,7 +151,7 @@ def createStructure(specificStructure : str = "random", trainOrTest = None, **kw
         if ".cif" in specificStructure:
             struct = read(specificStructure)
             nameStruct = specificStructure.split("\\")[-1].split(".")[0]
-            structFinished = moveAndRotateAtomsAndOrthogonalizeAndRepeat(struct)
+            structFinished = moveAndRotateAtomsAndOrthogonalizeAndRepeat(struct, xlen, ylen)
         else:
             nameStruct = specificStructure
             structFinished = predefinedFunctions[nameStruct](**kwargs)
@@ -164,12 +174,13 @@ def createStructure(specificStructure : str = "random", trainOrTest = None, **kw
             # if random_numbers == (0,0,0):
             #     random_numbers = (1,1,1)
             #surfaceStruct = surface(struct, indices=random_numbers, layers=3, periodic=True)
-            structFinished = moveAndRotateAtomsAndOrthogonalizeAndRepeat(struct)
+            structFinished = moveAndRotateAtomsAndOrthogonalizeAndRepeat(struct, xlen, ylen) 
     return nameStruct, structFinished
 
-def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3, structure = "random", pbar = False, start = (5,5), end = (20,20)) -> Tuple[str, Tuple[float, float], Atoms, Measurement, Potential]:
-
-    nameStruct, atomStruct = createStructure(specificStructure= structure, trainOrTest = trainOrTest)
+def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3, structure = "random", pbar = False, start = (5,5), end = (20,20), simple = False) -> Tuple[str, Tuple[float, float], Atoms, Measurement, Potential]:
+    xlen_structure = end[0] + 5
+    ylen_structure = end[1] + 5 
+    nameStruct, atomStruct = createStructure(xlen_structure, ylen_structure, specificStructure= structure, trainOrTest = trainOrTest, simple=simple)
     try:
         potential_thick = Potential(
             atomStruct,
@@ -181,10 +192,16 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
         raise(e)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        probe = Probe(semiangle_cutoff=conv_angle, energy=energy, device=device)
+        #ctf.defocus = -5 
+        #ctf.semiangle_cutoff = 1000 * energy2wavelength(ctf.energy) / point_resolution(Cs, ctf.energy)
+        probe = Probe(semiangle_cutoff=conv_angle, energy=energy, defocus = -10, device=device)
+        #print(f"FWHM = {probe.profiles().width().compute()} Å")
         probe.match_grid(potential_thick)
 
         pixelated_detector = PixelatedDetector(max_angle=100,resample = "uniform")
+
+        
+
         gridSampling = (0.2,0.2)
         if end == (-1,-1):
             end = potential_thick.extent
@@ -192,12 +209,13 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
             start = start, end = end, sampling=gridSampling
         )
         measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick, pbar = pbar)
+        # measurement_thick = poisson_noise(measurement_thick, 1e6) # type: ignore
 
         # plt.imsave("difPattern.png", measurement_thick.array[0,0])
         #TODO: add noise
         #We dont give angle, conv_angle, energy, real pixelsize to ai because its the same for all training data. Can be done in future
 
-        return nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick
+        return nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick # type: ignore
 
 # @njit
 # def threeClosestAtoms(atomPositions:np.ndarray, atomicNumbers:np.ndarray, xPos:float, yPos:float) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -348,12 +366,12 @@ def generateXYE(datasetStructID, rows, atomStruct, start, end, silence):
     xMaxCoord, yMaxCoord = int((end[0] - start[0])* numberOfPositionsInOneAngstrom), int((end[1] - start[1]) * numberOfPositionsInOneAngstrom)
     xyes = []
     cnt = 0
-    for (x, y), atomNo in tqdm(zip(allPositionsShifted[:,0:2], atomStruct.get_atomic_numbers()), leave=False, desc = f"Going through diffraction Pattern in atoms.", total= len(allPositionsShifted), disable=silence):
+    for (x, y), atomNo in tqdm(zip(allPositionsShifted[:,0:2], atomStruct.get_atomic_numbers()), leave=False, desc = f"Going through diffraction Pattern in atoms.", total= len(allPositionsShifted), disable=True):
         xCoordinate = x*numberOfPositionsInOneAngstrom
         yCoordinate = y*numberOfPositionsInOneAngstrom
         
-        if xCoordinate < 0 or yCoordinate < 0: continue
-        if xCoordinate > xMaxCoord or yCoordinate > yMaxCoord: continue
+        if xCoordinate < 0 or yCoordinate < 0: continue #TODO changed to 5 and -5 for testing
+        if xCoordinate > xMaxCoord  or yCoordinate > yMaxCoord  : continue
         xyes.append([xCoordinate,yCoordinate,atomNo])
         cnt += 1
     xyes = np.array(xyes)
@@ -362,7 +380,7 @@ def generateXYE(datasetStructID, rows, atomStruct, start, end, silence):
     rows.append([f"{datasetStructID}"]+list(xyes.flatten().astype(str)))    
     return rows
 
-def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,maxPooling = 1, processID = 99999, silence = False, structure = "random", fileWrite = True, difArrays = None,     start = (5,5), end = (8,8)):
+def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,maxPooling = 1, processID = 99999, silence = False, structure = "random", fileWrite = True, difArrays = None,     start = (5,5), end = (8,8), simple = False):
     rows = []
     # rowsPixel = []
     dim = 50
@@ -370,7 +388,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
 
     if fileWrite: file = h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w')
     else: dataArray = []
-    difArrays = difArrays or (generateDiffractionArray(trainOrTest = trainOrTest, structure=structure, start=start, end=end) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))
+    difArrays = difArrays or (generateDiffractionArray(trainOrTest = trainOrTest, structure=structure, start=start, end=end, simple = simple) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))
     for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick, _) in enumerate(difArrays):
         datasetStructID = f"{cnt}{processID}{timeStamp}"         
 
@@ -536,7 +554,7 @@ if __name__ == "__main__":
     YDIMTILES = 10
     maxPooling = 1
     start = (5,5)
-    end = (16,16)
+    end = (8,8)
     numberOfPositionsInOneAngstrom = 5
     size = int((end[0] - start[0]) * numberOfPositionsInOneAngstrom)
     BFDdiameter = 18 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
@@ -548,7 +566,7 @@ if __name__ == "__main__":
                 continue
             print(f"PID {os.getpid()} on step {i+1} of {trainOrTest}-data at {datetime.datetime.now()}")
             timeStamp = int(str(time()).replace('.', ''))
-            rows = saveAllPosDifPatterns(trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, structure = args["structure"], start=start, end=end, maxPooling=maxPooling)
+            rows = saveAllPosDifPatterns(trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, structure = args["structure"], start=start, end=end, maxPooling=maxPooling, simple = True)
             #rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling, structure = args["structure"], start=start, end=end)
             writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], timeStamp = timeStamp, maxPooling=maxPooling, size = size)
   
