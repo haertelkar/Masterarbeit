@@ -81,5 +81,9 @@ for folder in ["TotalPosROP"] + [f"PredROP{i}" for i in range(2,10)] + [f"PredRO
         except FileExistsError:
             pass
         shutil.copy(path, f"{newFolder}/NumOfPos_{numberOfPositions}{appendix}")
+        try:
+            shutil.copy(f"{rootPath}/PosMask.png", f"{newFolder}/NumOfPos_{numberOfPositions}{appendix}")
+        except FileNotFoundError:
+            pass
         plt.savefig(f"{newFolder}/NumOfPos_{numberOfPositions}{appendix}/{fileNameWithOutExtension}.png")
         plt.close()
