@@ -1,3 +1,4 @@
+from random import randint
 import warnings
 from lightning.pytorch.utilities.types import EVAL_DATALOADERS, TRAIN_DATALOADERS
 import numpy as np
@@ -9,6 +10,18 @@ import os
 import lightning.pytorch as pl
 import h5py
 from torch.utils.data import random_split, DataLoader, WeightedRandomSampler
+from torch.nn.utils.rnn import pad_sequence
+
+def collate_fn(batch):
+    sequences, labels = zip(*batch)  # Separate data and labels
+
+    # Pad sequences to the longest length in batch
+    padded_sequences = pad_sequence(sequences, batch_first=True, padding_value=0.0)
+
+    # Create attention mask (True for padded positions)
+    mask = (padded_sequences.abs().sum(dim=2) == 0)
+
+    return padded_sequences, torch.tensor(labels), mask
 
 class ptychographicDataLightning(pl.LightningDataModule):
 	def __init__(self, model_name, batch_size = 1024, num_workers = 20, classifier = False, indicesToPredict = None, labelFile = "labels.csv", testDirectory = "measurements_test", onlyTest = False, weighted  = True, numberOfPositions = 9):
@@ -89,17 +102,17 @@ class ptychographicDataLightning(pl.LightningDataModule):
 	
 	def train_dataloader(self) -> TRAIN_DATALOADERS:
 		if self.weights is None: 
-			return DataLoader(self.train_dataset,  batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, drop_last=True, shuffle=True)
+			return DataLoader(self.train_dataset,  batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, drop_last=True, shuffle=True, collate_fn=collate_fn)
 		else:
 			samples_weight = self.weights
 			sampler = WeightedRandomSampler(samples_weight, self.numTrainSamples)
-			return DataLoader(self.train_dataset, shuffle=False, batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, sampler = sampler, drop_last=True)
+			return DataLoader(self.train_dataset, shuffle=False, batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, sampler = sampler, drop_last=True, collate_fn=collate_fn)
 	
 	def val_dataloader(self) -> EVAL_DATALOADERS:
-		return DataLoader(self.val_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True)
+		return DataLoader(self.val_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True, collate_fn=collate_fn)
 
 	def test_dataloader(self) -> EVAL_DATALOADERS:
-		return DataLoader(self.test_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True)
+		return DataLoader(self.test_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True, collate_fn=collate_fn)
 
 class ptychographicData(Dataset):
 	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors = None, shift = None, labelIndicesToPredict = None, classifier = False, numberOfPositions = 9):
@@ -140,19 +153,21 @@ class ptychographicData(Dataset):
 		return file_count
 
 	def __getitem__(self, idx):
-		numberOfAtoms = self.numberOfPositions
+		nonPredictedBorderInA = 3
+		windowSizeInA = 16
+		nonPredictedBorderInCoordinates = 5*nonPredictedBorderInA
+		Size = windowSizeInA * 5 + 2*nonPredictedBorderInCoordinates * 5
+		numberOfScans = torch.randint(5, self.numberOfPositions, (1,)).item()
 		label = self.getLabel(idx)
-		randCoords = torch.randperm(15*15)[:numberOfAtoms]
-		randXCoords = (randCoords % 15)
-		randYCoords = torch.div(randCoords, 15, rounding_mode='floor') 
-		# randXCoords = torch.tensor([0, 0, 0, 7, 7, 7, 14, 14, 14])
-		# randYCoords = torch.tensor([0, 7, 14, 0, 7, 14, 0, 7, 14])
+		randCoords = torch.randperm(Size*Size)[:numberOfScans]
+		randXCoords = (randCoords % Size) - nonPredictedBorderInA
+		randYCoords = torch.div(randCoords, Size, rounding_mode='floor') - nonPredictedBorderInA 
+		padding = torch.zeros_like(randXCoords)
 		if "Zernike" in self.img_dir:
-			imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((15,15,-1))[randXCoords,randYCoords].reshape((numberOfAtoms,-1))
+			imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((Size,Size,-1))[randXCoords,randYCoords].reshape((numberOfScans,-1))
 		else:
-			# imageOrZernikeMoments = torch.ones((9,20,20),dtype=torch.float32)
-			imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((15,15,20,20))[randXCoords,randYCoords].reshape((numberOfAtoms,20,20))
-		imageOrZernikeMomentsWithCoords = torch.cat((imageOrZernikeMoments, torch.stack([randXCoords, randYCoords]).T), dim = 1)
+			imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((Size,Size,20,20))[randXCoords,randYCoords].reshape((numberOfScans,20,20))
+		imageOrZernikeMomentsWithCoords = torch.cat((imageOrZernikeMoments, torch.stack([randXCoords, randYCoords, padding]).T), dim = 1)
 		return imageOrZernikeMomentsWithCoords , label
 		#print(f"data type: {imageOrZernikeMoments}, data size: {np.shape(imageOrZernikeMoments)}")
 		#return imageOrZernikeMoments, label
