@@ -1,4 +1,4 @@
-from Zernike.dqn import TwoPartLightning
+from Zernike.ScansToAtomsPosNN import TwoPartLightning
 from lightningTrain import evaluater, ptychographicDataLightning
 import os
 import lightning.pytorch as pl
