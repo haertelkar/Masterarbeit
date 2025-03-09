@@ -128,7 +128,7 @@ class ptychographicData(Dataset):
 		self.classifier = classifier
 		self.scalingFactors = None
 		self.shift = None
-		self.dataPath = os.path.join(self.img_dir, "training_data.hdf5")
+		self.dataPath = os.path.join(self.img_dir, f"training_data_{numberOfPositions}.hdf5")
 		self.dataset = None
 		self.numberOfPositions = numberOfPositions
 
@@ -153,22 +153,9 @@ class ptychographicData(Dataset):
 		return file_count
 
 	def __getitem__(self, idx):
-		nonPredictedBorderInA = 3
-		windowSizeInA = 16
-		nonPredictedBorderInCoordinates = 5*nonPredictedBorderInA
-		Size = windowSizeInA * 5 + 2*nonPredictedBorderInCoordinates
-		numberOfScans = torch.randint(5, self.numberOfPositions, (1,)).item()
 		label = self.getLabel(idx)
-		randCoords = torch.randperm(Size*Size)[:numberOfScans]
-		randXCoords = (randCoords % Size) - nonPredictedBorderInA
-		randYCoords = torch.div(randCoords, Size, rounding_mode='floor') - nonPredictedBorderInA 
-		padding = torch.zeros_like(randXCoords)
-		if "Zernike" in self.img_dir:
-			imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((Size,Size,-1))[randXCoords,randYCoords].reshape((numberOfScans,-1))
-		else:
-			imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((Size,Size,20,20))[randXCoords,randYCoords].reshape((numberOfScans,20,20))
-		imageOrZernikeMomentsWithCoords = torch.cat((imageOrZernikeMoments, torch.stack([randXCoords - nonPredictedBorderInCoordinates, randYCoords - nonPredictedBorderInCoordinates, padding]).T), dim = 1)
-		return imageOrZernikeMomentsWithCoords , label
+		imageOrZernikeMomentsWithCoordsAndPad = self.getImageOrZernike(idx)
+		return imageOrZernikeMomentsWithCoordsAndPad , label
 		#print(f"data type: {imageOrZernikeMoments}, data size: {np.shape(imageOrZernikeMoments)}")
 		#return imageOrZernikeMoments, label
 	
