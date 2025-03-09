@@ -4,10 +4,11 @@ import matplotlib.pyplot as plt
 import os
 import h5py
 import numexpr as ne
+from numba import njit
 
-
-
-
+@njit
+def njitcalculateZernikeWeights(basis, image):
+    return np.sum(basis[:,:,:]* image[np.newaxis,:,:], axis = (1,2)).flatten()
 
 class Zernike(object):
     def __init__(self,maxR, numberOfOSAANSIMoments:int):
@@ -15,8 +16,8 @@ class Zernike(object):
         self.numberOfOSAANSIMoments = numberOfOSAANSIMoments
         self.dx = 1/self.maxR
         self.dy = self.dx
-        self.indexXNonZero = None
-        self.indexYNonZero = None
+        # self.indexXNonZero = None
+        # self.indexYNonZero = None
         self.dimToBasis = {
         }
         self.resultVectorLength = 0 
@@ -60,12 +61,14 @@ class Zernike(object):
     #         return momentsAllCoords
     
     def calculateZernikeWeightsOnWholeGroup(self, basis, groupOfPatterns):
-        return np.sum(basis[None,:,self.indexXNonZero,self.indexYNonZero]* groupOfPatterns[:,None,self.indexXNonZero,self.indexYNonZero], axis = (2,3)).flatten()
+        return njitcalculateZernikeWeights(basis, groupOfPatterns)
+
 
     def calculateZernikeWeights(self, basis, image):
         #normFactor = np.pi #not used otherwise the weights are very small
         #normally the weights are normalized by the area of the image (self.dx * self.dy), but this is not necessary for our purposes
-        return np.sum(basis[:,self.indexXNonZero,self.indexYNonZero]* image[None,self.indexXNonZero,self.indexYNonZero], axis = (1,2)).flatten()
+        #return np.sum(basis[:,:,:]* image[None,:,:], axis = (1,2)).flatten()
+        return np.sum(basis[:,:,:]* image[np.newaxis,:,:], axis = (1,2)).flatten()
 
     
     def zernikeTransform(self, fileName, groupOfPatterns, zernikeTotalImages, shapeOfMomentsAllCoords = None):
