@@ -341,21 +341,10 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
     # loop over the all positions and apply the model to the data
     allInitialPositions = []
     Predictions = np.zeros_like(groundTruth)
-    PositionsToScanXSingle = np.arange(0, Predictions.shape[0], 5)
-    PositionsToScanYSingle = np.arange(0, Predictions.shape[1], 5)
+    PositionsToScanXSingle = np.arange(0, Predictions.shape[0], 4)
+    PositionsToScanYSingle = np.arange(0, Predictions.shape[1], 4)
     PositionsToScanX = np.sort(np.array([PositionsToScanXSingle for i in range(len(PositionsToScanYSingle))]).flatten())
     PositionsToScanY= np.array([PositionsToScanYSingle for i in range(len(PositionsToScanXSingle))]).flatten()
-
-#     circleWeights = np.array([
-#     [1, 1, 1, 1, 1],
-#     [1, 3, 3, 3, 1],
-#     [1, 3, 2, 3, 1],
-#     [1, 3, 3, 3, 1],
-#     [1, 1, 1, 1, 1]
-# ])
-
-#     circleWeights = np.zeros_like(circleWeights)
-#     circleWeights[2,2] = 1  
 
     circleWeights = np.array([
     [1, 1, 1, 1, 1],
@@ -364,13 +353,7 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
     [1, 2, 2, 2, 1],
     [1, 1, 1, 1, 1]
 ])
-#     circleWeights = np.array([
-#     [1, 1, 1, 1, 1],
-#     [1, 1, 1, 1, 1],
-#     [1, 1, 1, 1, 1],
-#     [1, 1, 1, 1, 1],
-#     [1, 1, 1, 1, 1]
-# ])
+
 
     for indexX in tqdm(range(-14,Predictions.shape[0]), desc  = "Going through all positions and predicting"):
         for indexY in range(-14,Predictions.shape[1]):
@@ -432,7 +415,7 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
 # measurementArray.astype('float').flatten().tofile("testMeasurement.bin")
 onlyPred = False
 energy = 60e3
-structure="/data/scratch/haertelk/Masterarbeit/FullPixelGridML/structures/MoS2_hexagonal.cif"
+structure="/data/scratch/haertelk/Masterarbeit/FullPixelGridML/structures/used/NaSbF6.cif"
 conv_angle_in_mrad = 33
 dim = 50
 diameterBFD50Pixels = 18
