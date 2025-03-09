@@ -21,7 +21,7 @@ def collate_fn(batch):
     # Create attention mask (True for padded positions)
     mask = (padded_sequences.abs().sum(dim=2) == 0)
 
-    return padded_sequences, torch.tensor(labels), mask
+    return padded_sequences, torch.stack(labels), mask
 
 class ptychographicDataLightning(pl.LightningDataModule):
 	def __init__(self, model_name, batch_size = 1024, num_workers = 20, classifier = False, indicesToPredict = None, labelFile = "labels.csv", testDirectory = "measurements_test", onlyTest = False, weighted  = True, numberOfPositions = 9):
@@ -156,7 +156,7 @@ class ptychographicData(Dataset):
 		nonPredictedBorderInA = 3
 		windowSizeInA = 16
 		nonPredictedBorderInCoordinates = 5*nonPredictedBorderInA
-		Size = windowSizeInA * 5 + 2*nonPredictedBorderInCoordinates * 5
+		Size = windowSizeInA * 5 + 2*nonPredictedBorderInCoordinates
 		numberOfScans = torch.randint(5, self.numberOfPositions, (1,)).item()
 		label = self.getLabel(idx)
 		randCoords = torch.randperm(Size*Size)[:numberOfScans]
@@ -167,7 +167,7 @@ class ptychographicData(Dataset):
 			imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((Size,Size,-1))[randXCoords,randYCoords].reshape((numberOfScans,-1))
 		else:
 			imageOrZernikeMoments = self.getImageOrZernike(idx).reshape((Size,Size,20,20))[randXCoords,randYCoords].reshape((numberOfScans,20,20))
-		imageOrZernikeMomentsWithCoords = torch.cat((imageOrZernikeMoments, torch.stack([randXCoords, randYCoords, padding]).T), dim = 1)
+		imageOrZernikeMomentsWithCoords = torch.cat((imageOrZernikeMoments, torch.stack([randXCoords - nonPredictedBorderInCoordinates, randYCoords - nonPredictedBorderInCoordinates, padding]).T), dim = 1)
 		return imageOrZernikeMomentsWithCoords , label
 		#print(f"data type: {imageOrZernikeMoments}, data size: {np.shape(imageOrZernikeMoments)}")
 		#return imageOrZernikeMoments, label
