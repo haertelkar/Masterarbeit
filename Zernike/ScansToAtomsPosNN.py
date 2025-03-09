@@ -20,8 +20,11 @@ import itertools
 from torchmetrics import StructuralSimilarityIndexMeasure
 
 device = "cuda"
-grid_size = 15
+grid_size_in_A = 16
+grid_size = grid_size_in_A*5
+
 pixelOutput = False
+numberOfAtoms = grid_size_in_A**2
 if pixelOutput == True:
     label_dims = 0
     label_size = grid_size*grid_size
@@ -29,7 +32,7 @@ if pixelOutput == True:
     scaler = 1
 else:
     label_dims = 2
-    label_size = label_dims*10
+    label_size = label_dims*numberOfAtoms
     shift = 0.5
     scaler = grid_size
 
@@ -83,7 +86,7 @@ class preComputeTransformer(nn.Module):
         cls_tokens = self.cls_token.expand(batch_size, -1, -1)  # Shape: (batch_size, 1, obs_size)
         x = torch.cat((cls_tokens, zernikeValues_and_Pos), dim=1)  # Add CLS token at the start
 
-        y = self.transformerEncode(zernikeValues_and_Pos, source_key_padding_mask=mask)  # Apply transformer encoder
+        y = self.transformerEncode(zernikeValues_and_Pos, src_key_padding_mask=mask)  # Apply transformer encoder
         y = y[:,0,:]
 
         return  y
@@ -155,7 +158,7 @@ class TwoPartLightning(LightningModule):
             coordinates of the atoms ordered by x position
 
         """
-
+        
         currentHiddenState = self.preComputeNN(ptychoImages ).flatten(start_dim=1)
 
         currentLabel :Tensor= self.finalLayerNN(currentHiddenState)
@@ -163,18 +166,18 @@ class TwoPartLightning(LightningModule):
 
         labelOrdered = currentLabel
         if not pixelOutput:
-            labelOrdered = currentLabel.flatten(start_dim=1).reshape((-1, 10, label_dims))
+            labelOrdered = currentLabel.flatten(start_dim=1).reshape((-1, numberOfAtoms, label_dims))
             sorted_indices = torch.argsort(labelOrdered[:, :, 0], dim=1)
             labelOrdered = torch.gather(labelOrdered, 1, sorted_indices.unsqueeze(-1).expand(-1, -1, label_dims))*scaler
 
         return  (labelOrdered.flatten(start_dim=1) )
 
-    def validation_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Tensor:
+    def validation_step(self, batch: Tuple[Tensor, Tensor, Tensor], batch_idx: int) -> Tensor:
         loss = self.training_step(batch, log=False)
         self.log("val_loss", loss)
         return loss
 
-    def training_step(self, batch: Tuple[Tensor, Tensor], log = True) -> Tensor:
+    def training_step(self, batch: Tuple[Tensor, Tensor, Tensor], log = True) -> Tensor:
         """Passes in a state x through the network and gets the coordinates of the atoms and computes the loss.
 
         Args:
@@ -185,20 +188,21 @@ class TwoPartLightning(LightningModule):
             Training loss
 
         """
-        ptychoImages, atomPositionsLabel = batch
+        ptychoImages, atomPositionsLabel, mask = batch
+        batch_size = ptychoImages.shape[0]
 
-
-        currentHiddenState :Tensor= self.preComputeNN(ptychoImages)[:,:].flatten(start_dim=1)
+        currentHiddenState :Tensor= self.preComputeNN(ptychoImages, mask)[:,:].flatten(start_dim=1)
 
         currentLabel :Tensor= self.finalLayerNN(currentHiddenState)
+        
         # currentLabel : Tensor = self.finalLayer(ptychoImages.flatten(start_dim=1))
         
 
         # loss = torch.nn.MSELoss()(currentLabel.flatten(start_dim=1), atomPositionsLabel.flatten(start_dim=1)/grid_size)
         if pixelOutput: loss = self.loss_fct(torch.clip(currentLabel.flatten(start_dim=1),0,1), atomPositionsLabel.flatten(start_dim=1))
         else: 
-            currentLabelReshaped = currentLabel.flatten(start_dim=1).reshape((-1,10,label_dims))
-            atomPositionsLabelReshapedAndScaled = atomPositionsLabel.flatten(start_dim=1).reshape((-1,10,label_dims))/scaler
+            currentLabelReshaped = currentLabel.flatten(start_dim=1).reshape((batch_size,-1,label_dims))
+            atomPositionsLabelReshapedAndScaled = atomPositionsLabel.flatten(start_dim=1).reshape((batch_size,-1,label_dims))/scaler
             loss = torch.mean(self.loss_fct(currentLabelReshaped, atomPositionsLabelReshapedAndScaled))
             # lossGen = (sinkhorn(currentLabelReshaped[i], atomPositionsLabelReshapedAndScaled[i])[0] for i in range(len(currentLabel.flatten(start_dim=1).reshape((-1,10,label_dims)))))
             # loss = torch.mean(torch.stack(list(lossGen)))
@@ -209,7 +213,7 @@ class TwoPartLightning(LightningModule):
 
         return loss
     
-    def test_step(self, batch: Tuple[Tensor, Tensor], batch_idx: int) -> Tensor:
+    def test_step(self, batch: Tuple[Tensor, Tensor, Tensor], batch_idx: int) -> Tensor:
         loss = self.training_step(batch, log=False)
         self.log("test_loss", loss)
         return loss
