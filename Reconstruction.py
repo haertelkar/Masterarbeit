@@ -14,12 +14,10 @@ from FullPixelGridML.SimulateTilesOneFile import generateDiffractionArray, creat
 import numpy as np
 from ase.io import write
 from ase.visualize.plot import plot_atoms
-from abtem.measure import Measurement
 from datasets import ptychographicDataLightning
 from torch import nn
 from lightningTrain import loadModel, lightnModelClass, TwoPartLightning
 from Zernike.ZernikeTransformer import Zernike, calc_diameter_bfd
-from pympler import asizeof
 
 
 
@@ -123,7 +121,7 @@ def createMeasurementArray(energy, conv_angle_in_mrad, structure, start, end, DI
     allCoords = np.copy(realPositions)
 
     for j in range(measurementArray.shape[1]): 
-        for i in range(measurementArray.shape[0]): #TODO check if this is correct (x and y are changed)
+        for i in range(measurementArray.shape[0]): 
             realPositions[i,j] = ((j-measurementArray.shape[1]/2)*0.2*1e-10,(i-measurementArray.shape[0]/2)*0.2*1e-10)
             allCoords[i,j] = (i,j)  
     for i in range(measurementArray.shape[0]):
@@ -189,7 +187,7 @@ def plotGTandPred(atomStruct, groundTruth, Predictions, start, end):
     """Create plots of the ground truth and the predictions. 
     They are transposed because the reconstruction is also transposed.
     """
-    extent=  [start[0],end[0],start[1],end[1]]
+    extent=  (start[0],end[0],start[1],end[1])
     plt.imshow(Predictions.T, origin = "lower", interpolation="none", extent=extent)
     plt.colorbar()
     plt.savefig("Predictions.png")
@@ -413,14 +411,14 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
     return allInitialPositions,Predictions
 
 # measurementArray.astype('float').flatten().tofile("testMeasurement.bin")
-onlyPred = False
+onlyPred = True
 energy = 60e3
 structure="/data/scratch/haertelk/Masterarbeit/FullPixelGridML/structures/used/NaSbF6.cif"
 conv_angle_in_mrad = 33
 dim = 50
 diameterBFD50Pixels = 18
 start = (5,5)
-end = (25,25)
+end = (9,9)
 
 print("Calculating the number of Zernike moments:")
 resultVectorLength = 0 
@@ -431,7 +429,7 @@ for n in range(numberOfOSAANSIMoments + 1):
         if (n-m)%2 != 0:
             continue
         resultVectorLength += 1
-print(resultVectorLength)
+print("number of Zernike Moments",resultVectorLength)
 
 
 if not onlyPred: CleanUpROP()
@@ -450,25 +448,23 @@ print(f"Actually used BFD with margin: {diameterBFD50Pixels}")
 
 #model = loadModel(modelName = modelName, numChannels=numChannels, numLabels = numLabels)
 
-model = TwoPartLightning().load_from_checkpoint(checkpoint_path = "/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0403_1751_Z_GRU_9Pos_5hidlay_9000E/epoch=1069-step=44940.ckpt")#"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0203_1554_Z_GRU_halbeBatch_norHidSize_5statt3hidlay_9000E/epoch=1245-step=104664.ckpt")
-#"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_2202_1030_Z_GRU_Noise_9000E/epoch=766-step=16107.ckpt"
-model.eval()
+
 
 
 xMaxCNT, yMaxCNT = np.shape(measurement_thick.array)[:2] # type: ignore
 
 
-#ZernikeTransform
+
 difArrays = [[nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick]]
 del measurement_thick, potential_thick
 
-RelLabelCSV, dataArray = saveAllPosDifPatterns(None, -1, None, diameterBFD50Pixels, processID = 99999, silence = False, maxPooling = 1, structure = "None", fileWrite = False, difArrays = difArrays, start = (5,5), end = (25,25)) # type: ignore
+RelLabelCSV, dataArray = saveAllPosDifPatterns(None, -1, None, diameterBFD50Pixels, processID = 99999, silence = False, maxPooling = 1, structure = "None", fileWrite = False, difArrays = difArrays, start = start, end = end) # type: ignore
 del difArrays
 
 RelLabelCSV, dataArray = RelLabelCSV[0][1:], dataArray[0]
 # print(f"RelLabelCSV : {RelLabelCSV}")
 groundTruth = np.zeros((measurementArray.shape[0], measurementArray.shape[1]))
-extent=  [start[0],end[0],start[1],end[1]]
+extent=  (start[0],end[0],start[1],end[1])
 groundTruthCalculator(RelLabelCSV, groundTruth)
 # from matplotlib import cm 
 # cm1 = cm.get_cmap('RdBu_r')
@@ -482,20 +478,22 @@ groundTruthCalculator(RelLabelCSV, groundTruth)
 # plt.savefig("groundTruthWithGrid.png")
 # exit()
 
-radius = dataArray.shape[-1]//2 #already removed everything outside BFD in saveAllDifPatterns 
-ZernikeObject = Zernike(radius, numberOfOSAANSIMoments= numberOfOSAANSIMoments)
 #poolingFactor = int(3)
 
 
 
 plt.imsave("detectorImage.png",dataArray.reshape(int(end[0]-start[1])*5,int(end[0]-start[1])*5,20,20)[0,0])
+exit()
 
-
-
+model = TwoPartLightning().load_from_checkpoint(checkpoint_path = "/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0403_1751_Z_GRU_9Pos_5hidlay_9000E/epoch=1069-step=44940.ckpt")#"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0203_1554_Z_GRU_halbeBatch_norHidSize_5statt3hidlay_9000E/epoch=1245-step=104664.ckpt")
+#"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_2202_1030_Z_GRU_Noise_9000E/epoch=766-step=16107.ckpt"
+model.eval()
 
 #initiate Zernike
 print("generating the zernike moments")
-zernikeValuesTotal = ZernikeObject.zernikeTransform(fileName = None, groupOfPatterns = dataArray, zernikeTotalImages = None)
+#ZernikeTransform
+ZernikeObject = Zernike(numberOfOSAANSIMoments= numberOfOSAANSIMoments)
+zernikeValuesTotal = ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = dataArray, hdf5File = None)
 del dataArray
 zernikeValuesTotal = torch.tensor(zernikeValuesTotal).float().reshape(int(end[0]-start[1])*5,int(end[0]-start[1])*5, -1)
 
