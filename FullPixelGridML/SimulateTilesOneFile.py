@@ -9,17 +9,13 @@ from ase.geometry import get_distances
 import matplotlib.pyplot as plt
 from abtem.waves import Probe
 import numpy as np
-from abtem.measure import block_zeroth_order_spot, Measurement
 from abtem.scan import GridScan
-from abtem.detect import PixelatedDetector
 from random import random, randint, choice, uniform, randrange
 from abtem.reconstruct import MultislicePtychographicOperator, RegularizedPtychographicOperator
 from abtem import Potential, FrozenPhonons, Probe
 from abtem.transfer import CTF, scherzer_defocus, point_resolution, energy2wavelength
-from abtem.detect import AnnularDetector, PixelatedDetector
 from abtem.scan import GridScan
-from abtem.noise import poisson_noise
-from abtem.structures import orthogonalize_cell
+from abtem import orthogonalize_cell, PixelatedDetector, GridScan
 import abtem
 import torch
 from tqdm import tqdm
@@ -36,16 +32,21 @@ import signal
 from itertools import combinations
 import h5py
 from ase.build import nanotube
-from skimage.measure import block_reduce
 faulthandler.register(signal.SIGUSR1.value)
-from mp_api.client import MPRester
+import sys
+
+# setting path
+sys.path.append(os.path.abspath('../Zernike'))
+from ZernikePolynomials import Zernike 
+
+
 # from hanging_threads import start_monitoring
 # monitoring_thread = start_monitoring(seconds_frozen=60, test_interval=100)
 
 
 device = "gpu" if torch.cuda.is_available() else "cpu"
 print(f"Calculating on {device}")
-windowSizeInA = 16 #every 5th A is a scan (probe radius is 5A), should be at least 3 in a window
+windowSizeInA = 3 #every 5th A is a scan (probe radius is 5A), should be at least 3 in a window
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
 
@@ -130,7 +131,7 @@ def createStructure(xlen, ylen, specificStructure : str = "random", trainOrTest 
             structFinished.extend(createAtomPillar(xlen = xlen, ylen = ylen, xPos=start[0]+nonPredictedBorderInA+random()*windowSizeInA, yPos=start[1]+nonPredictedBorderInA+random()*windowSizeInA, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
         
         #Fill the nonPredictedBorderInA with random atoms
-        if nonPredictedBorderInA > 0:
+        if nonPredictedBorderInA > 0: 
             borderArea = (2*nonPredictedBorderInA + windowSizeInA)**2-windowSizeInA**2
             numberOfAtomsInBorder = int(borderArea/windowSizeInA**2 * numberOfAtomsInWindow)
             
@@ -199,6 +200,10 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
     except Exception as e:
         print(nameStruct, atomStruct)
         raise(e)
+    # abtem.show_atoms(atomStruct, legend = True)
+    # plt.savefig("testStructureOriginal.png")
+    # plt.close()
+    # exit()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         #ctf.defocus = -5 
@@ -213,12 +218,12 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
 
         gridSampling = (0.2,0.2)
         if end == (-1,-1):
-            end = potential_thick.extent
+            end : tuple[float,float]= potential_thick.extent # type: ignore
         gridscan = GridScan(
             start = start, end = end, sampling=gridSampling
         )
-        measurement_thick = probe.scan(gridscan, pixelated_detector, potential_thick, pbar = pbar)
-        # measurement_thick = poisson_noise(measurement_thick, 1e6) # type: ignore
+        measurement_thick = probe.scan(potential_thick, gridscan, pixelated_detector, lazy = False)
+        measurement_thick = measurement_thick.poisson_noise( 1e6) # type: ignore
 
         # plt.imsave("difPattern.png", measurement_thick.array[0,0])
         #TODO: add noise
@@ -248,17 +253,29 @@ def generateAtomGridNoInterp(datasetStructID, rows, atomStruct, start, end, sile
     rows.append([f"{datasetStructID}"]+list(atomGrid.flatten()))
     return rows
 
-#a function that appends the xy positions of the atoms to the rows
-def generateXYE(datasetStructID, rows, atomStruct, start, end, silence, nonPredictedBorderInA = 0):
+
+def generateXYE(datasetStructID, rows, atomStruct, start, end, silence = True, nonPredictedBorderInA = 0):
+    """
+    Generates a list of x, y, and element number of the atoms in the given atom structure.
+    Args:
+        datasetStructID (str): The ID of the dataset in the hdf5 file.
+        rows (list): The list to append the data to.
+        atomStruct (Atoms): The atom structure.
+        start (tuple): The starting coordinates.
+        end (tuple): The ending coordinates.
+        silence (bool): If True, suppresses progress bar.
+        nonPredictedBorderInA (int, optional): The non-predicted border in Angstroms. Defaults to 0.
+    Returns:
+        list: The updated rows list, where the entry for this structure has been appended.
+    """
     allPositions = atomStruct.get_positions()
     allPositionsShifted = allPositions - np.array([start[0], start[1], 0])
     numberOfPositionsInOneAngstrom = 5
-    silence = False
     xMaxCoord, yMaxCoord = int((end[0] - start[0]-nonPredictedBorderInA)* numberOfPositionsInOneAngstrom), int((end[1] - start[1]-nonPredictedBorderInA) * numberOfPositionsInOneAngstrom)
     xMinCoord, yMinCoord = int(nonPredictedBorderInA*numberOfPositionsInOneAngstrom), int(nonPredictedBorderInA*numberOfPositionsInOneAngstrom)
     xyes = []
     cnt = 0
-    for (x, y), atomNo in tqdm(zip(allPositionsShifted[:,0:2], atomStruct.get_atomic_numbers()), leave=False, desc = f"Going through diffraction Pattern in atoms.", total= len(allPositionsShifted), disable=True):
+    for (x, y), atomNo in tqdm(zip(allPositionsShifted[:,0:2], atomStruct.get_atomic_numbers()), leave=False, desc = f"Going through diffraction Pattern in atoms.", total= len(allPositionsShifted), disable=silence):
         xCoordinate = x*numberOfPositionsInOneAngstrom - xMinCoord
         yCoordinate = y*numberOfPositionsInOneAngstrom - yMinCoord
         
@@ -266,7 +283,7 @@ def generateXYE(datasetStructID, rows, atomStruct, start, end, silence, nonPredi
         if xCoordinate >= xMaxCoord - xMinCoord  or yCoordinate >= yMaxCoord - yMinCoord : continue
         xyes.append([xCoordinate,yCoordinate,atomNo])
         cnt += 1
-    if len(xyes) != numberOfAtomsInWindow:
+    if len(xyes) != numberOfAtomsInWindow and atomStruct == "simple":
         print("xyes", xyes)
         raise Exception("Too many/few atoms")
     xyes = np.array(xyes)
@@ -275,35 +292,90 @@ def generateXYE(datasetStructID, rows, atomStruct, start, end, silence, nonPredi
     rows.append([f"{datasetStructID}"]+list(xyes.flatten().astype(str)))    
     return rows
 
-def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,maxPooling = 1, processID = 99999, silence = False, structure = "random", fileWrite = True, difArrays = None,     start = (5,5), end = (8,8), simple = False, nonPredictedBorderInA = 0):
+def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,maxPooling = 1, processID = 99999, silence = False, 
+                          structure = "random", fileWrite = True, difArrays = None,     start = (5,5), end = (8,8), simple = False, 
+                          nonPredictedBorderInA = 0, zernike = False, lengthDifArray = None):
+    """
+    Generates all diffraction patterns for the given positions and saves them to a file.
+    Args:
+        trainOrTest (str): Indicates whether the data is saved in measurement_train or measurements_test.
+        numberOfPatterns (int): The number of diffraction patterns to generate.
+        timeStamp (int): A timestamp to be used in the file name.
+        BFDdiameter (int): The diameter of the bright field disk.
+        maxPooling (int, optional): The maximum pooling size. Defaults to 1.
+        processID (int, optional): An identifier for the process. Defaults to 99999.
+        silence (bool, optional): If True, suppresses progress bar. Defaults to False.
+        structure (str, optional): The structure type. Defaults to "random".
+        fileWrite (bool, optional): If True, writes the data to a file. Else it's output as the second return value. Defaults to True.
+        difArrays (list, optional): Takes in a list of diffraction arrays instead of calculating new ones. Defaults to None.
+        start (tuple, optional): The starting coordinates. Defaults to (5,5).
+        end (tuple, optional): The ending coordinates. Defaults to (8,8).
+        simple (bool, optional): If True, uses a simple structure. Defaults to False.
+        nonPredictedBorderInA (int, optional): The non-predicted border in Angstroms. Defaults to 0.
+        zernike (bool, optional): If True, uses Zernike polynomials. Defaults to False.
+        lengthDifArray (int, optional): The length of the diffraction array. Defaults to Full Array.
+    Returns:
+        list: A list of rows containing the generated diffraction patterns.
+        optional if fileWrite is False: numpy array of the generated diffraction patterns
+    """
     rows = []
     # rowsPixel = []
-    dim = 50
+    dimOrig = 50
+    dimNew = None
+    BFDdiameterScaled = None
 
-    if fileWrite: file = h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w')
+    if fileWrite: 
+        if not zernike:
+            file = h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w')
+        else:
+            fileName = os.path.join("..","Zernike",f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5")
+            file = h5py.File(fileName, 'w')
+            ZernikeObject = Zernike(numberOfOSAANSIMoments= 40)
+            
     else: dataArray = []
     difArrays = difArrays or (generateDiffractionArray(trainOrTest = trainOrTest, structure=structure, start=start, end=end, simple = simple, nonPredictedBorderInA=nonPredictedBorderInA) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))
     for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick, _) in enumerate(difArrays):
         datasetStructID = f"{cnt}{processID}{timeStamp}"         
 
-        difPatternsOnePosition = measurement_thick.array.copy() # type: ignore
-        difPatternsOnePosition = np.reshape(difPatternsOnePosition, (-1,difPatternsOnePosition.shape[-2], difPatternsOnePosition.shape[-1]))
+        difPatterns = measurement_thick.array.copy() # type: ignore
+        dimNew = difPatterns.shape[-2]
+        BFDdiameterScaled = int(BFDdiameter * dimNew / dimOrig)
+        difPatterns = np.reshape(difPatterns, (-1,difPatterns.shape[-2], difPatterns.shape[-1]))
+        if lengthDifArray is not None:       
+            randCoords : np.ndarray = np.random.permutation(difPatterns.shape[0])[:lengthDifArray]
+            difPatterns = difPatterns[randCoords]
         if pixelOutput:
             rows = generateAtomGridNoInterp(datasetStructID, rows, atomStruct, start, end, silence, maxPooling=maxPooling)
         else:
             rows = generateXYE(datasetStructID, rows, atomStruct, start, end, silence, nonPredictedBorderInA)
-        difPatternsOnePositionResized = []
-        for cnt, difPattern in enumerate(difPatternsOnePosition): 
-            difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(dim, dim), interpolation=cv2.INTER_LINEAR))  # type: ignore
-        
-        difPatternsOnePositionResized = np.array(difPatternsOnePositionResized)
+
+        # for cnt, difPattern in enumerate(difPatternsOnePosition): 
+        #     # difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(dim, dim), interpolation=cv2.INTER_LINEAR))  # type: ignore
+        #     difPatternsOnePositionResized.append(difPattern)
+        # difPatternsOnePositionResized = np.array(difPatternsOnePositionResized)
         # removing everything outside the bright field disk
-        indicesInBFD = slice(max((dim - BFDdiameter)//2-1,0),min((dim + BFDdiameter)//2+1, dim ))
-        difPatternsOnePositionResized = difPatternsOnePositionResized[:,indicesInBFD, indicesInBFD] 
+        indicesInBFD = slice(max((dimNew - BFDdiameterScaled)//2-1,0),min((dimNew + BFDdiameterScaled)//2+1, dimNew ))
+        difPatterns = difPatterns[:,indicesInBFD, indicesInBFD] 
+        
         # plt.imsave(os.path.join(f"measurements_{trainOrTest}",f"{datasetStructID}.png"), difPatternsOnePositionResized[0])
         
-        if fileWrite: file.create_dataset(f"{datasetStructID}", data = difPatternsOnePositionResized, compression="lzf", chunks = (1, difPatternsOnePositionResized.shape[-2], difPatternsOnePositionResized.shape[-1]), shuffle = True)
-        else: dataArray.append(difPatternsOnePositionResized)
+        if fileWrite: 
+            if not zernike:
+                file.create_dataset(f"{datasetStructID}", data = difPatterns, compression="lzf", chunks = (1, difPatterns.shape[-2], difPatterns.shape[-1]), shuffle = True)
+            else:
+                zernDifPatterns = ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = difPatterns, hdf5File = None)
+                if lengthDifArray is not None:
+                    randXCoords = (randCoords % measurement_thick.array.shape[1]).astype(int) 
+                    randYCoords = (randCoords / measurement_thick.array.shape[1]).astype(int) 
+                    padding = np.zeros_like(randXCoords)
+                    zernDifPatterns = np.concatenate((zernDifPatterns, np.stack([randXCoords - nonPredictedBorderInA * 5, randYCoords - nonPredictedBorderInA * 5, padding]).T), axis = 1)
+                file.create_dataset(f"{datasetStructID}", data = zernDifPatterns, compression="lzf", chunks = (1, zernDifPatterns.shape[-1]), shuffle = True)
+            
+        else: 
+            if not zernike:
+                dataArray.append(difPatterns)
+            else:
+                dataArray.append(ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = difPatterns, hdf5File = None))
     if fileWrite: 
         file.close()
         return rows
@@ -332,7 +404,7 @@ def createTopLineAllPositions(csvFilePath, size, maxPooling = 1):
         Writer.writerow(["fileName"]+ [f"pixelx{x}y{y}" for y in np.arange(size//maxPooling) for x in np.arange(size//maxPooling)])
         Writer = None
 
-def writeAllRows(rows, trainOrTest, XDIMTILES, YDIMTILES, processID = "", createTopRow = None, timeStamp = 0, maxPooling = 1, size = 15):
+def writeAllRows(rows, trainOrTest, XDIMTILES, YDIMTILES, processID = "", createTopRow = None, timeStamp = 0, maxPooling = 1, size = 15, zernike = False):
     """
     Writes the given rows to a CSV file.
 
@@ -347,6 +419,8 @@ def writeAllRows(rows, trainOrTest, XDIMTILES, YDIMTILES, processID = "", create
         None
     """
     csvFilePath = os.path.join(f'measurements_{trainOrTest}',f'labels_{processID}_{timeStamp}.csv')
+    if zernike: 
+        csvFilePath = os.path.join("..","Zernike",csvFilePath)
     if createTopRow is None: createTopRow = not os.path.exists(csvFilePath)
 
     if createTopRow:
@@ -381,22 +455,26 @@ if __name__ == "__main__":
     YDIMTILES = 10
     maxPooling = 1
     start = (0,0)   
-    nonPredictedBorderInA = 3
+    nonPredictedBorderInA = 7
+    zernike = True
     end = (start[0] + nonPredictedBorderInA * 2 + windowSizeInA , start[1] + nonPredictedBorderInA * 2 + windowSizeInA)
     numberOfPositionsInOneAngstrom = 5
     size = int((end[0] - start[0]) * numberOfPositionsInOneAngstrom)
     BFDdiameter = 18 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
     assert(size % maxPooling == 0)
-    testDivider = {"train":1, "test":0.25}
+    testDivider = {"train":1, "test":0.05}
     for i in tqdm(range(max(args["iterations"],1)), disable=False, desc = f"Running {args['iterations']} iterations on process {args['id']}"):
         for trainOrTest in ["train", "test"]:
             if trainOrTest not in args["trainOrTest"]:
                 continue
             print(f"PID {os.getpid()} on step {i+1} of {trainOrTest}-data at {datetime.datetime.now()}")
             timeStamp = int(str(time()).replace('.', ''))
-            rows = saveAllPosDifPatterns(trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, structure = args["structure"], start=start, end=end, maxPooling=maxPooling, simple = True, nonPredictedBorderInA=nonPredictedBorderInA)
+            rows = saveAllPosDifPatterns(trainOrTest, int(testDivider[trainOrTest]*20), timeStamp, BFDdiameter, processID=args["id"], silence=True, 
+                                         structure = args["structure"], start=start, end=end, maxPooling=maxPooling, simple = True, 
+                                         nonPredictedBorderInA=nonPredictedBorderInA, zernike=zernike, lengthDifArray= 100)
             #rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling, structure = args["structure"], start=start, end=end)
-            writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], timeStamp = timeStamp, maxPooling=maxPooling, size = size)
+            writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], 
+                         timeStamp = timeStamp, maxPooling=maxPooling, size = size, zernike=zernike)
   
     print(f"PID {os.getpid()} done.")
 

@@ -6,10 +6,8 @@ import numpy as np
 import os
 import csv
 from tqdm import tqdm
-from mahotas.features import zernike_moments
 import matplotlib.pyplot as plt
 import shutil
-from joblib import Parallel, delayed
 try:
     from ZernikePolynomials import Zernike
 except ModuleNotFoundError:
@@ -65,7 +63,7 @@ def readProgressAcrossAllRuns(path:str):
     return fileNamesDone
 
 
-def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMoments = 15, leave = True): #radius set below & noOfMoment = 10 tested works, noOfMoment = 40 optimal performance
+def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMoments = 40, leave = True): #radius set below & noOfMoment = 10 tested works, noOfMoment = 40 optimal performance
     oldDir = os.getcwd() 
     os.chdir(pathToZernikeFolder)
     ZernikeObject = None
@@ -96,14 +94,14 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMom
             with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
                 randomFileName = imageFileNames[0]
                 randomGroupOfPatterns = np.array(totalImages[randomFileName]) #this image always exists so it is easy to just use it
-                imageDim = randomGroupOfPatterns.shape[-1] 
 
             if ZernikeObject is None:
                 # diameterBFD = calc_diameter_bfd(randomImage)
                 # radius = diameterBFD//2+1
                 # if rank == 0: print(f"Calculated the following diameter for the bright field disk: {diameterBFD} and set the radius for the Zernike polynomials to {radius}. With imageDim: {imageDim} and noOfMoments: {noOfMoments}.")
-                radius = imageDim//2 #radius is half the image size because we already removed everything outside the BFD in SimulateTiles
-                ZernikeObject = Zernike(radius, noOfMoments)
+                #radius = imageDim//2 #radius is half the image size because we already removed everything outside the BFD in SimulateTiles
+                #radius is set to imageDim//2 by default in ZernikePolynomials.py
+                ZernikeObject = Zernike(noOfMoments)
             for cnt, fileName in enumerate(tqdm(imageFileNames, desc= f"Going through files in measurements_{testOrTrain}", total = totalNumberOfFiles, initial=len(fileNamesDone), leave = leave, disable = (rank != 0))):
                 if cnt%worldsize != rank:
                     continue

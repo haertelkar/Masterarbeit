@@ -2,15 +2,13 @@ import os
 from collections import OrderedDict, deque, namedtuple
 from typing import Iterator, List, Tuple
 import geomloss
-import gymnasium as gym
-from gymnasium import spaces
 from matplotlib import pyplot as plt
 import numpy as np
 import torch
-from IPython.core.display import display
 from lightning.pytorch import LightningModule
 from torch import Tensor, nn
 from torch.nn.parameter import Parameter
+from torch.nn.utils.rnn import pad_packed_sequence
 from torch.optim import Adam, Optimizer
 from Zernike.gymEnvironPtycho import ptychoEnv
 # from pytorch3d.loss import chamfer_distance
@@ -20,7 +18,7 @@ import itertools
 from torchmetrics import StructuralSimilarityIndexMeasure
 
 device = "cuda"
-grid_size_in_A = 16
+grid_size_in_A = 3
 grid_size = grid_size_in_A*5
 
 pixelOutput = False
@@ -38,7 +36,7 @@ else:
 
 
 class preCompute(nn.Module):
-    def __init__(self, obs_size : int = 0, hidden_size: int = 1024):
+    def __init__(self, obs_size : int = 0, hidden_size: int = 2048):
         """Simple network that takes the Zernike moments and the last prediction as input and outputs a probability like map of atom positions.
 
         Args:
@@ -52,10 +50,11 @@ class preCompute(nn.Module):
         self.gru = nn.GRU(input_size=obs_size, hidden_size=hidden_size, num_layers=5, batch_first=True)
         self.hidden_state = None
 
-    def forward(self, zernikeValues_and_Pos) -> Tensor:
+    def forward(self, zernikeValues_and_Pos, _ = None) -> Tensor:
         y , x = self.gru(zernikeValues_and_Pos) 
-        #y = y.permute(1, 0, 2)
-        y = y[:,-1,:]
+        x = x.transpose(0, 1).reshape((zernikeValues_and_Pos.shape[0], -1))
+
+
         # if self.hidden_state is None:
         #     y, hidden_state  = self.gru(zernikeValues_and_Pos)
         #     self.hidden_state = hidden_state.detach()
@@ -63,7 +62,7 @@ class preCompute(nn.Module):
         #     y, hidden_state  = self.gru(zernikeValues_and_Pos, self.hidden_state)
         #     self.hidden_state = hidden_state.detach()
 
-        return  y
+        return  x
 
 class preComputeTransformer(nn.Module):
     def __init__(self, obs_size : int = 0, hidden_size: int = 1024):
@@ -77,7 +76,7 @@ class preComputeTransformer(nn.Module):
         super().__init__()
         
         self.cls_token = Parameter(torch.randn(1, 1, obs_size))  # Learnable CLS token
-        self.transformerEncode = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=obs_size, nhead=16, dim_feedforward=hidden_size, batch_first=True), num_layers=5)
+        self.transformerEncode = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=obs_size, nhead=8, dim_feedforward=hidden_size, batch_first=True), num_layers=5)
 
     def forward(self, zernikeValues_and_Pos, mask = None) -> Tensor:
         batch_size = zernikeValues_and_Pos.shape[0]
