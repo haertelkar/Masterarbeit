@@ -11,14 +11,14 @@ import faulthandler
 import signal
 from tqdm import tqdm
 from FullPixelGridML.CNNFullNN import TwoPartLightningCNN
-from Zernike.dqn import preCompute, TwoPartLightning
+from Zernike.ScansToAtomsPosNN import preCompute, TwoPartLightning
 from datasets import ptychographicDataLightning
 import torch.nn.functional as F
 import lightning.pytorch as pl
 from lightning.pytorch.callbacks import StochasticWeightAveraging
 from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.tuner.tuning import Tuner
-from deepspeed.ops.adam import DeepSpeedCPUAdam
+from lightning.pytorch.callbacks.callback import Callback
 from torch import nn
 from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.plugins.environments import SLURMEnvironment as SLURMEnvironment # type: ignore
@@ -175,11 +175,11 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		if modelString and modelString not in modelName:
 			continue
 		# if modelName == "DQN": 
-		if "FullPixelGridML" in modelName:
-			lightnModel = TwoPartLightningCNN()
-		elif "DQN" in modelName:
-			lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions)
-		batch_size = 512
+		# if "FullPixelGridML" in modelName:
+		# 	lightnModel = TwoPartLightningCNN()
+		# elif "DQN" in modelName:
+		lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions)
+		batch_size = 128
 		
 		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size, weighted = False, numberOfPositions = numberOfPositions)
 		lightnDataLoader.setup()
@@ -199,8 +199,9 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 			checkPointExists = True
 		checkpoint_callback = ModelCheckpoint(dirpath=chkpPath, save_top_k=1, monitor="val_loss")
 		#profiler = AdvancedProfiler(dirpath=".", filename=f"perf_logs_{modelName}_{version}")
-		callbacks=[checkpoint_callback]#,early_stop_callback]
-		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", log_graph=True,name=f"{modelName}_{version}"),max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=callbacks, log_every_n_steps=1)
+		callbacks : list[Callback] = [checkpoint_callback]#,early_stop_callback]
+		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", log_graph=True,name=f"{modelName}_{version}"),
+					   max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=callbacks, log_every_n_steps=1)
 		if checkPointExists:
 			new_lr = 1e-4
 			lightnModel.lr = new_lr
