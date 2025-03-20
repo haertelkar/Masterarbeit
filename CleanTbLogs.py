@@ -28,4 +28,4 @@ def remove_small_folders(path, size_limit_kb):
 
 if __name__ == "__main__":
     directory_path = "tb_logs"
-    remove_small_folders(directory_path, 20)
+    remove_small_folders(directory_path, 270)
