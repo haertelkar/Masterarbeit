@@ -7,10 +7,10 @@ from rowsIndexToHeader import rowsIndexToHeader
 from torch.utils.data import Dataset
 import torch
 import os
-import lightning.pytorch as pl
+import lightning as L
 import h5py
 from torch.utils.data import random_split, DataLoader, WeightedRandomSampler
-from torch.nn.utils.rnn import pad_sequence
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
 
 def collate_fn(batch):
     sequences, labels = zip(*batch)  # Separate data and labels
@@ -23,7 +23,20 @@ def collate_fn(batch):
 
     return padded_sequences, torch.stack(labels), mask
 
-class ptychographicDataLightning(pl.LightningDataModule):
+def collate_fn_gru(batch):
+	sequences, labels = zip(*batch)  # Separate data and labels
+	sequence_lengths = torch.tensor([len(seq) for seq in sequences])
+    # Pad sequences to the longest length in batch
+	padded_sequences = pad_sequence(sequences, batch_first=True, padding_value=0.0)
+	pack_padded_sequence(padded_sequences.unsqueeze(-1).float(), 
+                                    sequence_lengths, batch_first=True, enforce_sorted=False)
+	return padded_sequences, torch.stack(labels), torch.zeros((1,1))
+
+
+
+colFun = collate_fn
+
+class ptychographicDataLightning(L.LightningDataModule):
 	def __init__(self, model_name, batch_size = 1024, num_workers = 20, classifier = False, indicesToPredict = None, labelFile = "labels.csv", testDirectory = "measurements_test", onlyTest = False, weighted  = True, numberOfPositions = 9):
 		super().__init__()
 		self.batch_size = batch_size
@@ -102,17 +115,17 @@ class ptychographicDataLightning(pl.LightningDataModule):
 	
 	def train_dataloader(self) -> TRAIN_DATALOADERS:
 		if self.weights is None: 
-			return DataLoader(self.train_dataset,  batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, drop_last=True, shuffle=True, collate_fn=collate_fn)
+			return DataLoader(self.train_dataset,  batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, drop_last=True, shuffle=True, collate_fn=colFun)
 		else:
 			samples_weight = self.weights
 			sampler = WeightedRandomSampler(samples_weight, self.numTrainSamples)
-			return DataLoader(self.train_dataset, shuffle=False, batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, sampler = sampler, drop_last=True, collate_fn=collate_fn)
+			return DataLoader(self.train_dataset, shuffle=False, batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, sampler = sampler, drop_last=True, collate_fn=colFun)
 	
 	def val_dataloader(self) -> EVAL_DATALOADERS:
-		return DataLoader(self.val_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True, collate_fn=collate_fn)
+		return DataLoader(self.val_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True, collate_fn=colFun)
 
 	def test_dataloader(self) -> EVAL_DATALOADERS:
-		return DataLoader(self.test_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True, collate_fn=collate_fn)
+		return DataLoader(self.test_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True, collate_fn=colFun)
 
 class ptychographicData(Dataset):
 	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors = None, shift = None, labelIndicesToPredict = None, classifier = False, numberOfPositions = 9):
@@ -128,7 +141,7 @@ class ptychographicData(Dataset):
 		self.classifier = classifier
 		self.scalingFactors = None
 		self.shift = None
-		self.dataPath = os.path.join(self.img_dir, f"training_data_{numberOfPositions}.hdf5")
+		self.dataPath = os.path.join(self.img_dir, f"training_data.hdf5")
 		self.dataset = None
 		self.numberOfPositions = numberOfPositions
 
@@ -155,7 +168,8 @@ class ptychographicData(Dataset):
 	def __getitem__(self, idx):
 		label = self.getLabel(idx)
 		imageOrZernikeMomentsWithCoordsAndPad = self.getImageOrZernike(idx)
-		return imageOrZernikeMomentsWithCoordsAndPad , label
+		length = min(len(imageOrZernikeMomentsWithCoordsAndPad), 100)
+		return imageOrZernikeMomentsWithCoordsAndPad[:length] , label
 		#print(f"data type: {imageOrZernikeMoments}, data size: {np.shape(imageOrZernikeMoments)}")
 		#return imageOrZernikeMoments, label
 	
@@ -195,13 +209,13 @@ class ptychographicData(Dataset):
 		return torch.as_tensor(np.array(label))
 
 	def getImageOrZernike(self, idx):
-		datasetStructIDWithCoords = self.image_names[idx]
+		datasetStructID = self.image_names[idx]
 		# with h5py.File(self.dataPath,'r') as data:
 		# 	imageOrZernikeMoments = np.array(data.get(datasetStructIDWithCoords)).astype('float32')
 		if self.dataset is None:
 			self.dataset = h5py.File(self.dataPath,'r')
 		
-		imageOrZernikeMoments = np.array(self.dataset.get(datasetStructIDWithCoords)).astype('float32')	
+		imageOrZernikeMoments = np.array(self.dataset.get(datasetStructID)).astype('float32')	
 		if self.transform:
 			imageOrZernikeMoments = self.transform(imageOrZernikeMoments) #not scaled here because it has to be datatype uint8 to be scaled automatically
 		return imageOrZernikeMoments
