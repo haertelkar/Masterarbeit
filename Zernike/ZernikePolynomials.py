@@ -3,7 +3,6 @@ from scipy.special import factorial
 import matplotlib.pyplot as plt
 import os
 import h5py
-import numexpr as ne
 from numba import njit
 
 @njit
@@ -11,11 +10,9 @@ def njitcalculateZernikeWeights(basis, image):
     return np.sum(basis[:,:,:]* image[np.newaxis,:,:], axis = (1,2)).flatten()
 
 class Zernike(object):
-    def __init__(self,maxR, numberOfOSAANSIMoments:int):
-        self.maxR = maxR + 0.5
+    def __init__(self,numberOfOSAANSIMoments:int):
         self.numberOfOSAANSIMoments = numberOfOSAANSIMoments
-        self.dx = 1/self.maxR
-        self.dy = self.dx
+
         # self.indexXNonZero = None
         # self.indexYNonZero = None
         self.dimToBasis = {
@@ -71,34 +68,36 @@ class Zernike(object):
         return np.sum(basis[:,:,:]* image[np.newaxis,:,:], axis = (1,2)).flatten()
 
     
-    def zernikeTransform(self, fileName, groupOfPatterns, zernikeTotalImages, shapeOfMomentsAllCoords = None):
+    def zernikeTransform(self, dataSetName, groupOfPatterns, hdf5File, radius = None, shapeOfMomentsAllCoords = None):
         assert(len(np.shape(groupOfPatterns)) == 3)
-        moments = np.zeros((len(groupOfPatterns)* self.resultVectorLength),dtype=np.float32)
+        moments = np.zeros((len(groupOfPatterns), self.resultVectorLength),dtype=np.float32)
         dim = np.shape(groupOfPatterns)[-1]
+        if radius is None:
+            radius = dim//2
         for cnt, im in enumerate(groupOfPatterns):
             if self.dimToBasis.get(dim) is None:
-                basisObject = self.basisObject(self, dim)
+                basisObject = self.basisObject(self, dim, maxR=radius)
                 self.dimToBasis[dim] = basisObject.basis.copy()
             basis = self.dimToBasis[dim]
             # if not np.any(im):
             #     #most diffraction patterns are left empty, so this is a good optimization
             #     continue
             # else:
-            moments[cnt*self.resultVectorLength:(cnt+1)*self.resultVectorLength] = self.calculateZernikeWeights(basis, im) #before: scaled up with 10e3 so it's more useful
-
+            moments[cnt] = self.calculateZernikeWeights(basis, im) 
         
-        if fileName is not None:
-            zernikeTotalImages.create_dataset(fileName, data = moments, compression="lzf", chunks = moments.shape, shuffle = True)
-        else:
-            return moments
+        if dataSetName is not None:
+            hdf5File.create_dataset(dataSetName, data = moments, compression="lzf", chunks = moments.shape, shuffle = True)
+        return moments
         
            
-    def zernikeTransformVectorized(self, fileName, groupOfPatterns, zernikeTotalImages, shapeOfMomentsAllCoords = None):
+    def zernikeTransformVectorized(self, fileName, groupOfPatterns, zernikeTotalImages, radius =None, shapeOfMomentsAllCoords = None):
         #Slower for some weird reason
         assert(len(np.shape(groupOfPatterns)) == 3)
         dim = np.shape(groupOfPatterns)[-1]
+        if radius is None:
+            radius = dim//2
         if self.dimToBasis.get(dim) is None:
-            basisObject = self.basisObject(self, dim)
+            basisObject = self.basisObject(self, dim, maxR=radius)
             self.dimToBasis[dim] = basisObject.basis.copy()
         basis = self.dimToBasis[dim]
         moments = self.calculateZernikeWeightsOnWholeGroup(basis, groupOfPatterns)
@@ -113,14 +112,17 @@ class Zernike(object):
 
     
     class basisObject:
-        def __init__(self, ZernikeObject, pixelsDim):
+        def __init__(self, ZernikeObject, pixelsDim, maxR):
+            self.maxR = maxR
+            self.dx = 1/self.maxR
+            self.dy = self.dx
             self.ZernikeObject = ZernikeObject
             self.pixelsDim = pixelsDim
             self.center = np.array([pixelsDim/2 - 1,pixelsDim/2 - 1])
             self.rGrid = np.zeros((pixelsDim,pixelsDim))
             self.angleGrid = np.copy(self.rGrid)
-            self.ZernikeObject.indexXNonZero = slice(max(int(pixelsDim//2 - self.ZernikeObject.maxR),0), min(int(pixelsDim//2 + self.ZernikeObject.maxR), int(pixelsDim)))
-            self.ZernikeObject.indexYNonZero = self.ZernikeObject.indexXNonZero
+            # self.ZernikeObject.indexXNonZero = slice(max(int(pixelsDim//2 - self.maxR),0), min(int(pixelsDim//2 + self.maxR), int(pixelsDim)))
+            # self.ZernikeObject.indexYNonZero = self.ZernikeObject.indexXNonZero
 
             for x in range(pixelsDim):
                 for y in range(pixelsDim):
@@ -167,12 +169,12 @@ class Zernike(object):
             rValuesInput = rValuesInput if rValuesInput is not None else self.rGrid
             rValues = rValuesInput.copy()
             rValues = rValues.flatten()
-            rMatrix = np.power(rValues[:,None]/self.ZernikeObject.maxR,n-2*k)
-            rMatrix[rValues > self.ZernikeObject.maxR, :] = 0 #set everything outside a specified radius to zero
+            rMatrix = np.power(rValues[:,None]/self.maxR,n-2*k)
+            rMatrix[rValues > self.maxR, :] = 0 #set everything outside a specified radius to zero
             rVector = rMatrix @ summationTerms
             normalizationFactor = np.sqrt(2*(n+1)) if m else np.sqrt(n+1) #per https://iopscience.iop.org/article/10.1088/2040-8986/ac9e08
             rVector = rVector.reshape(np.shape(rValuesInput)) * normalizationFactor
-            assert(not (rVector[rValuesInput > self.ZernikeObject.maxR]).any())
+            assert(not (rVector[rValuesInput > self.maxR]).any())
             return rVector
         
         def OSAANSIIndexToMNIndex(self, OSAANSIIndex:int):
