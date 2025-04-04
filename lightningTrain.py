@@ -10,7 +10,6 @@ import torch
 import faulthandler
 import signal
 from tqdm import tqdm
-from FullPixelGridML.CNNFullNN import TwoPartLightningCNN
 from Zernike.ScansToAtomsPosNN import preCompute, TwoPartLightning
 from datasets import ptychographicDataLightning
 import torch.nn.functional as F
@@ -199,9 +198,9 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 			checkPointExists = True
 		checkpoint_callback = ModelCheckpoint(dirpath=chkpPath, save_top_k=1, monitor="val_loss")
 		#profiler = AdvancedProfiler(dirpath=".", filename=f"perf_logs_{modelName}_{version}")
-		callbacks : list[Callback] = [checkpoint_callback]#,early_stop_callback]
+		# callbacks : list[Callback] = [checkpoint_callback]#,early_stop_callback]
 		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", log_graph=True,name=f"{modelName}_{version}"),
-					   max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, callbacks=callbacks, log_every_n_steps=1)
+					   max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, log_every_n_steps=1)
 		if checkPointExists:
 			new_lr = 1e-4
 			lightnModel.lr = new_lr
