@@ -178,7 +178,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		# 	lightnModel = TwoPartLightningCNN()
 		# elif "DQN" in modelName:
 		lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions)
-		batch_size = 128
+		batch_size = 512
 		
 		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size, weighted = False, numberOfPositions = numberOfPositions)
 		lightnDataLoader.setup()
@@ -198,9 +198,9 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 			checkPointExists = True
 		checkpoint_callback = ModelCheckpoint(dirpath=chkpPath, save_top_k=1, monitor="val_loss")
 		#profiler = AdvancedProfiler(dirpath=".", filename=f"perf_logs_{modelName}_{version}")
-		# callbacks : list[Callback] = [checkpoint_callback]#,early_stop_callback]
-		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", log_graph=True,name=f"{modelName}_{version}"),
-					   max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, log_every_n_steps=1)
+		callbacks : list[Callback] = [checkpoint_callback]#,early_stop_callback]
+		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", log_graph=False,name=f"{modelName}_{version}"),
+					   max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, log_every_n_steps=1, callbacks=callbacks)
 		if checkPointExists:
 			new_lr = 1e-4
 			lightnModel.lr = new_lr
