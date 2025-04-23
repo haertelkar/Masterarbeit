@@ -6,6 +6,7 @@ from ase.io import read
 from ase.build import surface, mx2, graphene
 from ase.geometry import get_distances
 # from abtem.potentials import Potential
+import dask
 import matplotlib.pyplot as plt
 from abtem.waves import Probe
 import numpy as np
@@ -16,6 +17,8 @@ from abtem import Potential, FrozenPhonons, Probe
 from abtem.transfer import CTF, scherzer_defocus, point_resolution, energy2wavelength
 from abtem.scan import GridScan
 from abtem import orthogonalize_cell, PixelatedDetector, GridScan
+from abtem.measurements import BaseMeasurements, DiffractionPatterns
+
 import abtem
 import torch
 from tqdm import tqdm
@@ -36,16 +39,21 @@ faulthandler.register(signal.SIGUSR1.value)
 import sys
 
 # setting path
-sys.path.append(os.path.abspath('../Zernike'))
+sys.path.append("/data/scratch/haertelk/Masterarbeit/Zernike")
 from ZernikePolynomials import Zernike 
+# from dask_mpi import initialize
+# initialize()
 
-
+# from dask.distributed import Client
+# client = Client()
+# abtem.config.set({"dask.chunk-size-gpu" : "512 MB"})
+# abtem.config.set({"device": "gpu"})
 # from hanging_threads import start_monitoring
 # monitoring_thread = start_monitoring(seconds_frozen=60, test_interval=100)
+# dask.config.set({"num_workers": 1})
+# abtem.config.set({"cupy.fft-cache-size" : "1024 MB"})
+# device = "gpu"#"gpu" if torch.cuda.is_available() else "cpu"
 
-
-device = "gpu" if torch.cuda.is_available() else "cpu"
-print(f"Calculating on {device}")
 windowSizeInA = 3 #every 5th A is a scan (probe radius is 5A), should be at least 3 in a window
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
@@ -186,10 +194,14 @@ def createStructure(xlen, ylen, specificStructure : str = "random", trainOrTest 
             structFinished = moveAndRotateAtomsAndOrthogonalizeAndRepeat(struct, xlen, ylen) 
     return nameStruct, structFinished
 
-def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3, structure = "random", pbar = False, start = (5,5), end = (20,20), simple = False, nonPredictedBorderInA = 0) -> Tuple[str, Tuple[float, float], Atoms, Measurement, Potential]:
+def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3, 
+                             structure = "random", pbar = False, 
+                             start = (5,5), end = (20,20), simple = False,
+                             nonPredictedBorderInA = 0, device = "gpu",
+                             deviceAfter = "gpu") -> Tuple[str, Tuple[float, float], Atoms, BaseMeasurements, Potential]:
     xlen_structure = end[0] + start[0]
     ylen_structure = end[1] + end[0]
-
+    # print(f"Calculating on {device}")
     nameStruct, atomStruct = createStructure(xlen_structure, ylen_structure, specificStructure= structure, trainOrTest = trainOrTest, simple=simple, nonPredictedBorderInA = nonPredictedBorderInA, start=start)
     try:
         potential_thick = Potential(
@@ -212,7 +224,7 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
         #print(f"FWHM = {probe.profiles().width().compute()} Å")
         probe.match_grid(potential_thick)
 
-        pixelated_detector = PixelatedDetector(max_angle=100,resample = "uniform")
+        pixelated_detector = PixelatedDetector(max_angle=100)
 
         
 
@@ -222,8 +234,14 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
         gridscan = GridScan(
             start = start, end = end, sampling=gridSampling
         )
-        measurement_thick = probe.scan(potential_thick, gridscan, pixelated_detector, lazy = False)
-        measurement_thick = measurement_thick.poisson_noise( 1e6) # type: ignore
+        measurement_thick = probe.scan(potential_thick, gridscan, pixelated_detector)
+        measurement_thick : BaseMeasurements= measurement_thick.poisson_noise( 1e6) # type: ignore
+        if deviceAfter == "gpu":
+            pass
+            # measurement_thick = measurement_thick.compute()
+        elif deviceAfter == "cpu":
+            measurement_thick = measurement_thick.to_cpu()
+
 
         # plt.imsave("difPattern.png", measurement_thick.array[0,0])
         #TODO: add noise
@@ -292,9 +310,29 @@ def generateXYE(datasetStructID, rows, atomStruct, start, end, silence = True, n
     rows.append([f"{datasetStructID}"]+list(xyes.flatten().astype(str)))    
     return rows
 
+def generate_sparse_grid(x_size, y_size, s, xStartShift = 0, yStartShift = 0, xEndShift = 0, yEndShift = 0, twoD = False):
+    """
+    Generates a 1D array of flattened sparse grid coordinates.
+
+    Parameters:
+        x_size (int): X size.
+        y_size (int): Y size.
+        s (int): Sparseness level (step size between coordinates).
+
+    Returns:
+        List of coordinates representing flattened sparse grid coordinates.
+    """
+    assert(xStartShift >= 0)
+    assert(yStartShift >= 0)
+    assert(xEndShift <= 0)
+    assert(yEndShift <= 0)
+    if twoD:
+        return [[x, y] for x in range(xStartShift, x_size + xEndShift, s) for y in range(yStartShift, y_size + yEndShift, s)]
+    return [x * y_size + y for x in range(xStartShift, x_size + xEndShift, s) for y in range(yStartShift, y_size + yEndShift, s)]
+
 def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,maxPooling = 1, processID = 99999, silence = False, 
                           structure = "random", fileWrite = True, difArrays = None,     start = (5,5), end = (8,8), simple = False, 
-                          nonPredictedBorderInA = 0, zernike = False, lengthDifArray = None):
+                          nonPredictedBorderInA = 0, zernike = False, initialCoords = None):
     """
     Generates all diffraction patterns for the given positions and saves them to a file.
     Args:
@@ -313,7 +351,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         simple (bool, optional): If True, uses a simple structure. Defaults to False.
         nonPredictedBorderInA (int, optional): The non-predicted border in Angstroms. Defaults to 0.
         zernike (bool, optional): If True, uses Zernike polynomials. Defaults to False.
-        lengthDifArray (int, optional): The length of the diffraction array. Defaults to Full Array.
+        positions (list, optional): A list of positions to use. Or use "calculate" to calculate positions. Defaults to None.
     Returns:
         list: A list of rows containing the generated diffraction patterns.
         optional if fileWrite is False: numpy array of the generated diffraction patterns
@@ -323,6 +361,8 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
     dimOrig = 50
     dimNew = None
     BFDdiameterScaled = None
+    nonPredictedBorderInCoords = nonPredictedBorderInA * 5
+    windowLengthinCoords = windowSizeInA * 5
 
     if fileWrite: 
         if not zernike:
@@ -330,52 +370,70 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         else:
             fileName = os.path.join("..","Zernike",f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5")
             file = h5py.File(fileName, 'w')
-            ZernikeObject = Zernike(numberOfOSAANSIMoments= 40)
-            
     else: dataArray = []
+    ZernikeObject = Zernike(numberOfOSAANSIMoments= 40)
+            
+    
     difArrays = difArrays or (generateDiffractionArray(trainOrTest = trainOrTest, structure=structure, start=start, end=end, simple = simple, nonPredictedBorderInA=nonPredictedBorderInA) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))
-    for cnt, (nameStruct, gridSampling, atomStruct, measurement_thick, _) in enumerate(difArrays):
+    for cnt, (_, _, atomStruct, measurement_thick, _) in enumerate(difArrays):
         datasetStructID = f"{cnt}{processID}{timeStamp}"         
 
-        difPatterns = measurement_thick.array.copy() # type: ignore
-        dimNew = difPatterns.shape[-2]
+        difPatterns = measurement_thick.array#.copy() # type: ignore
+        dimNew = min(difPatterns.shape[-2],  difPatterns.shape[-1])
         BFDdiameterScaled = int(BFDdiameter * dimNew / dimOrig)
         difPatterns = np.reshape(difPatterns, (-1,difPatterns.shape[-2], difPatterns.shape[-1]))
-        if lengthDifArray is not None:       
-            randCoords : np.ndarray = np.random.permutation(difPatterns.shape[0])[:lengthDifArray]
-            difPatterns = difPatterns[randCoords]
+        # print(measurement_thick.array.shape)
+        # exit()
+        if initialCoords is None:
+            sparseGridFactor = 14
+            MaxShift = nonPredictedBorderInCoords - windowLengthinCoords//2  
+            #is 42 so it is divisible by 14 -> 4 x 4 positions are covered at the least
+            xShift = randint(-MaxShift, MaxShift)
+            yShift = randint(-MaxShift, MaxShift)
+            xStartShift = max(0, xShift)
+            yStartShift = max(0, yShift)
+            xEndShift = min(xShift, 0 )
+            yEndShift = min(yShift, 0)
+            choosenCoords : np.ndarray = np.array(generate_sparse_grid(measurement_thick.array.shape[0], measurement_thick.array.shape[1], sparseGridFactor, xStartShift=xStartShift, yStartShift=yStartShift, xEndShift=xEndShift,yEndShift=yEndShift))
+        else:
+            choosenCoords = initialCoords                                                                                                                
+
+        difPatterns = difPatterns[choosenCoords].compute()
         if pixelOutput:
             rows = generateAtomGridNoInterp(datasetStructID, rows, atomStruct, start, end, silence, maxPooling=maxPooling)
         else:
             rows = generateXYE(datasetStructID, rows, atomStruct, start, end, silence, nonPredictedBorderInA)
-
-        # for cnt, difPattern in enumerate(difPatternsOnePosition): 
-        #     # difPatternsOnePositionResized.append(cv2.resize(np.array(difPattern), dsize=(dim, dim), interpolation=cv2.INTER_LINEAR))  # type: ignore
+        difPatternsResized = []
+        for cnt, difPattern in enumerate(difPatterns): 
+            difPatternsResized.append(cv2.resize(difPattern, dsize=(dimNew, dimNew), interpolation=cv2.INTER_LINEAR))  # type: ignore
+        difPatternsResized = np.array(difPatternsResized)
         #     difPatternsOnePositionResized.append(difPattern)
         # difPatternsOnePositionResized = np.array(difPatternsOnePositionResized)
         # removing everything outside the bright field disk
         indicesInBFD = slice(max((dimNew - BFDdiameterScaled)//2-1,0),min((dimNew + BFDdiameterScaled)//2+1, dimNew ))
-        difPatterns = difPatterns[:,indicesInBFD, indicesInBFD] 
+        difPatternsResized = difPatternsResized[:,indicesInBFD, indicesInBFD] 
         
         # plt.imsave(os.path.join(f"measurements_{trainOrTest}",f"{datasetStructID}.png"), difPatternsOnePositionResized[0])
         
         if fileWrite: 
             if not zernike:
-                file.create_dataset(f"{datasetStructID}", data = difPatterns, compression="lzf", chunks = (1, difPatterns.shape[-2], difPatterns.shape[-1]), shuffle = True)
+                file.create_dataset(f"{datasetStructID}", data = difPatternsResized, compression="lzf", chunks = (1, difPatterns.shape[-2], difPatterns.shape[-1]), shuffle = True)
             else:
-                zernDifPatterns = ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = difPatterns, hdf5File = None)
-                if lengthDifArray is not None:
-                    randXCoords = (randCoords % measurement_thick.array.shape[1]).astype(int) 
-                    randYCoords = (randCoords / measurement_thick.array.shape[1]).astype(int) 
-                    padding = np.zeros_like(randXCoords)
-                    zernDifPatterns = np.concatenate((zernDifPatterns, np.stack([randXCoords - nonPredictedBorderInA * 5, randYCoords - nonPredictedBorderInA * 5, padding]).T), axis = 1)
+                zernDifPatterns = ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = difPatternsResized, hdf5File = None)
+                choosenXCoords = (choosenCoords % measurement_thick.array.shape[1]).astype(int) 
+                choosenYCoords = (choosenCoords / measurement_thick.array.shape[1]).astype(int)
+                padding = np.zeros_like(choosenXCoords)
+                zernDifPatterns = np.concatenate((zernDifPatterns, np.stack([choosenXCoords - nonPredictedBorderInCoords, choosenYCoords - nonPredictedBorderInCoords, padding]).T), axis = 1)
+                
                 file.create_dataset(f"{datasetStructID}", data = zernDifPatterns, compression="lzf", chunks = (1, zernDifPatterns.shape[-1]), shuffle = True)
             
         else: 
             if not zernike:
-                dataArray.append(difPatterns)
+                dataArray.append(difPatternsResized)
             else:
-                dataArray.append(ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = difPatterns, hdf5File = None))
+                zernDifPatterns = ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = difPatternsResized, hdf5File = None)
+                dataArray.append(zernDifPatterns)
+                #IMPORTANT: The coords are not appended here. This is done later during reconstruction
     if fileWrite: 
         file.close()
         return rows
@@ -471,7 +529,7 @@ if __name__ == "__main__":
             timeStamp = int(str(time()).replace('.', ''))
             rows = saveAllPosDifPatterns(trainOrTest, int(testDivider[trainOrTest]*20), timeStamp, BFDdiameter, processID=args["id"], silence=True, 
                                          structure = args["structure"], start=start, end=end, maxPooling=maxPooling, simple = True, 
-                                         nonPredictedBorderInA=nonPredictedBorderInA, zernike=zernike, lengthDifArray= 100)
+                                         nonPredictedBorderInA=nonPredictedBorderInA, zernike=zernike)
             #rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling, structure = args["structure"], start=start, end=end)
             writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], 
                          timeStamp = timeStamp, maxPooling=maxPooling, size = size, zernike=zernike)
