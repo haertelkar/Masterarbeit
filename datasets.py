@@ -87,7 +87,6 @@ class ptychographicDataLightning(L.LightningDataModule):
 					os.path.abspath(os.path.join(folderName,self.testDirectory, self.labelFile)), 
 					os.path.abspath(os.path.join(folderName,self.testDirectory)), transform=torch.as_tensor,
 					target_transform=None,#torch.as_tensor,
-					scalingFactors = self.train_dataset.scalingFactors, 
 					shift = self.train_dataset.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions
 				)
 		# initialize the train, validation, and test data loaders
@@ -128,7 +127,7 @@ class ptychographicDataLightning(L.LightningDataModule):
 		return DataLoader(self.test_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True, collate_fn=colFun)
 
 class ptychographicData(Dataset):
-	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, scalingFactors = None, shift = None, labelIndicesToPredict = None, classifier = False, numberOfPositions = 9):
+	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, shift = None, labelIndicesToPredict = None, classifier = False, numberOfPositions = 9):
 		img_labels_pd = pd.read_csv(annotations_file).dropna()
 		self.image_labels = img_labels_pd[img_labels_pd.columns[1:]].to_numpy('float32')
 		self.image_names = img_labels_pd[img_labels_pd.columns[0]].astype(str)
@@ -139,17 +138,27 @@ class ptychographicData(Dataset):
 		self.labelIndicesToPredict = labelIndicesToPredict
 		self.scalerZernike = 1
 		self.classifier = classifier
-		self.scalingFactors = None
+		with open('Zernike/stdValues.csv', 'r') as file:
+			line = file.readline()
+			self.stdValues = [float(x.strip()) for x in line.split(',') if x.strip()]
+			self.stdValuesArray = np.array(self.stdValues[:-3] + [1,1,1])
+		with open('Zernike/meanValues.csv', 'r') as file:
+			line = file.readline()
+			self.meanValues = [float(x.strip()) for x in line.split(',') if x.strip()]
+			self.meanValuesArray : np.ndarray = np.array(self.meanValues[:-3] + [0,0,0])
 		self.shift = None
 		self.dataPath = os.path.join(self.img_dir, f"training_data.hdf5")
 		self.dataset = None
 		self.numberOfPositions = numberOfPositions
+		self.numberOfZernikeMoments  = 40
+		self.zernikeLength = self.zernikeLengthCalc()
+		print(f"Loading {self.dataPath} with {len(self.image_labels)} zernike data. The data is using {self.numberOfZernikeMoments} zernike moments (length = {self.zernikeLength}) and a maximum of {self.numberOfPositions} positions.")
 
 		#removed option to classify
 		#removed option to select labels to predict
 		assert(self.labelIndicesToPredict is None and not self.classifier)
 
-		assert(not(labelIndicesToPredict is 0))
+		assert(labelIndicesToPredict != 0)
 		if isinstance(labelIndicesToPredict, list):
 			assert(0 not in labelIndicesToPredict)
 		
@@ -159,7 +168,16 @@ class ptychographicData(Dataset):
 		# 	assert(type(labelIndicesToPredict) != list)
 		# 	self.smallestElem = self.img_labels.iloc[:, labelIndicesToPredict].min()
 		# 	self.numberOfClasses = self.img_labels.iloc[:, labelIndicesToPredict].max() - self.smallestElem + 1
-			
+	def zernikeLengthCalc(self):
+		resultVectorLength = 0 
+		numberOfOSAANSIMoments = self.numberOfZernikeMoments
+		for n in range(numberOfOSAANSIMoments + 1):
+			for mShifted in range(2*n+1):
+				m = mShifted - n
+				if (n-m)%2 != 0:
+					continue
+				resultVectorLength += 1
+		return resultVectorLength		
 
 	def __len__(self):
 		file_count = len(self.image_labels)
@@ -168,8 +186,9 @@ class ptychographicData(Dataset):
 	def __getitem__(self, idx):
 		label = self.getLabel(idx)
 		imageOrZernikeMomentsWithCoordsAndPad = self.getImageOrZernike(idx)
-		length = min(len(imageOrZernikeMomentsWithCoordsAndPad), 100)
-		return imageOrZernikeMomentsWithCoordsAndPad[:length] , label
+		# print(imageOrZernikeMomentsWithCoordsAndPad)
+		# length = min(len(imageOrZernikeMomentsWithCoordsAndPad), 100)
+		return imageOrZernikeMomentsWithCoordsAndPad , label
 		#print(f"data type: {imageOrZernikeMoments}, data size: {np.shape(imageOrZernikeMoments)}")
 		#return imageOrZernikeMoments, label
 	
@@ -214,8 +233,17 @@ class ptychographicData(Dataset):
 		# 	imageOrZernikeMoments = np.array(data.get(datasetStructIDWithCoords)).astype('float32')
 		if self.dataset is None:
 			self.dataset = h5py.File(self.dataPath,'r')
-		
-		imageOrZernikeMoments = np.array(self.dataset.get(datasetStructID)).astype('float32')	
+		try:
+			imageOrZernikeMoments = np.array(self.dataset[datasetStructID])	
+		except KeyError:
+			imageOrZernikeMoments = np.array(self.dataset["0" + datasetStructID]) #sometimes the leading zero goes missing
+		except OSError as e:
+			print(e)
+			raise Exception(f"OSError: {datasetStructID} in {self.dataPath}")
+		imageOrZernikeMoments = (imageOrZernikeMoments - self.meanValuesArray[np.newaxis,:]) / self.stdValuesArray[np.newaxis,:]
+		imageOrZernikeMoments = imageOrZernikeMoments.astype('float32')
+		if self.numberOfZernikeMoments != 40:
+			imageOrZernikeMoments = np.delete(imageOrZernikeMoments, np.s_[self.zernikeLength + 1,-3], axis=1) #remove the higher order zernike moments but keep x,y and padding
 		if self.transform:
 			imageOrZernikeMoments = self.transform(imageOrZernikeMoments) #not scaled here because it has to be datatype uint8 to be scaled automatically
 		return imageOrZernikeMoments
