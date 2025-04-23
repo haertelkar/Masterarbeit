@@ -10,7 +10,7 @@ import cv2
 from matplotlib import pyplot as plt
 import torch
 from tqdm import tqdm
-from FullPixelGridML.SimulateTilesOneFile import generateDiffractionArray, createAllXYCoordinates, saveAllPosDifPatterns
+from FullPixelGridML.SimulateTilesOneFile import generateDiffractionArray, createAllXYCoordinates, saveAllPosDifPatterns, generate_sparse_grid
 import numpy as np
 from ase.io import write
 from ase.visualize.plot import plot_atoms
@@ -18,6 +18,7 @@ from datasets import ptychographicDataLightning
 from torch import nn
 from lightningTrain import loadModel, lightnModelClass, TwoPartLightning
 from Zernike.ZernikeTransformer import Zernike, calc_diameter_bfd
+
 
 
 
@@ -111,10 +112,11 @@ def writeParamsCNF(ScanX,ScanY, beamPositions, diameterBFD, conv_angle_in_mrad= 
 
 
 def createMeasurementArray(energy, conv_angle_in_mrad, structure, start, end, DIMTILES = 15):
-    nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick = generateDiffractionArray(conv_angle= conv_angle_in_mrad, energy=energy,structure=structure, pbar = True, start=start, end=end)
-    assert(measurement_thick.array.shape[2] == measurement_thick.array.shape[3])
+    nameStruct, gridSampling, atomStruct, measurement_thick , potential_thick = generateDiffractionArray(conv_angle= conv_angle_in_mrad, energy=energy,structure=structure, pbar = True, start=start, end=end, device="gpu", deviceAfter="cpu")
+    # assert(measurement_thick.array.shape[-2] == measurement_thick.array.shape[-1])
     print(f"nameStruct: {nameStruct}")
-    CBEDDim = measurement_thick.array.shape[2]
+    CBEDDim = min(measurement_thick.array.shape[-2:])
+    print(f"CBEDDim: {CBEDDim}")
     measurementArray = np.zeros((measurement_thick.array.shape[0],measurement_thick.array.shape[1],CBEDDim,CBEDDim))
      
     realPositions = np.zeros((measurementArray.shape[0],measurementArray.shape[1]), dtype = object)   
@@ -124,9 +126,10 @@ def createMeasurementArray(energy, conv_angle_in_mrad, structure, start, end, DI
         for i in range(measurementArray.shape[0]): 
             realPositions[i,j] = ((j-measurementArray.shape[1]/2)*0.2*1e-10,(i-measurementArray.shape[0]/2)*0.2*1e-10)
             allCoords[i,j] = (i,j)  
-    for i in range(measurementArray.shape[0]):
-        for j in range(measurementArray.shape[1]):
-            measurementArray[i,j,:,:] = measurement_thick.array[i,j,:,:]
+    # for i in tqdm(range(measurementArray.shape[0]), desc = "Resizing the measurementArray"):
+    #     convertedArray = measurement_thick.array[i,:,:,:].compute()
+    #     for j, image in enumerate(convertedArray):
+    #         measurementArray[i,j,:,:] = cv2.resize(image , dsize=(CBEDDim, CBEDDim), interpolation=cv2.INTER_LINEAR)
 
     assert(measurementArray.shape[0] > DIMTILES)
     assert(measurementArray.shape[1] > DIMTILES)
@@ -335,14 +338,20 @@ def createPredictionsWithFiles(indicesSortedByHighestPredicitionMinusInitial, en
     return fullLengthY,fullLengthX
 
 
-def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal):
+def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal, choosenCoords):
     # loop over the all positions and apply the model to the data
     allInitialPositions = []
     Predictions = np.zeros_like(groundTruth)
-    PositionsToScanXSingle = np.arange(0, Predictions.shape[0], 4)
-    PositionsToScanYSingle = np.arange(0, Predictions.shape[1], 4)
-    PositionsToScanX = np.sort(np.array([PositionsToScanXSingle for i in range(len(PositionsToScanYSingle))]).flatten())
-    PositionsToScanY= np.array([PositionsToScanYSingle for i in range(len(PositionsToScanXSingle))]).flatten()
+    nonPredictedBorderinA = 7
+    nonPredictedBorderinCoordinates = 7 * 5
+    sparseGridFactor = 14
+    # PositionsToScanXSingle = np.arange(0, Predictions.shape[0], 14)
+    # PositionsToScanYSingle = np.arange(0, Predictions.shape[1], 14)
+    # PositionsToScanX = np.sort(np.array([PositionsToScanXSingle for i in range(len(PositionsToScanYSingle))]).flatten())
+    # PositionsToScanY= np.array([PositionsToScanYSingle for i in range(len(PositionsToScanXSingle))]).flatten()
+
+    PositionsToScanX = choosenCoords[:,0]
+    PositionsToScanY = choosenCoords[:,1]
 
     circleWeights = np.array([
     [1, 1, 1, 1, 1],
@@ -353,19 +362,19 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
 ])
 
 
-    for indexX in tqdm(range(-14,Predictions.shape[0]), desc  = "Going through all positions and predicting"):
-        for indexY in range(-14,Predictions.shape[1]):
-            lowerIndexX = max(indexX, 0)
-            lowerIndexY = max(indexY, 0)
-            upperIndexX = min(indexX+15, Predictions.shape[0])
-            upperIndexY = min(indexY+15, Predictions.shape[1])
+    for indexX in tqdm(range(-14 - nonPredictedBorderinCoordinates,Predictions.shape[0]), desc  = "Going through all positions and predicting"):
+        for indexY in range(-14 - nonPredictedBorderinCoordinates,Predictions.shape[1]):
+            # lowerIndexX = max(indexX, 0)
+            # lowerIndexY = max(indexY, 0)
+            # upperIndexX = min(indexX+15 + nonPredictedBorderinCoordinates, Predictions.shape[0])
+            # upperIndexY = min(indexY+15 + nonPredictedBorderinCoordinates, Predictions.shape[1])
             # zernikeValuesWindow = zernikeValuesTotal[lowerIndexX :upperIndexX, lowerIndexY :upperIndexY, :].reshape(-1, resultVectorLength)
             # zernikeValuesWindow = torch.tensor(zernikeValuesWindow).float()
-            zernikeValuesWindowSizeX = upperIndexX - lowerIndexX
-            zernikeValuesWindowSizeY = upperIndexY - lowerIndexY
+            # zernikeValuesWindowSizeX = upperIndexX - lowerIndexX
+            # zernikeValuesWindowSizeY = upperIndexY - lowerIndexY
             PositionsToScanXLocal = PositionsToScanX - indexX
             PositionsToScanYLocal = PositionsToScanY - indexY
-            mask = (PositionsToScanXLocal >= 0) * (PositionsToScanYLocal >= 0) * (PositionsToScanXLocal < 15) * (PositionsToScanYLocal < 15)
+            mask = (PositionsToScanXLocal >= -nonPredictedBorderinA) * (PositionsToScanYLocal >= - nonPredictedBorderinA) * (PositionsToScanXLocal < 15 + nonPredictedBorderinA) * (PositionsToScanYLocal < 15 + nonPredictedBorderinA)
             if mask.sum() <= 1:
                 continue
             PositionsToScanXLocal = PositionsToScanXLocal[mask]
@@ -377,12 +386,21 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
         
 
             # imageOrZernikeMoments = zernikeValuesWindow.reshape((zernikeValuesWindowSizeX,zernikeValuesWindowSizeY,-1))[XCoordsLocal + min(indexX,0),YCoordsLocal + min(indexY,0)].reshape((XCoordsLocal.shape[0],-1))
-            imageOrZernikeMoments = zernikeValuesTotal[indexX + XCoordsLocal, indexY + YCoordsLocal, :].reshape(-1, resultVectorLength)
-            imageOrZernikeMoments = torch.cat((imageOrZernikeMoments, torch.stack([XCoordsLocal, YCoordsLocal]).T), dim = 1)
+            try: 
+                imageOrZernikeMoments = zernikeValuesTotal[(indexX + XCoordsLocal)//14, (indexY + YCoordsLocal)//14, :].reshape(-1, resultVectorLength)
+            except IndexError as E:
+                print("Error: Index out of bounds")
+                print(f"XCoordsLocal: {XCoordsLocal}")
+                print(f"YCoordsLocal: {YCoordsLocal}")
+                print(f"indexX: {indexX}")
+                print(f"indexY: {indexY}")
+                raise Exception(E)
+            padding = torch.zeros_like(XCoordsLocal)
+            imageOrZernikeMomentsCuda = torch.cat((imageOrZernikeMoments, torch.stack([XCoordsLocal, YCoordsLocal, padding]).T), dim = 1).to(torch.device("cuda"))
 
             with torch.inference_mode():
-                pred = model(imageOrZernikeMoments.unsqueeze(0))
-                pred = pred.detach().numpy().reshape((1,10,2))[0]
+                pred = model(imageOrZernikeMomentsCuda.unsqueeze(0))
+                pred = pred.cpu().detach().numpy().reshape((1,9,2))[0]
 
             predRealXCoord  = np.round(pred[:,0]).astype(int) + indexX
             predRealYCoord  = np.round(pred[:,1]).astype(int) + indexY
@@ -411,14 +429,14 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
     return allInitialPositions,Predictions
 
 # measurementArray.astype('float').flatten().tofile("testMeasurement.bin")
-onlyPred = True
+onlyPred = False
 energy = 60e3
 structure="/data/scratch/haertelk/Masterarbeit/FullPixelGridML/structures/used/NaSbF6.cif"
 conv_angle_in_mrad = 33
 dim = 50
 diameterBFD50Pixels = 18
 start = (5,5)
-end = (9,9)
+end = (25,25)
 
 print("Calculating the number of Zernike moments:")
 resultVectorLength = 0 
@@ -438,8 +456,8 @@ diameterBFDNotScaled = calc_diameter_bfd(measurementArray[0,0,:,:])
 plt.imsave("detectorImage.png",measurementArray[0,0,:,:])
 
 print(f"Calculated BFD not scaled to 50 pixels: {diameterBFDNotScaled}")
-print(f"imageDim Not Scaled to 50 Pixels: {measurementArray[0,0,:,:].shape[-1]}")
-print(f"Calculated BFD scaled to 50 pixels: {diameterBFDNotScaled/measurementArray[0,0,:,:].shape[-1] * 50}")
+print(f"imageDim Not Scaled to 50 Pixels: {min((measurementArray[0,0,:,:].shape[-1], measurementArray[0,0,:,:].shape[-2]))}")
+print(f"Calculated BFD scaled to 50 pixels: {diameterBFDNotScaled/min((measurementArray[0,0,:,:].shape[-1], measurementArray[0,0,:,:].shape[-2])) * 50}")
 print(f"Actually used BFD with margin: {diameterBFD50Pixels}")
 
 
@@ -452,18 +470,28 @@ print(f"Actually used BFD with margin: {diameterBFD50Pixels}")
 
 
 xMaxCNT, yMaxCNT = np.shape(measurement_thick.array)[:2] # type: ignore
+print("xMaxCNT, yMaxCNT", xMaxCNT, yMaxCNT)
 
 
 
 difArrays = [[nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick]]
 del measurement_thick, potential_thick
 
-RelLabelCSV, dataArray = saveAllPosDifPatterns(None, -1, None, diameterBFD50Pixels, processID = 99999, silence = False, maxPooling = 1, structure = "None", fileWrite = False, difArrays = difArrays, start = start, end = end) # type: ignore
-del difArrays
+#initiate Zernike
+print("generating the zernike moments")
+#ZernikeTransform
+choosenCoords2d = np.array(generate_sparse_grid(xMaxCNT, yMaxCNT, 14, twoD=True))
+choosenCoords = np.array(generate_sparse_grid(xMaxCNT, yMaxCNT, 14, twoD=False))
+RelLabelCSV, zernikeValuesTotal = saveAllPosDifPatterns(None, -1, None, diameterBFD50Pixels,
+                                                        processID = 99999, silence = False,
+                                                        maxPooling = 1, structure = "None",
+                                                        fileWrite = False, difArrays = difArrays,
+                                                        start = start, end = end, zernike=True, initialCoords=choosenCoords) # type: ignore
+RelLabelCSV, zernikeValuesTotal = RelLabelCSV[0][1:], zernikeValuesTotal[0]
+zernikeValuesTotal = torch.tensor(zernikeValuesTotal).float().reshape((xMaxCNT-1)//14+1,(yMaxCNT-1)//14+1, -1)
 
-RelLabelCSV, dataArray = RelLabelCSV[0][1:], dataArray[0]
 # print(f"RelLabelCSV : {RelLabelCSV}")
-groundTruth = np.zeros((measurementArray.shape[0], measurementArray.shape[1]))
+groundTruth = np.zeros((xMaxCNT, yMaxCNT))
 extent=  (start[0],end[0],start[1],end[1])
 groundTruthCalculator(RelLabelCSV, groundTruth)
 # from matplotlib import cm 
@@ -480,27 +508,15 @@ groundTruthCalculator(RelLabelCSV, groundTruth)
 
 #poolingFactor = int(3)
 
-
-
-plt.imsave("detectorImage.png",dataArray.reshape(int(end[0]-start[1])*5,int(end[0]-start[1])*5,20,20)[0,0])
-exit()
-
-model = TwoPartLightning().load_from_checkpoint(checkpoint_path = "/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0403_1751_Z_GRU_9Pos_5hidlay_9000E/epoch=1069-step=44940.ckpt")#"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0203_1554_Z_GRU_halbeBatch_norHidSize_5statt3hidlay_9000E/epoch=1245-step=104664.ckpt")
+#/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0403_1751_Z_GRU_9Pos_5hidlay_9000E/epoch=1069-step=44940.ckpt
+model = TwoPartLightning.load_from_checkpoint(checkpoint_path = "/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_2104_1200_Z_TrE_-150Defoc_49P_correctet_movingWindow_512B_MmoreData_9000E/epoch=27-step=40936.ckpt")#"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0203_1554_Z_GRU_halbeBatch_norHidSize_5statt3hidlay_9000E/epoch=1245-step=104664.ckpt")
 #"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_2202_1030_Z_GRU_Noise_9000E/epoch=766-step=16107.ckpt"
-model.eval()
-
-#initiate Zernike
-print("generating the zernike moments")
-#ZernikeTransform
-ZernikeObject = Zernike(numberOfOSAANSIMoments= numberOfOSAANSIMoments)
-zernikeValuesTotal = ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = dataArray, hdf5File = None)
-del dataArray
-zernikeValuesTotal = torch.tensor(zernikeValuesTotal).float().reshape(int(end[0]-start[1])*5,int(end[0]-start[1])*5, -1)
+model.eval().to(torch.device("cuda"))
 
 
 
 
-allInitialPositions, Predictions = CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal)
+allInitialPositions, Predictions = CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal, choosenCoords=choosenCoords2d)
 PredictionDerivative = np.gradient(Predictions)
 PredictionDerivative = np.sqrt(PredictionDerivative[0]**2 + PredictionDerivative[1]**2)
 PredictionDerivative_abs = np.abs(PredictionDerivative)
@@ -520,6 +536,7 @@ def rescaleToInner(Image,minInner, maxInner):
     scaler = scaler or 1
     Image = Image / scaler * (maxInner - minInner) + minInner
     return Image
+
 
 noiseLevelInner = np.median(Predictions[15:-15,15:-15])
 maxInner = np.max(Predictions[15:-15,15:-15])
@@ -566,7 +583,6 @@ for x, y in indicesSortedByHighestPredicition:
     if (x,y) not in allInitialPositions:
         indicesSortedByHighestPredicitionMinusInitial.append((x,y))
 del zernikeValuesTotal
-del ZernikeObject
 
 numberOfPositions = [0.9,0.8,0.65,0.5,0.4,0.3,0.2,0.1]
 
