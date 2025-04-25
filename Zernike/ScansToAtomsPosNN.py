@@ -65,7 +65,7 @@ class preCompute(nn.Module):
         return  x
 
 class preComputeTransformer(nn.Module):
-    def __init__(self, obs_size : int = 0, hidden_size: int = 1024):
+    def __init__(self, obs_size : int = 0, hidden_size: int = 1024, numberOfHeads = 8):
         """Simple network that takes the Zernike moments and the last prediction as input and outputs a probability like map of atom positions.
 
         Args:
@@ -75,15 +75,15 @@ class preComputeTransformer(nn.Module):
         """
         super().__init__()
         
-        self.cls_token = Parameter(torch.randn(1, 1, obs_size))  # Learnable CLS token
-        self.transformerEncode = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=obs_size, nhead=8, dim_feedforward=hidden_size, batch_first=True), num_layers=5)
+        # self.cls_token = Parameter(torch.randn(1, 1, obs_size, device = "cuda"))  # Learnable CLS token
+        self.transformerEncode = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=obs_size, nhead=numberOfHeads, dim_feedforward=hidden_size, batch_first=True), num_layers=5)
 
     def forward(self, zernikeValues_and_Pos, mask = None) -> Tensor:
         batch_size = zernikeValues_and_Pos.shape[0]
 
         # Expand CLS token to match batch size and prepend it
-        cls_tokens = self.cls_token.expand(batch_size, -1, -1)  # Shape: (batch_size, 1, obs_size)
-        x = torch.cat((cls_tokens, zernikeValues_and_Pos), dim=1)  # Add CLS token at the start
+        # cls_tokens = self.cls_token.expand(batch_size, -1, -1)  # Shape: (batch_size, 1, obs_size)
+        # zernikeValues_and_Pos = torch.cat((cls_tokens, zernikeValues_and_Pos), dim=1)  # Add CLS token at the start
 
         y = self.transformerEncode(zernikeValues_and_Pos, src_key_padding_mask=mask)  # Apply transformer encoder
         y = y[:,0,:]
@@ -95,6 +95,7 @@ class FinalLayer(nn.Module):
     def __init__(self, output_size: int):
         super().__init__() 
         self.net = nn.Sequential(
+            #nn.Linear(864,1000),
             nn.LazyLinear(1000),
             nn.ReLU(),
             nn.Linear(1000, 500),
@@ -110,25 +111,22 @@ class TwoPartLightning(LightningModule):
     def __init__(
         self,
         lr: float = 1e-2,
-        numberOfPositions = 9
+        numberOfPositions = 9,
+        numberOfZernikeMoments = 40
     ) -> None:
-        """Basic DQN Model.
+        """Basic Transformer+Linear Model.
 
         Args:
             lr: learning rate
-            sync_rate: how many frames do we update the target network
-            eps_last_frame: what frame should epsilon stop decaying
-            eps_start: starting value of epsilon
-            eps_end: final value of epsilon
-            episode_length: max length of an episode
+            numberOfPositions: number of positions in input
 
         """
         super().__init__()
     
         self.lr = lr
-
+        
         self.obs_size = 0
-        numberOfOSAANSIMoments = 40
+        numberOfOSAANSIMoments = numberOfZernikeMoments
         for n in range(numberOfOSAANSIMoments + 1):
             for mShifted in range(2*n+1):
                 m = mShifted - n
@@ -137,9 +135,21 @@ class TwoPartLightning(LightningModule):
                 self.obs_size += 1
 
         self.obs_size += 3 # 2 for x and y position of the agent
+        self.nhead = 0
+        for i in np.arange(8,20, 2):
+            if self.obs_size % i == 0:
+                self.nhead = i
+                break
+        if self.nhead == 0:
+            for i in np.arange(2,8, 2):
+                if self.obs_size % i == 0:
+                    self.nhead = i
+                    break
+        print(f"number of heads: {self.nhead}")
+
         self.example_input_array = torch.zeros((1, numberOfPositions, self.obs_size), device=device, requires_grad=True)
 
-        self.preComputeNN = preComputeTransformer(obs_size=self.obs_size)
+        self.preComputeNN = preComputeTransformer(obs_size=self.obs_size, numberOfHeads=self.nhead)
         self.finalLayerNN = FinalLayer(label_size) 
 
         if pixelOutput: self.loss_fct = nn.BCEWithLogitsLoss()#nn.MSELoss()
