@@ -165,7 +165,7 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 					Writer.writerow([int(predEntry.argmax() == yEntry.argmax())])
 	
 
-def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, numberOfPositions = 9):
+def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, numberOfPositions = 9, numberOfZernikeMoments = 40):
 	print(f"Training model version {version} for {epochs} epochs.")
 	world_size = getMPIWorldSize()
 	numberOfModels = 0
@@ -177,10 +177,10 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		# if "FullPixelGridML" in modelName:
 		# 	lightnModel = TwoPartLightningCNN()
 		# elif "DQN" in modelName:
-		lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions)
-		batch_size = 512
+		lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments) 
+		batch_size = 1024
 		
-		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size, weighted = False, numberOfPositions = numberOfPositions)
+		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size, weighted = False, numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments)
 		lightnDataLoader.setup()
 		
 			
@@ -201,6 +201,11 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		callbacks : list[Callback] = [checkpoint_callback]#,early_stop_callback]
 		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", log_graph=False,name=f"{modelName}_{version}"),
 					   max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, log_every_n_steps=1, callbacks=callbacks)
+				#initialize the lazy linear layer
+		lightnDataLoader.setup()
+		batch = next(iter(lightnDataLoader.train_dataloader()))
+		lightnModel.train()
+		lightnModel.forward(batch)
 		if checkPointExists:
 			new_lr = 1e-4
 			lightnModel.lr = new_lr
@@ -210,8 +215,8 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 			tuner = Tuner(trainer)
 			# Auto-scale batch size by growing it exponentially
 			# if world_size == 1: 
-			# 	new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, init_val=512, max_trials= 25) 
-			# 	print(f"New batch size: {new_batch_size}")
+			new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, init_val=256, max_trials= 25) 
+			print(f"New batch size: {new_batch_size}")
 				# leads to crashing with slurm but has worked with 2048 batch size
 				# lightnDataLoader.batch_size is automatically set to new_batch_size
 			# finds learning rate automatically
@@ -248,7 +253,9 @@ if __name__ == '__main__':
 	ap.add_argument("-c" ,"--classifier", type=int, required=False, default=0, help = "Use if the model is to be a classfier. Choose the label index to be classified")
 	ap.add_argument("-i" ,"--indices", type=str, required=False, default="all", help = "specify indices of labels to predict (eg. '1, 2, 5'). Default is all.")
 	ap.add_argument("-np" ,"--numberOfPositions", type=int, required=False, default=9, help = "Specify the number of Positions that the nn gets as input. Default is 9.")
+	ap.add_argument("-nz" ,"--numberOfZernikeMoments", type=int, required=False, default=40, help = "Specify the highest order of zernike moments to use. Default and max is 40.")
 	ap.add_argument("-l" ,"--labelsFile", type=str, required=False, default="labels.csv", help = "Specify the name of the labels-file. Default is labels.csv.")
+	# ap.add_argument("-b" ,"--batchSize", type=int, required=False, default=256, help = "Specify the highest order of zernike moments to use. Default and max is 40.")
 	args = vars(ap.parse_args())
 
 
@@ -263,4 +270,4 @@ if __name__ == '__main__':
 	if args["indices"] != "all":
 		indices = args["indices"].split(",")
 		indicesToPredict = [int(i) for i in indices]
-	main(args["epochs"], args["version"], classifier, indicesToPredict, args["models"], args["labelsFile"], numberOfPositions=args["numberOfPositions"])     
+	main(args["epochs"], args["version"], classifier, indicesToPredict, args["models"], args["labelsFile"], numberOfPositions=args["numberOfPositions"], numberOfZernikeMoments=args["numberOfZernikeMoments"])     
