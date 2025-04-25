@@ -361,9 +361,9 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
     [1, 1, 1, 1, 1]
 ])
 
-
-    for indexX in tqdm(range(-14 - nonPredictedBorderinCoordinates,Predictions.shape[0]), desc  = "Going through all positions and predicting"):
-        for indexY in range(-14 - nonPredictedBorderinCoordinates,Predictions.shape[1]):
+    
+    for indexX in tqdm(range(-7 - nonPredictedBorderinCoordinates,Predictions.shape[0]), desc  = "Going through all positions and predicting"):
+        for indexY in range(-7 - nonPredictedBorderinCoordinates,Predictions.shape[1]):
             # lowerIndexX = max(indexX, 0)
             # lowerIndexY = max(indexY, 0)
             # upperIndexX = min(indexX+15 + nonPredictedBorderinCoordinates, Predictions.shape[0])
@@ -374,7 +374,7 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
             # zernikeValuesWindowSizeY = upperIndexY - lowerIndexY
             PositionsToScanXLocal = PositionsToScanX - indexX
             PositionsToScanYLocal = PositionsToScanY - indexY
-            mask = (PositionsToScanXLocal >= -nonPredictedBorderinA) * (PositionsToScanYLocal >= - nonPredictedBorderinA) * (PositionsToScanXLocal < 15 + nonPredictedBorderinA) * (PositionsToScanYLocal < 15 + nonPredictedBorderinA)
+            mask = (PositionsToScanXLocal >= -nonPredictedBorderinCoordinates) * (PositionsToScanYLocal >= - nonPredictedBorderinCoordinates) * (PositionsToScanXLocal < 15 + nonPredictedBorderinCoordinates) * (PositionsToScanYLocal < 15 + nonPredictedBorderinCoordinates)
             if mask.sum() <= 1:
                 continue
             PositionsToScanXLocal = PositionsToScanXLocal[mask]
@@ -427,6 +427,44 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
 
     allInitialPositions = list(set(allInitialPositions))
     return allInitialPositions,Predictions
+
+
+def rescalePredicitions(Predictions):
+    def rescaleToInner(Image,minInner, maxInner):
+        Image = Image - np.min(Image)
+        scaler = np.max(Image) - np.min(Image)
+        scaler = scaler or 1
+        Image = Image / scaler * (maxInner - minInner) + minInner
+        return Image
+
+
+    noiseLevelInner = np.median(Predictions[15:-15,15:-15])
+    maxInner = np.max(Predictions[15:-15,15:-15])
+    minInner = np.min(Predictions[15:-15,15:-15])
+    for outerEdge in range(1,15):
+        noiseLevelUp = np.median(Predictions.T[outerEdge,outerEdge:-outerEdge])
+        noiseLevelDown = np.median(Predictions.T[-outerEdge,outerEdge:-outerEdge])
+        noiseLevelLeft = np.median(Predictions[outerEdge,outerEdge:-outerEdge])
+        noiseLevelRight = np.median(Predictions[-outerEdge,outerEdge:-outerEdge])
+    
+        Predictions.T[outerEdge,outerEdge:-outerEdge] -= noiseLevelUp - noiseLevelInner
+        Predictions.T[-outerEdge,outerEdge:-outerEdge] -= noiseLevelUp - noiseLevelInner
+        Predictions[outerEdge,outerEdge:-outerEdge] -= noiseLevelLeft - noiseLevelInner
+        Predictions[-outerEdge,outerEdge:-outerEdge] -= noiseLevelRight - noiseLevelInner
+
+    # Predictions.T[outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions.T[outerEdge,outerEdge:-outerEdge],minInner, maxInner)
+    # Predictions.T[-outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions.T[-outerEdge,outerEdge:-outerEdge],minInner, maxInner)
+    # Predictions[outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions[outerEdge,outerEdge:-outerEdge],minInner, maxInner)
+    # Predictions[-outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions[-outerEdge,outerEdge:-outerEdge],minInner, maxInner)
+
+    noiseLevelUp = np.median(Predictions.T[0,:])
+    noiseLevelDown = np.median(Predictions.T[0,:])
+    noiseLevelLeft = np.median(Predictions[0,:])
+    noiseLevelRight = np.median(Predictions[0,:])
+
+    Predictions.T[0,:] -= noiseLevelUp - noiseLevelInner
+    Predictions[0,:] -= noiseLevelLeft - noiseLevelInner
+    return Predictions
 
 # measurementArray.astype('float').flatten().tofile("testMeasurement.bin")
 onlyPred = False
@@ -530,40 +568,7 @@ plt.colorbar()
 plt.savefig("PredictionsDerivative_Abs.png")
 plt.close()
 
-def rescaleToInner(Image,minInner, maxInner):
-    Image = Image - np.min(Image)
-    scaler = np.max(Image) - np.min(Image)
-    scaler = scaler or 1
-    Image = Image / scaler * (maxInner - minInner) + minInner
-    return Image
-
-
-noiseLevelInner = np.median(Predictions[15:-15,15:-15])
-maxInner = np.max(Predictions[15:-15,15:-15])
-minInner = np.min(Predictions[15:-15,15:-15])
-for outerEdge in range(1,15):
-    noiseLevelUp = np.median(Predictions.T[outerEdge,outerEdge:-outerEdge])
-    noiseLevelDown = np.median(Predictions.T[-outerEdge,outerEdge:-outerEdge])
-    noiseLevelLeft = np.median(Predictions[outerEdge,outerEdge:-outerEdge])
-    noiseLevelRight = np.median(Predictions[-outerEdge,outerEdge:-outerEdge])
-    
-    Predictions.T[outerEdge,outerEdge:-outerEdge] -= noiseLevelUp - noiseLevelInner
-    Predictions.T[-outerEdge,outerEdge:-outerEdge] -= noiseLevelUp - noiseLevelInner
-    Predictions[outerEdge,outerEdge:-outerEdge] -= noiseLevelLeft - noiseLevelInner
-    Predictions[-outerEdge,outerEdge:-outerEdge] -= noiseLevelRight - noiseLevelInner
-
-    # Predictions.T[outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions.T[outerEdge,outerEdge:-outerEdge],minInner, maxInner)
-    # Predictions.T[-outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions.T[-outerEdge,outerEdge:-outerEdge],minInner, maxInner)
-    # Predictions[outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions[outerEdge,outerEdge:-outerEdge],minInner, maxInner)
-    # Predictions[-outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions[-outerEdge,outerEdge:-outerEdge],minInner, maxInner)
-
-noiseLevelUp = np.median(Predictions.T[0,:])
-noiseLevelDown = np.median(Predictions.T[0,:])
-noiseLevelLeft = np.median(Predictions[0,:])
-noiseLevelRight = np.median(Predictions[0,:])
-
-Predictions.T[0,:] -= noiseLevelUp - noiseLevelInner
-Predictions[0,:] -= noiseLevelLeft - noiseLevelInner
+#Predictions = rescalePredicitions(Predictions)
 
 # Predictions.T[0,:] = rescaleToInner(Predictions.T[0,:],minInner, maxInner)
 # Predictions[0,:] = rescaleToInner(Predictions[0,:],minInner, maxInner)
