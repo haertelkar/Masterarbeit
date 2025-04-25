@@ -207,3 +207,5 @@ FullPixelGridML/checkData.py
 Zernike/checkData.py
 */ROP.sh
 python-venv/*
+*/measurements_test*/*
+*/measurements_train*/*
