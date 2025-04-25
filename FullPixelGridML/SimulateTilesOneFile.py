@@ -57,6 +57,7 @@ from ZernikePolynomials import Zernike
 windowSizeInA = 3 #every 5th A is a scan (probe radius is 5A), should be at least 3 in a window
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
+FolderAppendix = "_emptyBorder"
 
 def calc_diameter_bfd(image):
     brightFieldDisk = np.zeros_like(image)
@@ -139,7 +140,7 @@ def createStructure(xlen, ylen, specificStructure : str = "random", trainOrTest 
             structFinished.extend(createAtomPillar(xlen = xlen, ylen = ylen, xPos=start[0]+nonPredictedBorderInA+random()*windowSizeInA, yPos=start[1]+nonPredictedBorderInA+random()*windowSizeInA, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
         
         #Fill the nonPredictedBorderInA with random atoms
-        if nonPredictedBorderInA > 0: 
+        if nonPredictedBorderInA > 0 and False: 
             borderArea = (2*nonPredictedBorderInA + windowSizeInA)**2-windowSizeInA**2
             numberOfAtomsInBorder = int(borderArea/windowSizeInA**2 * numberOfAtomsInWindow)
             
@@ -366,9 +367,9 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
 
     if fileWrite: 
         if not zernike:
-            file = h5py.File(os.path.join(f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5"), 'w')
+            file = h5py.File(os.path.join(f"measurements_{trainOrTest}{FolderAppendix}",f"{processID}_{timeStamp}.hdf5"), 'w')
         else:
-            fileName = os.path.join("..","Zernike",f"measurements_{trainOrTest}",f"{processID}_{timeStamp}.hdf5")
+            fileName = os.path.join("..","Zernike",f"measurements_{trainOrTest}{FolderAppendix}",f"{processID}_{timeStamp}.hdf5")
             file = h5py.File(fileName, 'w')
     else: dataArray = []
     ZernikeObject = Zernike(numberOfOSAANSIMoments= 40)
@@ -476,7 +477,7 @@ def writeAllRows(rows, trainOrTest, XDIMTILES, YDIMTILES, processID = "", create
     Returns:
         None
     """
-    csvFilePath = os.path.join(f'measurements_{trainOrTest}',f'labels_{processID}_{timeStamp}.csv')
+    csvFilePath = os.path.join(f'measurements_{trainOrTest}{FolderAppendix}',f'labels_{processID}_{timeStamp}.csv')
     if zernike: 
         csvFilePath = os.path.join("..","Zernike",csvFilePath)
     if createTopRow is None: createTopRow = not os.path.exists(csvFilePath)
