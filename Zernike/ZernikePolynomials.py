@@ -84,7 +84,7 @@ class Zernike(object):
             #     continue
             # else:
             moments[cnt] = self.calculateZernikeWeights(basis, im) 
-        
+            
         if dataSetName is not None:
             hdf5File.create_dataset(dataSetName, data = moments, compression="lzf", chunks = moments.shape, shuffle = True)
         return moments

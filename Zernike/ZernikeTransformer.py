@@ -91,9 +91,9 @@ def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMom
                 imageFileNames = None
             imageFileNames = comm.bcast(imageFileNames, root=0)
             totalNumberOfFiles = len(imageFileNames)
-            with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
-                randomFileName = imageFileNames[0]
-                randomGroupOfPatterns = np.array(totalImages[randomFileName]) #this image always exists so it is easy to just use it
+            # with h5py.File(os.path.join(imagePath(testOrTrain), "training_data.hdf5"), 'r') as totalImages:
+            #     randomFileName = imageFileNames[0]
+            #     randomGroupOfPatterns = np.array(totalImages[randomFileName]) #this image always exists so it is easy to just use it
 
             if ZernikeObject is None:
                 # diameterBFD = calc_diameter_bfd(randomImage)
