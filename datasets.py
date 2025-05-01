@@ -13,7 +13,7 @@ from torch.utils.data import random_split, DataLoader, WeightedRandomSampler
 from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence
 
 def collate_fn(batch):
-    sequences, labels = zip(*batch)  # Separate data and labels
+    sequences , labels = zip(*batch)  # Separate data and labels
 
     # Pad sequences to the longest length in batch
     padded_sequences = pad_sequence(sequences, batch_first=True, padding_value=0.0)
@@ -37,7 +37,7 @@ def collate_fn_gru(batch):
 colFun = collate_fn
 
 class ptychographicDataLightning(L.LightningDataModule):
-	def __init__(self, model_name, batch_size = 1024, num_workers = 20, classifier = False, indicesToPredict = None, labelFile = "labels.csv", testDirectory = "measurements_test", onlyTest = False, weighted  = True, numberOfPositions = 9, numberOfZernikeMoments = 40):
+	def __init__(self, model_name, batch_size = 1024, num_workers = 20, classifier = False, indicesToPredict = None, labelFile = "labels.csv", trainDirectory = "measurements_train",testDirectory = "measurements_test", onlyTest = False, weighted  = True, numberOfPositions = 9, numberOfZernikeMoments = 40):
 		super().__init__()
 		self.batch_size = batch_size
 		self.num_workers = num_workers
@@ -56,6 +56,8 @@ class ptychographicDataLightning(L.LightningDataModule):
 		self.weighted = weighted
 		self.numberOfPositions = numberOfPositions
 		self.numberOfZernikeMoments = numberOfZernikeMoments
+		self.trainDirectory = trainDirectory
+		self.testDirectory = testDirectory
 
 	def setup(self, stage = None) -> None:
 		if self.setupDone: return
@@ -65,14 +67,14 @@ class ptychographicDataLightning(L.LightningDataModule):
 		else:
 			raise Exception(f"model name '{self.model_name}' unknown")
 		self.train_dataset = ptychographicData(
-					os.path.abspath(os.path.join(folderName,"measurements_train", "train_"+self.labelFile)), 
-					os.path.abspath(os.path.join(folderName,"measurements_train")), transform=torch.as_tensor, 
+					os.path.abspath(os.path.join(folderName,self.trainDirectory, "train_"+self.labelFile)), 
+					os.path.abspath(os.path.join(folderName,self.trainDirectory)), transform=torch.as_tensor, 
 					target_transform=None,#torch.as_tensor,
 					labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions, numberOfZernikeMoments = self.numberOfZernikeMoments
 				)		
 		self.val_dataset = ptychographicData(
-			os.path.abspath(os.path.join(folderName,"measurements_train", "vali_"+self.labelFile)), 
-			os.path.abspath(os.path.join(folderName,"measurements_train")), transform=torch.as_tensor, 
+			os.path.abspath(os.path.join(folderName,self.trainDirectory, "vali_"+self.labelFile)), 
+			os.path.abspath(os.path.join(folderName,self.trainDirectory)), transform=torch.as_tensor, 
 			target_transform=None,#torch.as_tensor, 
 			labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions, numberOfZernikeMoments = self.numberOfZernikeMoments
 		)	
@@ -105,10 +107,10 @@ class ptychographicDataLightning(L.LightningDataModule):
 				yAtomRelPos = 0
 		
 		if xAtomRelPos is not None and not self.onlyTest and self.weighted:
-			self.weights = pd.read_csv(os.path.abspath(os.path.join(folderName,"measurements_train", "weights_"+self.labelFile)), header = None, index_col = None).to_numpy(dtype=float).T[0]
+			self.weights = pd.read_csv(os.path.abspath(os.path.join(folderName,self.trainDirectory, "weights_"+self.labelFile)), header = None, index_col = None).to_numpy(dtype=float).T[0]
 		
 		if len(self.train_dataset.columns[1:]) == 1 and not self.onlyTest and self.weighted:
-			self.weights = pd.read_csv(os.path.abspath(os.path.join(folderName,"measurements_train", "weights_"+self.labelFile)), header = None, index_col = None).to_numpy(dtype=float).T[0]
+			self.weights = pd.read_csv(os.path.abspath(os.path.join(folderName,self.trainDirectory, "weights_"+self.labelFile)), header = None, index_col = None).to_numpy(dtype=float).T[0]
 
 		self.setupDone = True
 
@@ -129,7 +131,7 @@ class ptychographicDataLightning(L.LightningDataModule):
 
 class ptychographicData(Dataset):
 	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, shift = None, labelIndicesToPredict = None, classifier = False, numberOfPositions = 9, numberOfZernikeMoments = 40):
-		img_labels_pd = pd.read_csv(annotations_file).dropna()
+		img_labels_pd = pd.read_csv(annotations_file).dropna()#[:10000]
 		self.image_labels = img_labels_pd[img_labels_pd.columns[1:]].to_numpy('float32')
 		self.image_names = img_labels_pd[img_labels_pd.columns[0]].astype(str)
 		self.columns = np.array(list(img_labels_pd.columns))
@@ -245,6 +247,10 @@ class ptychographicData(Dataset):
 		imageOrZernikeMoments = imageOrZernikeMoments.astype('float32')
 		if self.numberOfZernikeMoments != 40:
 			imageOrZernikeMoments = np.delete(imageOrZernikeMoments, np.s_[self.zernikeLength:-3], axis=1) #remove the higher order zernike moments but keep x,y and padding
+		# cslToken = np.zeros((1,imageOrZernikeMoments.shape[1]), dtype = "float32")
+		# imageOrZernikeMoments[1:] = imageOrZernikeMoments[:-1]
+		# imageOrZernikeMoments[0] = cslToken
+		# imageOrZernikeMoments = np.vstack([cslToken, imageOrZernikeMoments])
 		if self.transform:
 			imageOrZernikeMoments = self.transform(imageOrZernikeMoments) #not scaled here because it has to be datatype uint8 to be scaled automatically
 		return imageOrZernikeMoments
