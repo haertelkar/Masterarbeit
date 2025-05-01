@@ -79,7 +79,7 @@ class preComputeTransformer(nn.Module):
         self.transformerEncode = nn.TransformerEncoder(nn.TransformerEncoderLayer(d_model=obs_size, nhead=numberOfHeads, dim_feedforward=hidden_size, batch_first=True), num_layers=5)
 
     def forward(self, zernikeValues_and_Pos, mask = None) -> Tensor:
-        batch_size = zernikeValues_and_Pos.shape[0]
+        # batch_size = zernikeValues_and_Pos.shape[0]
 
         # Expand CLS token to match batch size and prepend it
         # cls_tokens = self.cls_token.expand(batch_size, -1, -1)  # Shape: (batch_size, 1, obs_size)
@@ -92,11 +92,11 @@ class preComputeTransformer(nn.Module):
 
 
 class FinalLayer(nn.Module):
-    def __init__(self, output_size: int):
+    def __init__(self, obs_size : int, output_size: int):
         super().__init__() 
         self.net = nn.Sequential(
-            #nn.Linear(864,1000),
-            nn.LazyLinear(1000),
+            nn.Linear(obs_size,1000),
+            #nn.LazyLinear(1000),
             nn.ReLU(),
             nn.Linear(1000, 500),
             nn.ReLU(),
@@ -150,7 +150,9 @@ class TwoPartLightning(LightningModule):
         self.example_input_array = torch.zeros((1, numberOfPositions, self.obs_size), device=device, requires_grad=True)
 
         self.preComputeNN = preComputeTransformer(obs_size=self.obs_size, numberOfHeads=self.nhead)
-        self.finalLayerNN = FinalLayer(label_size) 
+        # self.preComputeNN = torch.compile(self.preComputeNN)
+        self.finalLayerNN = FinalLayer(self.obs_size, label_size) 
+        # self.finalLayerNN = torch.compile(self.finalLayerNN)
 
         if pixelOutput: self.loss_fct = nn.BCEWithLogitsLoss()#nn.MSELoss()
         else: self.loss_fct = geomloss.SamplesLoss()

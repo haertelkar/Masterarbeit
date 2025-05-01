@@ -7,7 +7,6 @@
 #SBATCH --time=48:00:00
 #SBATCH --signal=SIGUSR1@90
 #SBATCH -J "Evaluater"   # job name
-#SBATCH --exclusive
 
 # Debugging flags (optional)
 export NCCL_DEBUG=INFO
@@ -19,4 +18,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun python3 -u  evaluateCHKP.py onlyLastHid
+srun /data/scratch/haertelk/Masterarbeit/python-venv/bin/python -u  evaluateCHKP.py DQN_3004_1035_Z_TrE_49P_emptyBorder_noCSL_40ZM_9000E

@@ -21,4 +21,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script#
-/data/scratch/haertelk/Masterarbeit/python-venv/bin/python -u lightningTrain.py -v 0105_1655_Z_TrE_49P_20ZM_9000E -e 9000 -m DQN -l labels_only_Dist.csv -np 49 -nz 20
+/data/scratch/haertelk/Masterarbeit/python-venv/bin/python -u lightningTrain.py -v 0105_1524_Z_TrE_49P_10sparse_EB_noCSL_20ZM_9000E -e 9000 -m DQN -l labels_only_Dist.csv -np 49 -nz 20 -fa _10sparse

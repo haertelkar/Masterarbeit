@@ -51,7 +51,7 @@ for folder in tqdm(os.listdir("checkpoints")):
                 continue
         else:
             # if "onlyDist" in version :
-            numLabels = 10 * 2
+            numLabels = 9 * 2
             labelFile = "labels_only_Dist.csv"
             # elif "onlyElem" in version:
             #     numLabels = 10
@@ -61,17 +61,17 @@ for folder in tqdm(os.listdir("checkpoints")):
             #     labelFile = "labels.csv"
         # = DQNLightning()
         #model = loadModel(modelName = modelName, numChannels=numChannels, numLabels = numLabels)
-        NumberOfRandomMoments = version.split("_")[-2]
-        numberOfPositions = NumberOfRandomMoments.split("Rand")[0]
-        if len(numberOfPositions) == 0: continue
+        # NumberOfRandomMoments = version.split("_")[-2]
+        # numberOfPositions = NumberOfRandomMoments.split("Rand")[0]
+        # if len(numberOfPositions) == 0: continue
         epochAndStep = file
         tqdm.write(f"Evaluating {epochAndStep} of {version}")
         checkpoint_path = os.path.join("checkpoints",f"{version}",f"{epochAndStep}")
         # checkpoint_path = os.path.join("models/DQN_0711_chamfer_1e-9_BatS4096_AdamW_1343.ckpt")
-        lightnModel = TwoPartLightning().load_from_checkpoint(checkpoint_path = checkpoint_path)
+        lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = checkpoint_path)
         #lightnModel = lightnModelClass(model)
 
-        lightnDataLoader = ptychographicDataLightning(modelName, indicesToPredict = None, labelFile = labelFile, batch_size=512, weighted = False, numberOfPositions=int(numberOfPositions))
+        lightnDataLoader = ptychographicDataLightning(modelName, indicesToPredict = None, labelFile = labelFile, batch_size=512, weighted = False, numberOfPositions=49)
         lightnDataLoader.setup(stage = "predict")
 
         # lightnDataLoader = ptychographicDataLightning(modelName, labelFile=labelFile, testDirectory="measurements_test", onlyTest=True)

@@ -10,15 +10,16 @@ import cv2
 from matplotlib import pyplot as plt
 import torch
 from tqdm import tqdm
-from FullPixelGridML.SimulateTilesOneFile import generateDiffractionArray, createAllXYCoordinates, saveAllPosDifPatterns, generate_sparse_grid
+from FullPixelGridML.SimulateTilesOneFile import generateDiffractionArray, createAllXYCoordinates, saveAllPosDifPatterns
 import numpy as np
 from ase.io import write
 from ase.visualize.plot import plot_atoms
+from abtem.measure import Measurement
 from datasets import ptychographicDataLightning
 from torch import nn
 from lightningTrain import loadModel, lightnModelClass, TwoPartLightning
 from Zernike.ZernikeTransformer import Zernike, calc_diameter_bfd
-
+from pympler import asizeof
 
 
 
@@ -112,24 +113,22 @@ def writeParamsCNF(ScanX,ScanY, beamPositions, diameterBFD, conv_angle_in_mrad= 
 
 
 def createMeasurementArray(energy, conv_angle_in_mrad, structure, start, end, DIMTILES = 15):
-    nameStruct, gridSampling, atomStruct, measurement_thick , potential_thick = generateDiffractionArray(conv_angle= conv_angle_in_mrad, energy=energy,structure=structure, pbar = True, start=start, end=end, device="gpu", deviceAfter="cpu")
-    # assert(measurement_thick.array.shape[-2] == measurement_thick.array.shape[-1])
+    nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick = generateDiffractionArray(conv_angle= conv_angle_in_mrad, energy=energy,structure=structure, pbar = True, start=start, end=end)
+    assert(measurement_thick.array.shape[2] == measurement_thick.array.shape[3])
     print(f"nameStruct: {nameStruct}")
-    CBEDDim = min(measurement_thick.array.shape[-2:])
-    print(f"CBEDDim: {CBEDDim}")
+    CBEDDim = measurement_thick.array.shape[2]
     measurementArray = np.zeros((measurement_thick.array.shape[0],measurement_thick.array.shape[1],CBEDDim,CBEDDim))
      
     realPositions = np.zeros((measurementArray.shape[0],measurementArray.shape[1]), dtype = object)   
     allCoords = np.copy(realPositions)
 
     for j in range(measurementArray.shape[1]): 
-        for i in range(measurementArray.shape[0]): 
+        for i in range(measurementArray.shape[0]): #TODO check if this is correct (x and y are changed)
             realPositions[i,j] = ((j-measurementArray.shape[1]/2)*0.2*1e-10,(i-measurementArray.shape[0]/2)*0.2*1e-10)
             allCoords[i,j] = (i,j)  
-    # for i in tqdm(range(measurementArray.shape[0]), desc = "Resizing the measurementArray"):
-    #     convertedArray = measurement_thick.array[i,:,:,:].compute()
-    #     for j, image in enumerate(convertedArray):
-    #         measurementArray[i,j,:,:] = cv2.resize(image , dsize=(CBEDDim, CBEDDim), interpolation=cv2.INTER_LINEAR)
+    for i in range(measurementArray.shape[0]):
+        for j in range(measurementArray.shape[1]):
+            measurementArray[i,j,:,:] = measurement_thick.array[i,j,:,:]
 
     assert(measurementArray.shape[0] > DIMTILES)
     assert(measurementArray.shape[1] > DIMTILES)
@@ -190,16 +189,11 @@ def plotGTandPred(atomStruct, groundTruth, Predictions, start, end):
     """Create plots of the ground truth and the predictions. 
     They are transposed because the reconstruction is also transposed.
     """
-    extent=  (start[0],end[0],start[1],end[1])
+    extent=  [start[0],end[0],start[1],end[1]]
     plt.imshow(Predictions.T, origin = "lower", interpolation="none", extent=extent)
     plt.colorbar()
     plt.savefig("Predictions.png")
     plt.close()
-    plt.imshow(np.log(Predictions+1).T, origin = "lower", extent=extent)
-    plt.savefig("PredictionsLog.png")
-    plt.close()
-
-    
     plt.imshow(np.log(Predictions+1).T, origin = "lower", extent=extent)
     plt.savefig("PredictionsLog.png")
     plt.close()
@@ -338,43 +332,37 @@ def createPredictionsWithFiles(indicesSortedByHighestPredicitionMinusInitial, en
     return fullLengthY,fullLengthX
 
 
-def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal, choosenCoords):
+def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal):
     # loop over the all positions and apply the model to the data
     allInitialPositions = []
     Predictions = np.zeros_like(groundTruth)
-    nonPredictedBorderinA = 7
-    nonPredictedBorderinCoordinates = 7 * 5
-    sparseGridFactor = 14
-    # PositionsToScanXSingle = np.arange(0, Predictions.shape[0], 14)
-    # PositionsToScanYSingle = np.arange(0, Predictions.shape[1], 14)
-    # PositionsToScanX = np.sort(np.array([PositionsToScanXSingle for i in range(len(PositionsToScanYSingle))]).flatten())
-    # PositionsToScanY= np.array([PositionsToScanYSingle for i in range(len(PositionsToScanXSingle))]).flatten()
-
-    PositionsToScanX = choosenCoords[:,0]
-    PositionsToScanY = choosenCoords[:,1]
+    PositionsToScanXSingle = np.arange(0, Predictions.shape[0], 3)
+    PositionsToScanYSingle = np.arange(0, Predictions.shape[1], 3)
+    PositionsToScanX = np.sort(np.array([PositionsToScanXSingle for i in range(len(PositionsToScanYSingle))]).flatten())
+    PositionsToScanY= np.array([PositionsToScanYSingle for i in range(len(PositionsToScanXSingle))]).flatten()
 
     circleWeights = np.array([
     [1, 1, 1, 1, 1],
-    [1, 2, 2, 2, 1],
-    [1, 2, 3, 2, 1],
-    [1, 2, 2, 2, 1],
+    [1, 3, 3, 3, 1],
+    [1, 3, 2, 3, 1],
+    [1, 3, 3, 3, 1],
     [1, 1, 1, 1, 1]
 ])
-
     
-    for indexX in tqdm(range(-7 - nonPredictedBorderinCoordinates,Predictions.shape[0]), desc  = "Going through all positions and predicting"):
-        for indexY in range(-7 - nonPredictedBorderinCoordinates,Predictions.shape[1]):
-            # lowerIndexX = max(indexX, 0)
-            # lowerIndexY = max(indexY, 0)
-            # upperIndexX = min(indexX+15 + nonPredictedBorderinCoordinates, Predictions.shape[0])
-            # upperIndexY = min(indexY+15 + nonPredictedBorderinCoordinates, Predictions.shape[1])
+
+    for indexX in tqdm(range(-14,Predictions.shape[0]), desc  = "Going through all positions and predicting"):
+        for indexY in range(-14,Predictions.shape[1]):
+            lowerIndexX = max(indexX, 0)
+            lowerIndexY = max(indexY, 0)
+            upperIndexX = min(indexX+15, Predictions.shape[0])
+            upperIndexY = min(indexY+15, Predictions.shape[1])
             # zernikeValuesWindow = zernikeValuesTotal[lowerIndexX :upperIndexX, lowerIndexY :upperIndexY, :].reshape(-1, resultVectorLength)
             # zernikeValuesWindow = torch.tensor(zernikeValuesWindow).float()
-            # zernikeValuesWindowSizeX = upperIndexX - lowerIndexX
-            # zernikeValuesWindowSizeY = upperIndexY - lowerIndexY
+            zernikeValuesWindowSizeX = upperIndexX - lowerIndexX
+            zernikeValuesWindowSizeY = upperIndexY - lowerIndexY
             PositionsToScanXLocal = PositionsToScanX - indexX
             PositionsToScanYLocal = PositionsToScanY - indexY
-            mask = (PositionsToScanXLocal >= -nonPredictedBorderinCoordinates) * (PositionsToScanYLocal >= - nonPredictedBorderinCoordinates) * (PositionsToScanXLocal < 15 + nonPredictedBorderinCoordinates) * (PositionsToScanYLocal < 15 + nonPredictedBorderinCoordinates)
+            mask = (PositionsToScanXLocal >= 0) * (PositionsToScanYLocal >= 0) * (PositionsToScanXLocal < 15) * (PositionsToScanYLocal < 15)
             if mask.sum() <= 1:
                 continue
             PositionsToScanXLocal = PositionsToScanXLocal[mask]
@@ -386,26 +374,17 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
         
 
             # imageOrZernikeMoments = zernikeValuesWindow.reshape((zernikeValuesWindowSizeX,zernikeValuesWindowSizeY,-1))[XCoordsLocal + min(indexX,0),YCoordsLocal + min(indexY,0)].reshape((XCoordsLocal.shape[0],-1))
-            try: 
-                imageOrZernikeMoments = zernikeValuesTotal[(indexX + XCoordsLocal)//14, (indexY + YCoordsLocal)//14, :].reshape(-1, resultVectorLength)
-            except IndexError as E:
-                print("Error: Index out of bounds")
-                print(f"XCoordsLocal: {XCoordsLocal}")
-                print(f"YCoordsLocal: {YCoordsLocal}")
-                print(f"indexX: {indexX}")
-                print(f"indexY: {indexY}")
-                raise Exception(E)
-            padding = torch.zeros_like(XCoordsLocal)
-            imageOrZernikeMomentsCuda = torch.cat((imageOrZernikeMoments, torch.stack([XCoordsLocal, YCoordsLocal, padding]).T), dim = 1).to(torch.device("cuda"))
+            imageOrZernikeMoments = zernikeValuesTotal[indexX + XCoordsLocal, indexY + YCoordsLocal, :].reshape(-1, resultVectorLength)
+            imageOrZernikeMoments = torch.cat((imageOrZernikeMoments, torch.stack([XCoordsLocal, YCoordsLocal]).T), dim = 1)
 
             with torch.inference_mode():
-                pred = model(imageOrZernikeMomentsCuda.unsqueeze(0))
-                pred = pred.cpu().detach().numpy().reshape((1,9,2))[0]
+                pred = model(imageOrZernikeMoments.unsqueeze(0))
+                pred = pred.detach().numpy().reshape((1,10,2))[0]
 
             predRealXCoord  = np.round(pred[:,0]).astype(int) + indexX
             predRealYCoord  = np.round(pred[:,1]).astype(int) + indexY
             predRealCoordInside = (predRealXCoord >= 0) * (predRealYCoord >= 0) * (predRealXCoord < Predictions.shape[0]) * (predRealYCoord < Predictions.shape[1])
-            scaler = 0 if predRealCoordInside.sum() == 0 else 1#(zernikeValuesWindowSizeX/15 * zernikeValuesWindowSizeY/15 / (predRealCoordInside.sum()/10)) #10 is the number of predictions, 15 is the window size, only make as many predictions as there are 
+            scaler = 0 if predRealCoordInside.sum() == 0 else (zernikeValuesWindowSizeX/15 * zernikeValuesWindowSizeY/15 / (predRealCoordInside.sum()/10)) #10 is the number of predictions, 15 is the window size, only make as many predictions as there are 
                                                                                                                 #positions inside
 
             for predXY in pred:
@@ -428,48 +407,9 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
     allInitialPositions = list(set(allInitialPositions))
     return allInitialPositions,Predictions
 
-
-def rescalePredicitions(Predictions):
-    def rescaleToInner(Image,minInner, maxInner):
-        Image = Image - np.min(Image)
-        scaler = np.max(Image) - np.min(Image)
-        scaler = scaler or 1
-        Image = Image / scaler * (maxInner - minInner) + minInner
-        return Image
-
-
-    noiseLevelInner = np.median(Predictions[15:-15,15:-15])
-    maxInner = np.max(Predictions[15:-15,15:-15])
-    minInner = np.min(Predictions[15:-15,15:-15])
-    for outerEdge in range(1,15):
-        noiseLevelUp = np.median(Predictions.T[outerEdge,outerEdge:-outerEdge])
-        noiseLevelDown = np.median(Predictions.T[-outerEdge,outerEdge:-outerEdge])
-        noiseLevelLeft = np.median(Predictions[outerEdge,outerEdge:-outerEdge])
-        noiseLevelRight = np.median(Predictions[-outerEdge,outerEdge:-outerEdge])
-    
-        Predictions.T[outerEdge,outerEdge:-outerEdge] -= noiseLevelUp - noiseLevelInner
-        Predictions.T[-outerEdge,outerEdge:-outerEdge] -= noiseLevelUp - noiseLevelInner
-        Predictions[outerEdge,outerEdge:-outerEdge] -= noiseLevelLeft - noiseLevelInner
-        Predictions[-outerEdge,outerEdge:-outerEdge] -= noiseLevelRight - noiseLevelInner
-
-    # Predictions.T[outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions.T[outerEdge,outerEdge:-outerEdge],minInner, maxInner)
-    # Predictions.T[-outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions.T[-outerEdge,outerEdge:-outerEdge],minInner, maxInner)
-    # Predictions[outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions[outerEdge,outerEdge:-outerEdge],minInner, maxInner)
-    # Predictions[-outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions[-outerEdge,outerEdge:-outerEdge],minInner, maxInner)
-
-    noiseLevelUp = np.median(Predictions.T[0,:])
-    noiseLevelDown = np.median(Predictions.T[0,:])
-    noiseLevelLeft = np.median(Predictions[0,:])
-    noiseLevelRight = np.median(Predictions[0,:])
-
-    Predictions.T[0,:] -= noiseLevelUp - noiseLevelInner
-    Predictions[0,:] -= noiseLevelLeft - noiseLevelInner
-    return Predictions
-
 # measurementArray.astype('float').flatten().tofile("testMeasurement.bin")
-onlyPred = False
 energy = 60e3
-structure="/data/scratch/haertelk/Masterarbeit/FullPixelGridML/structures/used/NaSbF6.cif"
+structure="MarcelsEx"
 conv_angle_in_mrad = 33
 dim = 50
 diameterBFD50Pixels = 18
@@ -478,24 +418,23 @@ end = (25,25)
 
 print("Calculating the number of Zernike moments:")
 resultVectorLength = 0 
-numberOfOSAANSIMoments = 40	
+numberOfOSAANSIMoments = 15	
 for n in range(numberOfOSAANSIMoments + 1):
     for mShifted in range(2*n+1):
         m = mShifted - n
         if (n-m)%2 != 0:
             continue
         resultVectorLength += 1
-print("number of Zernike Moments",resultVectorLength)
 
 
-if not onlyPred: CleanUpROP()
+# CleanUpROP()
 nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick, CBEDDim, measurementArray, realPositions, allCoords = createMeasurementArray(energy, conv_angle_in_mrad, structure, start, end) 
 diameterBFDNotScaled = calc_diameter_bfd(measurementArray[0,0,:,:])
 plt.imsave("detectorImage.png",measurementArray[0,0,:,:])
 
 print(f"Calculated BFD not scaled to 50 pixels: {diameterBFDNotScaled}")
-print(f"imageDim Not Scaled to 50 Pixels: {min((measurementArray[0,0,:,:].shape[-1], measurementArray[0,0,:,:].shape[-2]))}")
-print(f"Calculated BFD scaled to 50 pixels: {diameterBFDNotScaled/min((measurementArray[0,0,:,:].shape[-1], measurementArray[0,0,:,:].shape[-2])) * 50}")
+print(f"imageDim Not Scaled to 50 Pixels: {measurementArray[0,0,:,:].shape[-1]}")
+print(f"Calculated BFD scaled to 50 pixels: {diameterBFDNotScaled/measurementArray[0,0,:,:].shape[-1] * 50}")
 print(f"Actually used BFD with margin: {diameterBFD50Pixels}")
 
 
@@ -504,33 +443,25 @@ print(f"Actually used BFD with margin: {diameterBFD50Pixels}")
 
 #model = loadModel(modelName = modelName, numChannels=numChannels, numLabels = numLabels)
 
-
+model = TwoPartLightning().load_from_checkpoint(checkpoint_path = "checkpoints/DQN_1312_1044_Z_GRU_onlyLastHid_30RandPosWithCoords_9000E/epoch=1609-step=24150.ckpt")
+#"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_2202_1030_Z_GRU_Noise_9000E/epoch=766-step=16107.ckpt"
+model.eval()
 
 
 xMaxCNT, yMaxCNT = np.shape(measurement_thick.array)[:2] # type: ignore
-print("xMaxCNT, yMaxCNT", xMaxCNT, yMaxCNT)
 
 
-
+#ZernikeTransform
 difArrays = [[nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick]]
 del measurement_thick, potential_thick
 
-#initiate Zernike
-print("generating the zernike moments")
-#ZernikeTransform
-choosenCoords2d = np.array(generate_sparse_grid(xMaxCNT, yMaxCNT, 14, twoD=True))
-choosenCoords = np.array(generate_sparse_grid(xMaxCNT, yMaxCNT, 14, twoD=False))
-RelLabelCSV, zernikeValuesTotal = saveAllPosDifPatterns(None, -1, None, diameterBFD50Pixels,
-                                                        processID = 99999, silence = False,
-                                                        maxPooling = 1, structure = "None",
-                                                        fileWrite = False, difArrays = difArrays,
-                                                        start = start, end = end, zernike=True, initialCoords=choosenCoords) # type: ignore
-RelLabelCSV, zernikeValuesTotal = RelLabelCSV[0][1:], zernikeValuesTotal[0]
-zernikeValuesTotal = torch.tensor(zernikeValuesTotal).float().reshape((xMaxCNT-1)//14+1,(yMaxCNT-1)//14+1, -1)
+RelLabelCSV, dataArray = saveAllPosDifPatterns(None, -1, None, diameterBFD50Pixels, processID = 99999, silence = False, maxPooling = 1, structure = "None", fileWrite = False, difArrays = difArrays, start = (5,5), end = (25,25)) # type: ignore
+del difArrays
 
+RelLabelCSV, dataArray = RelLabelCSV[0][1:], dataArray[0]
 # print(f"RelLabelCSV : {RelLabelCSV}")
-groundTruth = np.zeros((xMaxCNT, yMaxCNT))
-extent=  (start[0],end[0],start[1],end[1])
+groundTruth = np.zeros((measurementArray.shape[0], measurementArray.shape[1]))
+extent=  [start[0],end[0],start[1],end[1]]
 groundTruthCalculator(RelLabelCSV, groundTruth)
 # from matplotlib import cm 
 # cm1 = cm.get_cmap('RdBu_r')
@@ -544,17 +475,27 @@ groundTruthCalculator(RelLabelCSV, groundTruth)
 # plt.savefig("groundTruthWithGrid.png")
 # exit()
 
+radius = dataArray.shape[-1]//2 #already removed everything outside BFD in saveAllDifPatterns 
+ZernikeObject = Zernike(radius, numberOfOSAANSIMoments= numberOfOSAANSIMoments)
 #poolingFactor = int(3)
 
-#/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0403_1751_Z_GRU_9Pos_5hidlay_9000E/epoch=1069-step=44940.ckpt
-model = TwoPartLightning.load_from_checkpoint(checkpoint_path = "/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_3004_1035_Z_TrE_49P_emptyBorder_noCSL_40ZM_9000E/epoch=32-step=71907.ckpt")#"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0203_1554_Z_GRU_halbeBatch_norHidSize_5statt3hidlay_9000E/epoch=1245-step=104664.ckpt")
-#"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_2202_1030_Z_GRU_Noise_9000E/epoch=766-step=16107.ckpt"
-model.eval().to(torch.device("cuda"))
+
+
+plt.imsave("detectorImage.png",dataArray.reshape(int(end[0]-start[1])*5,int(end[0]-start[1])*5,20,20)[0,0])
 
 
 
 
-allInitialPositions, Predictions = CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal, choosenCoords=choosenCoords2d)
+#initiate Zernike
+print("generating the zernike moments")
+zernikeValuesTotal = ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = dataArray, hdf5File = None)
+del dataArray
+zernikeValuesTotal = torch.tensor(zernikeValuesTotal).float().reshape(int(end[0]-start[1])*5,int(end[0]-start[1])*5, -1)
+
+
+
+
+allInitialPositions, Predictions = CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal)
 PredictionDerivative = np.gradient(Predictions)
 PredictionDerivative = np.sqrt(PredictionDerivative[0]**2 + PredictionDerivative[1]**2)
 PredictionDerivative_abs = np.abs(PredictionDerivative)
@@ -568,13 +509,58 @@ plt.colorbar()
 plt.savefig("PredictionsDerivative_Abs.png")
 plt.close()
 
-#Predictions = rescalePredicitions(Predictions)
+def rescaleToInner(Image,minInner, maxInner):
+    Image = Image - np.min(Image)
+    scaler = np.max(Image) - np.min(Image)
+    scaler = scaler or 1
+    Image = Image / scaler * (maxInner - minInner) + minInner
+    return Image
+
+# noiseLevelInner = np.median(Predictions[15:-15,15:-15])
+# maxInner = np.max(Predictions[15:-15,15:-15])
+# minInner = np.min(Predictions[15:-15,15:-15])
+# for outerEdge in range(1,15):
+#     noiseLevelUp = np.median(Predictions.T[outerEdge,outerEdge:-outerEdge])
+#     noiseLevelDown = np.median(Predictions.T[-outerEdge,outerEdge:-outerEdge])
+#     noiseLevelLeft = np.median(Predictions[outerEdge,outerEdge:-outerEdge])
+#     noiseLevelRight = np.median(Predictions[-outerEdge,outerEdge:-outerEdge])
+    
+#     Predictions.T[outerEdge,outerEdge:-outerEdge] -= noiseLevelUp - noiseLevelInner
+#     Predictions.T[-outerEdge,outerEdge:-outerEdge] -= noiseLevelUp - noiseLevelInner
+#     Predictions[outerEdge,outerEdge:-outerEdge] -= noiseLevelLeft - noiseLevelInner
+#     Predictions[-outerEdge,outerEdge:-outerEdge] -= noiseLevelRight - noiseLevelInner
+
+#     # Predictions.T[outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions.T[outerEdge,outerEdge:-outerEdge],minInner, maxInner)
+#     # Predictions.T[-outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions.T[-outerEdge,outerEdge:-outerEdge],minInner, maxInner)
+#     # Predictions[outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions[outerEdge,outerEdge:-outerEdge],minInner, maxInner)
+#     # Predictions[-outerEdge,outerEdge:-outerEdge] = rescaleToInner(Predictions[-outerEdge,outerEdge:-outerEdge],minInner, maxInner)
+
+# noiseLevelUp = np.median(Predictions.T[0,:])
+# noiseLevelDown = np.median(Predictions.T[0,:])
+# noiseLevelLeft = np.median(Predictions[0,:])
+# noiseLevelRight = np.median(Predictions[0,:])
+
+# Predictions.T[0,:] -= noiseLevelUp - noiseLevelInner
+# Predictions[0,:] -= noiseLevelLeft - noiseLevelInner
+
+Predictions_Area_Wise_Highest = np.zeros_like(Predictions)
+for i in range(Predictions.T.shape[0]-15):
+    for j in range(Predictions.T.shape[1]-15):
+        # Get the flattened indices sorted in descending order
+        sortedIndices = np.argsort(Predictions.T[i:i+15,j:j+15], axis=None)[::-1]
+        # Convert them back to 2D indices
+        indicesSortedByHighestPredicition = np.array(np.unravel_index(sortedIndices, (15,15))).T
+        for cnt,(x,y) in enumerate(indicesSortedByHighestPredicition):
+            Predictions_Area_Wise_Highest.T[i+x,j+y] += (15*15 - cnt) * 14/min((i+x),14) * 14/min(Predictions.T.shape[0] - (i+x), 14) * 14/min((j+y),14) * 14/min(Predictions.T.shape[1] - (j+y), 14)
+Predictions = Predictions_Area_Wise_Highest
 
 # Predictions.T[0,:] = rescaleToInner(Predictions.T[0,:],minInner, maxInner)
 # Predictions[0,:] = rescaleToInner(Predictions[0,:],minInner, maxInner)
+
+
 plotGTandPred(atomStruct, groundTruth, Predictions, start, end)
-if onlyPred:
-    exit()
+exit()
+
 
 
 
@@ -588,6 +574,7 @@ for x, y in indicesSortedByHighestPredicition:
     if (x,y) not in allInitialPositions:
         indicesSortedByHighestPredicitionMinusInitial.append((x,y))
 del zernikeValuesTotal
+del ZernikeObject
 
 numberOfPositions = [0.9,0.8,0.65,0.5,0.4,0.3,0.2,0.1]
 

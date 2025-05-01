@@ -152,7 +152,7 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 		
 		
 		# loop over the test set
-		for (x, y) in tqdm(testDataLoader, desc="Going through test data"):
+		for (x, y, mask) in tqdm(testDataLoader, desc="Going through test data"):
 
 			# make the predictions and add them to the list
 			pred = model(x.to('cuda'))
@@ -165,7 +165,7 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 					Writer.writerow([int(predEntry.argmax() == yEntry.argmax())])
 	
 
-def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, numberOfPositions = 9, numberOfZernikeMoments = 40):
+def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, numberOfPositions = 9, numberOfZernikeMoments = 40, FolderAppendix = ""):
 	print(f"Training model version {version} for {epochs} epochs.")
 	world_size = getMPIWorldSize()
 	numberOfModels = 0
@@ -180,7 +180,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments) 
 		batch_size = 1024
 		
-		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size, weighted = False, numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments)
+		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size, weighted = False, numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, trainDirectory = "measurements_train"+FolderAppendix, testDirectory = "measurements_test"+FolderAppendix)
 		lightnDataLoader.setup()
 		
 			
@@ -201,11 +201,6 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		callbacks : list[Callback] = [checkpoint_callback]#,early_stop_callback]
 		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", log_graph=False,name=f"{modelName}_{version}"),
 					   max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, log_every_n_steps=1, callbacks=callbacks)
-				#initialize the lazy linear layer
-		lightnDataLoader.setup()
-		batch = next(iter(lightnDataLoader.train_dataloader()))
-		lightnModel.train()
-		lightnModel.forward(batch)
 		if checkPointExists:
 			new_lr = 1e-4
 			lightnModel.lr = new_lr
@@ -216,7 +211,8 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 			# Auto-scale batch size by growing it exponentially
 			# if world_size == 1: 
 			new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, init_val=256, max_trials= 25) 
-			print(f"New batch size: {new_batch_size}")
+			# lightnDataLoader.batch_size = new_batch_size//2
+			print(f"New batch size: {lightnDataLoader.batch_size}")
 				# leads to crashing with slurm but has worked with 2048 batch size
 				# lightnDataLoader.batch_size is automatically set to new_batch_size
 			# finds learning rate automatically
@@ -230,9 +226,9 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 				lightnModel.lr = new_lr
 			print(f"New learning rate: {lightnModel.lr}")
 			trainer.fit(lightnModel, datamodule = lightnDataLoader)
-		trainer.save_checkpoint(os.path.join("models",f"{modelName}_{version}.ckpt"))
+		trainer.save_checkpoint(os.path.join("moddels",f"{modelName}_{version}.ckpt"))
 		if "DQN" in modelName:
-			lightnModel = TwoPartLightning().load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
+			lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
 		elif "Zernike" in modelName:
 			lightnModel = lightnModelClass(loadModel(lightnDataLoader.val_dataloader(), modelName)).load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
 		evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, lightnModel, indicesToPredict, modelName, version, classifier)
@@ -255,6 +251,7 @@ if __name__ == '__main__':
 	ap.add_argument("-np" ,"--numberOfPositions", type=int, required=False, default=9, help = "Specify the number of Positions that the nn gets as input. Default is 9.")
 	ap.add_argument("-nz" ,"--numberOfZernikeMoments", type=int, required=False, default=40, help = "Specify the highest order of zernike moments to use. Default and max is 40.")
 	ap.add_argument("-l" ,"--labelsFile", type=str, required=False, default="labels.csv", help = "Specify the name of the labels-file. Default is labels.csv.")
+	ap.add_argument("-fa" ,"--FolderAppendix", type=str, required=False, default="", help = "Appendix on the folder measurements_train and measurements_test.")
 	# ap.add_argument("-b" ,"--batchSize", type=int, required=False, default=256, help = "Specify the highest order of zernike moments to use. Default and max is 40.")
 	args = vars(ap.parse_args())
 
@@ -270,4 +267,4 @@ if __name__ == '__main__':
 	if args["indices"] != "all":
 		indices = args["indices"].split(",")
 		indicesToPredict = [int(i) for i in indices]
-	main(args["epochs"], args["version"], classifier, indicesToPredict, args["models"], args["labelsFile"], numberOfPositions=args["numberOfPositions"], numberOfZernikeMoments=args["numberOfZernikeMoments"])     
+	main(args["epochs"], args["version"], classifier, indicesToPredict, args["models"], args["labelsFile"], numberOfPositions=args["numberOfPositions"], numberOfZernikeMoments=args["numberOfZernikeMoments"], FolderAppendix = args["FolderAppendix"])     

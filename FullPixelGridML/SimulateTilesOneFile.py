@@ -57,7 +57,7 @@ from ZernikePolynomials import Zernike
 windowSizeInA = 3 #every 5th A is a scan (probe radius is 5A), should be at least 3 in a window
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
-FolderAppendix = "_emptyBorder"
+FolderAppendix = "_4sparse_noEB_20Z"
 
 def calc_diameter_bfd(image):
     brightFieldDisk = np.zeros_like(image)
@@ -140,7 +140,7 @@ def createStructure(xlen, ylen, specificStructure : str = "random", trainOrTest 
             structFinished.extend(createAtomPillar(xlen = xlen, ylen = ylen, xPos=start[0]+nonPredictedBorderInA+random()*windowSizeInA, yPos=start[1]+nonPredictedBorderInA+random()*windowSizeInA, zPos=0, zAtoms=1, xAtomShift=0, yAtomShift=0, element=randint(1,100)))
         
         #Fill the nonPredictedBorderInA with random atoms
-        if nonPredictedBorderInA > 0 and False: 
+        if nonPredictedBorderInA > 0: 
             borderArea = (2*nonPredictedBorderInA + windowSizeInA)**2-windowSizeInA**2
             numberOfAtomsInBorder = int(borderArea/windowSizeInA**2 * numberOfAtomsInWindow)
             
@@ -372,7 +372,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
             fileName = os.path.join("..","Zernike",f"measurements_{trainOrTest}{FolderAppendix}",f"{processID}_{timeStamp}.hdf5")
             file = h5py.File(fileName, 'w')
     else: dataArray = []
-    ZernikeObject = Zernike(numberOfOSAANSIMoments= 40)
+    ZernikeObject = Zernike(numberOfOSAANSIMoments= 20)
             
     
     difArrays = difArrays or (generateDiffractionArray(trainOrTest = trainOrTest, structure=structure, start=start, end=end, simple = simple, nonPredictedBorderInA=nonPredictedBorderInA) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))
@@ -386,9 +386,8 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         # print(measurement_thick.array.shape)
         # exit()
         if initialCoords is None:
-            sparseGridFactor = 14
+            sparseGridFactor = 4
             MaxShift = nonPredictedBorderInCoords - windowLengthinCoords//2  
-            #is 42 so it is divisible by 14 -> 4 x 4 positions are covered at the least
             xShift = randint(-MaxShift, MaxShift)
             yShift = randint(-MaxShift, MaxShift)
             xStartShift = max(0, xShift)
@@ -404,7 +403,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
             rows = generateAtomGridNoInterp(datasetStructID, rows, atomStruct, start, end, silence, maxPooling=maxPooling)
         else:
             rows = generateXYE(datasetStructID, rows, atomStruct, start, end, silence, nonPredictedBorderInA)
-        difPatternsResized = []
+        difPatternsResized = []#[np.zeros((dimNew, dimNew))] #empty array for the first element, works as csl token. IS PROBLEMATIC because the model than expects this in prediction
         for cnt, difPattern in enumerate(difPatterns): 
             difPatternsResized.append(cv2.resize(difPattern, dsize=(dimNew, dimNew), interpolation=cv2.INTER_LINEAR))  # type: ignore
         difPatternsResized = np.array(difPatternsResized)

@@ -13,4 +13,4 @@
 
 
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
-python3 combineLabelsCSVs.py
+/data/scratch/haertelk/Masterarbeit/python-venv/bin/python combineLabelsCSVs.py

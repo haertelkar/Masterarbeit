@@ -8,9 +8,9 @@ def visualize_coords_hdf5(file_path):
     with h5py.File(file_path, 'r') as f:
         x_coords = []
         y_coords = []
-        for name, dataset in tqdm(f.items()):
+        for name, dataset in tqdm(list(f.items())[::10000]):
             data = dataset[:]
-            for position in data:
+            for cnt, position in enumerate(data):
                 if len(position) == 864:
                     x = position[-3]
                     y = position[-2]
@@ -21,7 +21,8 @@ def visualize_coords_hdf5(file_path):
                         print(f"Invalid coordinates in dataset {name}: x={x}, y={y}")
                 else:
                     print(f"Unexpected data length in dataset {name}: {len(position)}")
-
+        if cnt != 99: 
+            print(f"Warning: Expected 100 datasets, but found {cnt + 1} datasets.")
         heatmap, xedges, yedges = np.histogram2d(x_coords, y_coords, bins=(85, 85), range=[[-35, 49], [-35, 49]])
         extent = (xedges[0], xedges[-1], yedges[0], yedges[-1])
 
@@ -33,4 +34,4 @@ def visualize_coords_hdf5(file_path):
         plt.savefig("heatmap_hdf5_coords.png")
 
 # Replace 'your_file.hdf5' with the path to your HDF5 file
-visualize_coords_hdf5('/data/scratch/haertelk/Masterarbeit/Zernike/measurements_train/training_data_100_Grid.hdf5')
+visualize_coords_hdf5('/data/scratch/haertelk/Masterarbeit/Zernike/measurements_train/training_data.hdf5')

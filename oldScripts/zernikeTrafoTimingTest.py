@@ -16,7 +16,7 @@ print("measuring with only nonzero elements\n")
 
 startTime = time.time()
 for i in range(10):
-    zernikeValues1 = ZernikeObject.zernikeTransform(fileName = None, groupOfPatterns = images, zernikeTotalImages = None)
+    zernikeValues1 = ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = images, hdf5File = None)
     
 print("Time taken for 10 iterations: ", time.time() - startTime, " seconds")
 
@@ -32,7 +32,7 @@ images[np.random.choice(images.shape[0], int(0.5*images.shape[0]), replace = Fal
 ZernikeObject.dimToBasis = {}
 startTime = time.time()
 for i in range(100):
-    zernikeValues = ZernikeObject.zernikeTransform(fileName = None, groupOfPatterns = images, zernikeTotalImages = None)
+    zernikeValues = ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = images, hdf5File = None)
 print("Time taken for 10 iterations: ", time.time() - startTime, " seconds")
 
 ZernikeObject.dimToBasis = {}

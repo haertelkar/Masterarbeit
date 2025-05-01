@@ -3,9 +3,9 @@ import os
 import pandas as pd
 from tqdm import tqdm
 import h5py
+import sys
 
-
-def combineLabelsAndCSV(workingDir):
+def combineLabelsAndCSV(workingDir, FolderAppendix = ""):
     for testOrTrain in ["train", "test"]:
         filesToDelete = []
         labelsToConcat = []
@@ -13,10 +13,10 @@ def combineLabelsAndCSV(workingDir):
         filesToIgnore = []
         df = pd.DataFrame()
         noOfLabelCSVs = 0
-        if len(os.listdir(os.path.join(workingDir,f"measurements_{testOrTrain}"))) <= 3:
+        if len(os.listdir(os.path.join(workingDir,f"measurements_{testOrTrain}{FolderAppendix}"))) <= 3:
             continue
-        with h5py.File(os.path.join(workingDir,f"measurements_{testOrTrain}",'temp_copy.h5'),mode='w') as h5fw:
-            for file in tqdm(os.listdir(os.path.join(workingDir, f"measurements_{testOrTrain}")), desc= f"Searching for labels in measurements_{testOrTrain}"):
+        with h5py.File(os.path.join(workingDir,f"measurements_{testOrTrain}{FolderAppendix}",'temp_copy.h5'),mode='w') as h5fw:
+            for file in tqdm(os.listdir(os.path.join(workingDir, f"measurements_{testOrTrain}{FolderAppendix}")), desc= f"Searching for labels in measurements_{testOrTrain}{FolderAppendix}"):
                 if (".csv" == file[-4:]) and ("labels" in file):
                     labelsToConcat.append(file)
                     if file != "labels.csv": filesToDelete.append(file)
@@ -27,7 +27,7 @@ def combineLabelsAndCSV(workingDir):
                 if ".hdf5" == file[-5:]:
                     try:
                         #if "training_data.hdf5" != file: filesToDelete.append(file)
-                        with h5py.File(os.path.join(*[workingDir, f"measurements_{testOrTrain}",file]),'r') as h5fr:
+                        with h5py.File(os.path.join(*[workingDir, f"measurements_{testOrTrain}{FolderAppendix}",file]),'r') as h5fr:
                             for datasetName in tqdm(h5fr.keys(), desc = f"Going through file", leave = False):  
                                 try:
                                     h5fw[datasetName] = h5py.ExternalLink(file, datasetName)      
@@ -60,15 +60,20 @@ def combineLabelsAndCSV(workingDir):
             if f"{id}.hdf5" in filesToIgnore:
                 cntCor += 1
                 continue
-            data = pd.read_csv(os.path.join(f"measurements_{testOrTrain}",file), converters={'File Name': str})
+            data = pd.read_csv(os.path.join(f"measurements_{testOrTrain}{FolderAppendix}",file), converters={'File Name': str})
             df = pd.concat([df, data], axis = 0)
-        df.to_csv(os.path.join(f"measurements_{testOrTrain}","labels.csv"), index= False)
+        df.to_csv(os.path.join(f"measurements_{testOrTrain}{FolderAppendix}","labels.csv"), index= False)
 
         print(f"Of all corrupted files, {cntCor} had labels files that needed to be deleted.")
         for fileToDelete in filesToDelete:
-            os.remove(os.path.join(f"measurements_{testOrTrain}", fileToDelete))
+            os.remove(os.path.join(f"measurements_{testOrTrain}{FolderAppendix}", fileToDelete))
 
-        os.rename(os.path.join(f"measurements_{testOrTrain}","temp_copy.h5"), os.path.join(f"measurements_{testOrTrain}","training_data.hdf5"))
+        os.rename(os.path.join(f"measurements_{testOrTrain}{FolderAppendix}","temp_copy.h5"), os.path.join(f"measurements_{testOrTrain}{FolderAppendix}","training_data.hdf5"))
 
 if __name__ == "__main__":
-    combineLabelsAndCSV(".")
+    FolderAppendix = ""
+    if len(sys.argv) > 1:
+        FolderAppendix = sys.argv[1]
+    else:
+        FolderAppendix = ""
+    combineLabelsAndCSV(".", FolderAppendix)

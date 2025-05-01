@@ -19,7 +19,7 @@ A5:               0                 0
 R5:               0                 0
 S5:               0                 0
 
-defocspread:   0
+defocspread:   -10e-10
 illangle:      0
 mtfa:          1
 mtfb:          0.0

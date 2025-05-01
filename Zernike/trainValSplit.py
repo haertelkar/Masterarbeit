@@ -3,12 +3,15 @@ import numpy as np
 import pandas as pd
 import os
 from tqdm import tqdm
+import sys
 
-# Directory containing the CSV files
-
+if len(sys.argv) > 1:
+    Folder_Appendix = sys.argv[1]
+else:
+    Folder_Appendix = ""
 
 # Iterate over all CSV files in the directory
-for filename in tqdm(glob("measurements_train/labels*.csv"), desc="Splitting train and validation sets"):
+for filename in tqdm(glob(f"measurements_train{Folder_Appendix}/labels*.csv"), desc="Splitting train and validation sets"):
     # Read the CSV file
     df = pd.read_csv(filename)
     
