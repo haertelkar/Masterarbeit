@@ -37,7 +37,9 @@ def collate_fn_gru(batch):
 colFun = collate_fn
 
 class ptychographicDataLightning(L.LightningDataModule):
-	def __init__(self, model_name, batch_size = 1024, num_workers = 20, classifier = False, indicesToPredict = None, labelFile = "labels.csv", trainDirectory = "measurements_train",testDirectory = "measurements_test", onlyTest = False, weighted  = True, numberOfPositions = 9, numberOfZernikeMoments = 40):
+	def __init__(self, model_name, batch_size = 1024, num_workers = 20, classifier = False, indicesToPredict = None, 
+			    labelFile = "labels.csv", trainDirectories = ["measurements_train"],testDirectories = ["measurements_test"],
+			    onlyTest = False, weighted  = True, numberOfPositions = 9, numberOfZernikeMoments = 40, lessBorder = 35, sparsity = 1):
 		super().__init__()
 		self.batch_size = batch_size
 		self.num_workers = num_workers
@@ -50,14 +52,16 @@ class ptychographicDataLightning(L.LightningDataModule):
 		self.setupDone = False
 		self.prepare_data_per_node = False
 		self.labelFile = labelFile
-		self.testDirectory = testDirectory
+		self.testDirectories = testDirectories
 		self.weights = None
 		self.onlyTest = onlyTest
 		self.weighted = weighted
 		self.numberOfPositions = numberOfPositions
 		self.numberOfZernikeMoments = numberOfZernikeMoments
-		self.trainDirectory = trainDirectory
-		self.testDirectory = testDirectory
+		self.trainDirectories = trainDirectories
+		self.testDirectories = testDirectories
+		self.lessBorder = lessBorder
+		self.sparsity = sparsity
 
 	def setup(self, stage = None) -> None:
 		if self.setupDone: return
@@ -66,62 +70,76 @@ class ptychographicDataLightning(L.LightningDataModule):
 		elif self.model_name == "ZernikeNormal" or self.model_name == "ZernikeBottleneck" or self.model_name == "ZernikeComplex" or self.model_name == "DQN": folderName = "Zernike"
 		else:
 			raise Exception(f"model name '{self.model_name}' unknown")
-		self.train_dataset = ptychographicData(
-					os.path.abspath(os.path.join(folderName,self.trainDirectory, "train_"+self.labelFile)), 
-					os.path.abspath(os.path.join(folderName,self.trainDirectory)), transform=torch.as_tensor, 
-					target_transform=None,#torch.as_tensor,
-					labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions, numberOfZernikeMoments = self.numberOfZernikeMoments
-				)		
-		self.val_dataset = ptychographicData(
-			os.path.abspath(os.path.join(folderName,self.trainDirectory, "vali_"+self.labelFile)), 
-			os.path.abspath(os.path.join(folderName,self.trainDirectory)), transform=torch.as_tensor, 
-			target_transform=None,#torch.as_tensor, 
-			labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions, numberOfZernikeMoments = self.numberOfZernikeMoments
-		)	
-		
-		self.numTrainSamples = len(self.train_dataset)
-		# numValSamples = int(len(self.trainAndVal_dataset) * self.VAL_SPLIT)
-		# numValSamples += len(self.trainAndVal_dataset) - self.numTrainSamples - numValSamples
-		# (self.train_dataset, self.val_dataset) = random_split(self.trainAndVal_dataset,
-		# 	[self.numTrainSamples, numValSamples],
-		# 	generator=torch.Generator().manual_seed(42))
-		
-		self.test_dataset = ptychographicData(
-					os.path.abspath(os.path.join(folderName,self.testDirectory, self.labelFile)), 
-					os.path.abspath(os.path.join(folderName,self.testDirectory)), transform=torch.as_tensor,
-					target_transform=None,#torch.as_tensor,
-					shift = self.train_dataset.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions, numberOfZernikeMoments = self.numberOfZernikeMoments
-				)
-		# initialize the train, validation, and test data loaders
-		warnings.filterwarnings("ignore", ".*This DataLoader will create 20 worker processes in total. Our suggested max number of worker in current system is 10.*") #this is an incorrect warning as we have 20 cores
-		
-		xAtomRelPos = None
-		yAtomRelPos = None
+		trainDatasets = []
+		valiDatasets = []
+		testDatasets = []
 
-		if len(self.train_dataset.columns[1:]) == 2:
-			if "xAtomRel" in self.train_dataset.columns[1] and "yAtomRel" in self.train_dataset.columns[2]:
-				xAtomRelPos = 0
-				yAtomRelPos = 1
-			elif "xAtomRel" in self.train_dataset.columns[2] and "yAtomRel" in self.train_dataset.columns[1]:
-				xAtomRelPos = 1
-				yAtomRelPos = 0
-		
-		if xAtomRelPos is not None and not self.onlyTest and self.weighted:
-			self.weights = pd.read_csv(os.path.abspath(os.path.join(folderName,self.trainDirectory, "weights_"+self.labelFile)), header = None, index_col = None).to_numpy(dtype=float).T[0]
-		
-		if len(self.train_dataset.columns[1:]) == 1 and not self.onlyTest and self.weighted:
-			self.weights = pd.read_csv(os.path.abspath(os.path.join(folderName,self.trainDirectory, "weights_"+self.labelFile)), header = None, index_col = None).to_numpy(dtype=float).T[0]
+		for cnt, (testDirectory, trainDirectory) in enumerate(zip(self.testDirectories, self.trainDirectories)):
+			train_dataset =  ptychographicData(
+						os.path.abspath(os.path.join(folderName,trainDirectory, "train_"+self.labelFile)), 
+						os.path.abspath(os.path.join(folderName,trainDirectory)), transform=torch.as_tensor, 
+						target_transform=None,#torch.as_tensor,
+						labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, 
+						numberOfPositions = self.numberOfPositions, numberOfZernikeMoments = self.numberOfZernikeMoments,
+						lessBorder = self.lessBorder, sparsity = self.sparsity
+					)		
+			val_dataset = ptychographicData(
+				os.path.abspath(os.path.join(folderName,trainDirectory, "vali_"+self.labelFile)), 
+				os.path.abspath(os.path.join(folderName,trainDirectory)), transform=torch.as_tensor, 
+				target_transform=None,#torch.as_tensor, 
+				labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, numberOfPositions = self.numberOfPositions, 
+				numberOfZernikeMoments = self.numberOfZernikeMoments, lessBorder = self.lessBorder, sparsity = self.sparsity
+			)	
+			
+			self.numTrainSamples = len(train_dataset)
+			# numValSamples = int(len(self.trainAndVal_dataset) * self.VAL_SPLIT)
+			# numValSamples += len(self.trainAndVal_dataset) - self.numTrainSamples - numValSamples
+			# (self.train_dataset, self.val_dataset) = random_split(self.trainAndVal_dataset,
+			# 	[self.numTrainSamples, numValSamples],
+			# 	generator=torch.Generator().manual_seed(42))
+			
+			test_dataset = ptychographicData(
+						os.path.abspath(os.path.join(folderName,testDirectory, self.labelFile)), 
+						os.path.abspath(os.path.join(folderName,testDirectory)), transform=torch.as_tensor,
+						target_transform=None,#torch.as_tensor,
+						shift = train_dataset.shift, labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, 
+						numberOfPositions = self.numberOfPositions, numberOfZernikeMoments = self.numberOfZernikeMoments, lessBorder = self.lessBorder, sparsity = self.sparsity
+					)
+			# initialize the train, validation, and test data loaders
+			warnings.filterwarnings("ignore", ".*This DataLoader will create 20 worker processes in total. Our suggested max number of worker in current system is 10.*") #this is an incorrect warning as we have 20 cores
+			
+			# xAtomRelPos = None
+			# yAtomRelPos = None
 
+			# if len(train_dataset.columns[1:]) == 2:
+			# 	if "xAtomRel" in train_dataset.columns[1] and "yAtomRel" in train_dataset.columns[2]:
+			# 		xAtomRelPos = 0
+			# 		yAtomRelPos = 1
+			# 	elif "xAtomRel" in train_dataset.columns[2] and "yAtomRel" in train_dataset.columns[1]:
+			# 		xAtomRelPos = 1
+			# 		yAtomRelPos = 0
+			
+			# if xAtomRelPos is not None and not self.onlyTest and self.weighted:
+			# 	self.weights = pd.read_csv(os.path.abspath(os.path.join(folderName,self.trainDirectories, "weights_"+self.labelFile)), header = None, index_col = None).to_numpy(dtype=float).T[0]
+			
+			# if len(train_dataset.columns[1:]) == 1 and not self.onlyTest and self.weighted:
+			# 	self.weights = pd.read_csv(os.path.abspath(os.path.join(folderName,self.trainDirectories, "weights_"+self.labelFile)), header = None, index_col = None).to_numpy(dtype=float).T[0]
+			trainDatasets.append(train_dataset)
+			if cnt == 0: valiDatasets.append(val_dataset)
+			# testDatasets.append(test_dataset)
+		self.train_dataset = torch.utils.data.ConcatDataset(trainDatasets)
+		self.val_dataset = torch.utils.data.ConcatDataset(valiDatasets)
+		self.test_dataset = test_dataset#torch.utils.data.ConcatDataset(testDatasets)
 		self.setupDone = True
 
 	
 	def train_dataloader(self) -> TRAIN_DATALOADERS:
-		if self.weights is None: 
-			return DataLoader(self.train_dataset,  batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, drop_last=True, shuffle=True, collate_fn=colFun)
-		else:
-			samples_weight = self.weights
-			sampler = WeightedRandomSampler(samples_weight, self.numTrainSamples)
-			return DataLoader(self.train_dataset, shuffle=False, batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, sampler = sampler, drop_last=True, collate_fn=colFun)
+		# if self.weights is None: 
+		return DataLoader(self.train_dataset,  batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, drop_last=True, shuffle=True, collate_fn=colFun)
+		# else:
+		# 	samples_weight = self.weights
+		# 	sampler = WeightedRandomSampler(samples_weight, self.numTrainSamples)
+		# 	return DataLoader(self.train_dataset, shuffle=False, batch_size=self.batch_size, num_workers= self.num_workers, pin_memory=True, sampler = sampler, drop_last=True, collate_fn=colFun)
 	
 	def val_dataloader(self) -> EVAL_DATALOADERS:
 		return DataLoader(self.val_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True, collate_fn=colFun)
@@ -130,8 +148,10 @@ class ptychographicDataLightning(L.LightningDataModule):
 		return DataLoader(self.test_dataset, batch_size= self.batch_size, num_workers= self.num_workers, pin_memory=True, collate_fn=colFun)
 
 class ptychographicData(Dataset):
-	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, shift = None, labelIndicesToPredict = None, classifier = False, numberOfPositions = 9, numberOfZernikeMoments = 40):
-		img_labels_pd = pd.read_csv(annotations_file).dropna()#[:10000]
+	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, shift = None, labelIndicesToPredict = None, 
+			  classifier = False, numberOfPositions = 9, numberOfZernikeMoments = 40, lessBorder = 35, sparsity = 1):
+		self.lessBorder = lessBorder
+		img_labels_pd = pd.read_csv(annotations_file).dropna()[:300000]
 		self.image_labels = img_labels_pd[img_labels_pd.columns[1:]].to_numpy('float32')
 		self.image_names = img_labels_pd[img_labels_pd.columns[0]].astype(str)
 		self.columns = np.array(list(img_labels_pd.columns))
@@ -141,20 +161,26 @@ class ptychographicData(Dataset):
 		self.labelIndicesToPredict = labelIndicesToPredict
 		self.scalerZernike = 1
 		self.classifier = classifier
+		self.numberOfZernikeMoments  = numberOfZernikeMoments
+		self.zernikeLength = self.zernikeLengthCalc()
 		with open('Zernike/stdValues.csv', 'r') as file:
 			line = file.readline()
 			self.stdValues = [float(x.strip()) for x in line.split(',') if x.strip()]
 			self.stdValuesArray = np.array(self.stdValues[:-3] + [1,1,1])
+			self.stdValuesArray = np.delete(self.stdValuesArray, np.s_[self.zernikeLength:-3])
 		with open('Zernike/meanValues.csv', 'r') as file:
 			line = file.readline()
 			self.meanValues = [float(x.strip()) for x in line.split(',') if x.strip()]
 			self.meanValuesArray : np.ndarray = np.array(self.meanValues[:-3] + [0,0,0])
+			self.meanValuesArray = np.delete(self.meanValuesArray, np.s_[self.zernikeLength:-3])
 		self.shift = None
 		self.dataPath = os.path.join(self.img_dir, f"training_data.hdf5")
 		self.dataset = None
 		self.numberOfPositions = numberOfPositions
-		self.numberOfZernikeMoments  = numberOfZernikeMoments
-		self.zernikeLength = self.zernikeLengthCalc()
+		self.sparsity = sparsity
+		
+
+		
 		print(f"Loading {self.dataPath} with {len(self.image_labels)} zernike data. The data is using {self.numberOfZernikeMoments} zernike moments (length = {self.zernikeLength}) and a maximum of {self.numberOfPositions} positions.")
 
 		#removed option to classify
@@ -239,14 +265,31 @@ class ptychographicData(Dataset):
 		try:
 			imageOrZernikeMoments = np.array(self.dataset[datasetStructID])	
 		except KeyError:
-			imageOrZernikeMoments = np.array(self.dataset["0" + datasetStructID]) #sometimes the leading zero goes missing
+			try:	
+				imageOrZernikeMoments = np.array(self.dataset["0" + datasetStructID]) #sometimes the leading zero goes missing
+			except KeyError:
+				imageOrZernikeMoments = np.array(self.dataset[datasetStructID])
 		except OSError as e:
 			print(e)
 			raise Exception(f"OSError: {datasetStructID} in {self.dataPath}")
 		imageOrZernikeMoments = (imageOrZernikeMoments - self.meanValuesArray[np.newaxis,:]) / self.stdValuesArray[np.newaxis,:]
+		if self.lessBorder < 35:
+			BegrenzungAussen = self.lessBorder #less from the outer border
+			
+			imageOrZernikeMoments = imageOrZernikeMoments[(imageOrZernikeMoments[:,-3] >  -BegrenzungAussen) & (imageOrZernikeMoments[:,-3] < (BegrenzungAussen + 15))]
+			imageOrZernikeMoments = imageOrZernikeMoments[(imageOrZernikeMoments[:,-2] >  -BegrenzungAussen) & (imageOrZernikeMoments[:,-2] < (BegrenzungAussen + 15))]
+
+		if self.sparsity > 1:
+			xOffset = imageOrZernikeMoments[0,-3] % self.sparsity
+			yOffset = imageOrZernikeMoments[0,-2] % self.sparsity
+			xEverySecondCordinate = (imageOrZernikeMoments[:,-3] % self.sparsity) == xOffset
+			yEverySecondCordinate = (imageOrZernikeMoments[:,-2] % self.sparsity) == yOffset
+			imageOrZernikeMoments = imageOrZernikeMoments[xEverySecondCordinate & yEverySecondCordinate]
+		
+
 		imageOrZernikeMoments = imageOrZernikeMoments.astype('float32')
-		if self.numberOfZernikeMoments != 40:
-			imageOrZernikeMoments = np.delete(imageOrZernikeMoments, np.s_[self.zernikeLength:-3], axis=1) #remove the higher order zernike moments but keep x,y and padding
+		# if self.numberOfZernikeMoments != 40:
+		# 	imageOrZernikeMoments = np.delete(imageOrZernikeMoments, np.s_[self.zernikeLength:-3], axis=1) #remove the higher order zernike moments but keep x,y and padding
 		# cslToken = np.zeros((1,imageOrZernikeMoments.shape[1]), dtype = "float32")
 		# imageOrZernikeMoments[1:] = imageOrZernikeMoments[:-1]
 		# imageOrZernikeMoments[0] = cslToken
