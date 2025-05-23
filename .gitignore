@@ -209,3 +209,5 @@ Zernike/checkData.py
 python-venv/*
 */measurements_test*/*
 */measurements_train*/*
+SimulationImages/*
+SimulationImages/*/*

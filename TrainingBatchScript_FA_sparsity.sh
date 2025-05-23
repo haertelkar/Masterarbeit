@@ -7,7 +7,8 @@
 #SBATCH --cpus-per-task=1
 #SBATCH -J "100ZNN"   # job name
 #SBATCH --mail-user=haertelk@physik.hu-berlin.de   # email address 
-#SBATCH --time=46:00:00
+#SBATCH --time=47:00:00
+#SBATCH --array=4
 
 
    
@@ -25,4 +26,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script#
-/data/scratch/haertelk/Masterarbeit/python-venv/bin/python -u lightningTrain.py -v 2305_1450_Z_TrE_4sparse_0def_40ZM_9000E -e 9000 -m DQN -l labels_only_Dist.csv -np 16 -nz 40 -fa _4sparse_noEB_0def
+/data/scratch/haertelk/Masterarbeit/python-venv/bin/python -u lightningTrain.py -v 2005_0735_autoB_Z_TrE_0def_40ZM_9000E -e 9000 -m DQN -l labels_only_Dist.csv -np 16 -nz 40 -s 4 -fa _1sparse_noEB_0def 

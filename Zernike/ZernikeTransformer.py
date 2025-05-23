@@ -12,7 +12,6 @@ try:
     from ZernikePolynomials import Zernike
 except ModuleNotFoundError:
     from Zernike.ZernikePolynomials import Zernike
-from mpi4py import MPI
 import h5py
 import sys
 
@@ -28,9 +27,7 @@ def seperateFileNameAndCoords(fileNameAndCoords : str):
     yCoord = int(yCoord[:-1])
     return xCoord, yCoord, fileName
 
-comm = MPI.COMM_WORLD
-rank = comm.Get_rank()
-worldsize = comm.Get_size()
+
 
 def imagePath(testOrTrain):
     return os.path.join("..","FullPixelGridML",f"measurements_{testOrTrain}")
@@ -64,6 +61,9 @@ def readProgressAcrossAllRuns(path:str):
 
 
 def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMoments = 40, leave = True): #radius set below & noOfMoment = 10 tested works, noOfMoment = 40 optimal performance
+    comm = MPI.COMM_WORLD
+    rank = comm.Get_rank()
+    worldsize = comm.Get_size()
     oldDir = os.getcwd() 
     os.chdir(pathToZernikeFolder)
     ZernikeObject = None
@@ -144,4 +144,5 @@ def calc_diameter_bfd(image):
     return diameterBFD
 
 if __name__ == "__main__":
+    from mpi4py import MPI
     zernikeTransformation()

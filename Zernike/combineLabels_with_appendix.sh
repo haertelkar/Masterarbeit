@@ -13,4 +13,4 @@
 
 
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
-/data/scratch/haertelk/Masterarbeit/python-venv/bin/python ../FullPixelGridML/combineLabelsCSVs.py _10sparse
+/data/scratch/haertelk/Masterarbeit/python-venv/bin/python ../FullPixelGridML/combineLabelsCSVs.py _7sparse_noEB_-50def

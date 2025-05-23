@@ -163,13 +163,23 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 			else:
 				for predEntry,yEntry in zip(pred.cpu().numpy(), y.cpu().numpy()):
 					Writer.writerow([int(predEntry.argmax() == yEntry.argmax())])
-	
 
-def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, numberOfPositions = 9, numberOfZernikeMoments = 40, FolderAppendix = ""):
+
+def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, numberOfPositions = 9, numberOfZernikeMoments = 40, FolderAppendix = "",
+		 lessBorder = 35, loadCheckpoint = "", sparsity = 1, accelerator = "gpu"):
 	print(f"Training model version {version} for {epochs} epochs.")
 	world_size = getMPIWorldSize()
 	numberOfModels = 0
-
+	if "," in FolderAppendix:
+		FolderAppendix = FolderAppendix.split(",")
+		FolderAppendix = [i.strip() for i in FolderAppendix]
+		FolderAppendix = [i.replace('"', '') for i in FolderAppendix]
+		print(FolderAppendix)
+		if not isinstance(FolderAppendix, list):
+			raise Exception("FolderAppendix is not a list but contains comma.")
+	else:
+		FolderAppendix = [FolderAppendix]
+		print(FolderAppendix)
 	for modelName in models:  
 		if modelString and modelString not in modelName:
 			continue
@@ -178,34 +188,46 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		# 	lightnModel = TwoPartLightningCNN()
 		# elif "DQN" in modelName:
 		lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments) 
-		batch_size = 1024
+		batch_size = 1024#//2**(10//sparsity)
 		
-		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict, labelFile = labelFile, batch_size=batch_size, weighted = False, numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, trainDirectory = "measurements_train"+FolderAppendix, testDirectory = "measurements_test"+FolderAppendix)
+
+		checkPointExists = True
+
+		trainDirectories = ["measurements_train"+ i for i in FolderAppendix]
+		testDirectories = ["measurements_test"+ i for i in FolderAppendix]
+
+		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict,
+												 labelFile = labelFile, batch_size=batch_size, weighted = False, numberOfPositions = numberOfPositions,
+												   numberOfZernikeMoments = numberOfZernikeMoments, trainDirectories = trainDirectories,
+													 testDirectories = testDirectories, lessBorder = lessBorder, sparsity = sparsity)
 		lightnDataLoader.setup()
 		
 			
 		# if modelName != "DQN":
 		# 	model = loadModel(lightnDataLoader.val_dataloader(), modelName)
 		# 	lightnModel = lightnModelClass(model)
-		early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=0.00, patience=5, verbose=False, mode="min", stopping_threshold = 1e-10)
+		# early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=0.00, patience=5, verbose=False, mode="min", stopping_threshold = 1e-10)
 		#swa = StochasticWeightAveraging(swa_lrs=1e-2) #faster but a bit worse (fails, says problem with deepcopy)
 		chkpPath = os.path.join("checkpoints",f"{modelName}_{version}")
 		if not os.path.exists(chkpPath):
 			os.makedirs(chkpPath)
 			checkPointExists = False
-		else:
-			print("loading from checkpoint")
+		elif loadCheckpoint != "":
+			print("loading from last training checkpoint")
 			checkPointExists = True
 		checkpoint_callback = ModelCheckpoint(dirpath=chkpPath, save_top_k=1, monitor="val_loss")
 		#profiler = AdvancedProfiler(dirpath=".", filename=f"perf_logs_{modelName}_{version}")
 		callbacks : list[Callback] = [checkpoint_callback]#,early_stop_callback]
 		trainer = pl.Trainer(gradient_clip_val=0.5,logger=TensorBoardLogger("tb_logs", log_graph=False,name=f"{modelName}_{version}"),
-					   max_epochs=epochs,num_nodes=world_size, accelerator="gpu",devices=1, log_every_n_steps=1, callbacks=callbacks)
+					   max_epochs=epochs,num_nodes=world_size, accelerator=accelerator,devices=1, log_every_n_steps=1, callbacks=callbacks)
 		if checkPointExists:
 			new_lr = 1e-4
 			lightnModel.lr = new_lr
 			trainer.fit(lightnModel, datamodule = lightnDataLoader, ckpt_path="last")
 		else:
+			if loadCheckpoint != "":
+				print(f"loading from checkpoint:\n{loadCheckpoint}")
+				lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments)
 			#Create a Tuner
 			tuner = Tuner(trainer)
 			# Auto-scale batch size by growing it exponentially
@@ -228,7 +250,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 			trainer.fit(lightnModel, datamodule = lightnDataLoader)
 		trainer.save_checkpoint(os.path.join("moddels",f"{modelName}_{version}.ckpt"))
 		if "DQN" in modelName:
-			lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
+			lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"), numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments)
 		elif "Zernike" in modelName:
 			lightnModel = lightnModelClass(loadModel(lightnDataLoader.val_dataloader(), modelName)).load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
 		evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, lightnModel, indicesToPredict, modelName, version, classifier)
@@ -252,6 +274,10 @@ if __name__ == '__main__':
 	ap.add_argument("-nz" ,"--numberOfZernikeMoments", type=int, required=False, default=40, help = "Specify the highest order of zernike moments to use. Default and max is 40.")
 	ap.add_argument("-l" ,"--labelsFile", type=str, required=False, default="labels.csv", help = "Specify the name of the labels-file. Default is labels.csv.")
 	ap.add_argument("-fa" ,"--FolderAppendix", type=str, required=False, default="", help = "Appendix on the folder measurements_train and measurements_test.")
+	ap.add_argument("-lb" ,"--lessBorder", type=int, required=False, default=35, help = "Specify the border around the image that is not used. Default/Max is 35.")
+	ap.add_argument("-lc" ,"--loadCheckpoint", type=str, required=False, default="", help = "Specify the checkpoint to load to continue training. Default is empty.")
+	ap.add_argument("-s" ,"--sparsity", type=int, required=False, default=1, help = "Specify the sparsity of the data. Default is 1.")
+	ap.add_argument("-ac", "--accelerator", type=str, required=False,help="accelerator to use (eg. 'gpu')", default="gpu")
 	# ap.add_argument("-b" ,"--batchSize", type=int, required=False, default=256, help = "Specify the highest order of zernike moments to use. Default and max is 40.")
 	args = vars(ap.parse_args())
 
@@ -267,4 +293,7 @@ if __name__ == '__main__':
 	if args["indices"] != "all":
 		indices = args["indices"].split(",")
 		indicesToPredict = [int(i) for i in indices]
-	main(args["epochs"], args["version"], classifier, indicesToPredict, args["models"], args["labelsFile"], numberOfPositions=args["numberOfPositions"], numberOfZernikeMoments=args["numberOfZernikeMoments"], FolderAppendix = args["FolderAppendix"])     
+	main(args["epochs"], args["version"] + "_s" + str(args["sparsity"]), classifier, indicesToPredict,
+	   args["models"], args["labelsFile"], numberOfPositions=args["numberOfPositions"],
+		 numberOfZernikeMoments=args["numberOfZernikeMoments"], FolderAppendix = args["FolderAppendix"],
+		 lessBorder = args["lessBorder"], loadCheckpoint = args["loadCheckpoint"], sparsity = args["sparsity"], accelerator = args["accelerator"])     

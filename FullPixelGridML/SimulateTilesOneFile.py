@@ -39,8 +39,8 @@ faulthandler.register(signal.SIGUSR1.value)
 import sys
 
 # setting path
-sys.path.append("/data/scratch/haertelk/Masterarbeit/Zernike")
-from ZernikePolynomials import Zernike 
+
+
 # from dask_mpi import initialize
 # initialize()
 
@@ -54,10 +54,13 @@ from ZernikePolynomials import Zernike
 # abtem.config.set({"cupy.fft-cache-size" : "1024 MB"})
 # device = "gpu"#"gpu" if torch.cuda.is_available() else "cpu"
 
+sys.path.append("/data/scratch/haertelk/Masterarbeit/Zernike")
+from ZernikePolynomials import Zernike 
 windowSizeInA = 3 #every 5th A is a scan (probe radius is 5A), should be at least 3 in a window
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
-FolderAppendix = "_4sparse_noEB_20Z"
+FolderAppendix = "_6sparse_noEB_0def"#"_4sparse_noEB_-50def_20Z"
+
 
 def calc_diameter_bfd(image):
     brightFieldDisk = np.zeros_like(image)
@@ -199,7 +202,7 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
                              structure = "random", pbar = False, 
                              start = (5,5), end = (20,20), simple = False,
                              nonPredictedBorderInA = 0, device = "gpu",
-                             deviceAfter = "gpu") -> Tuple[str, Tuple[float, float], Atoms, BaseMeasurements, Potential]:
+                             deviceAfter = "gpu", generate_graphics = False, defocus = 0) -> Tuple[str, Tuple[float, float], Atoms, BaseMeasurements, Potential]:
     xlen_structure = end[0] + start[0]
     ylen_structure = end[1] + end[0]
     # print(f"Calculating on {device}")
@@ -221,13 +224,16 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
         warnings.simplefilter("ignore")
         #ctf.defocus = -5 
         #ctf.semiangle_cutoff = 1000 * energy2wavelength(ctf.energy) / point_resolution(Cs, ctf.energy)
-        probe = Probe(semiangle_cutoff=conv_angle, energy=energy, defocus = -150, device=device)
+        probe = Probe(semiangle_cutoff=conv_angle, energy=energy, defocus = defocus, device=device)
         #print(f"FWHM = {probe.profiles().width().compute()} Å")
         probe.match_grid(potential_thick)
+        
 
         pixelated_detector = PixelatedDetector(max_angle=100)
 
-        
+        #object increase field of view
+        #show exit wave before diffraction pattern
+        #show probe
 
         gridSampling = (0.2,0.2)
         if end == (-1,-1):
@@ -235,8 +241,49 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
         gridscan = GridScan(
             start = start, end = end, sampling=gridSampling
         )
+        if generate_graphics:
+            waves = probe.build(lazy = False)
+            print(f"Probe shape: {waves.shape}")
+            print(f"waves extent in A: {waves.extent}")
+            print(f"BFD diameter in Pixel: {calc_diameter_bfd(waves.intensity().array)}")
+            print(f"BFD diameter in A: {calc_diameter_bfd(waves.intensity().array) * waves.extent[0] / waves.shape[0]}")
+            #print the lines from above to a file
+            with open(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/probeInfo_{defocus}.txt", "w") as f:
+                f.write(f"Probe shape: {waves.shape}\n")
+                f.write(f"waves extent in A: {waves.extent}\n")
+                f.write(f"BFD diameter in Pixel: {calc_diameter_bfd(waves.intensity().array)}\n")
+                f.write(f"BFD diameter in A: {calc_diameter_bfd(waves.intensity().array) * waves.extent[0] / waves.shape[0]}\n")
+            waves.intensity().show(
+            explode=True, cbar=True, common_color_scale=True, figsize=(10, 10)
+            )
+            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/testProbe_{defocus}.png")
+            plt.close()
+            waves.diffraction_patterns().show(explode=True, cbar=True, common_color_scale=True, figsize=(10, 10))
+            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/testProbe_DifPattern_{defocus}.png")
+            plt.close()
+            waves.diffraction_patterns(block_direct=True).show(explode=True, cbar=True, common_color_scale=True, figsize=(10, 10))
+            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/testProbe_DifPattern_{defocus}.png")
+            plt.close()
+
+        
         measurement_thick = probe.scan(potential_thick, gridscan, pixelated_detector)
-        measurement_thick : BaseMeasurements= measurement_thick.poisson_noise( 1e6) # type: ignore
+        if generate_graphics:
+            single_diffraction_pattern = measurement_thick[1, 1]
+
+            abtem.stack(
+                [
+                    single_diffraction_pattern,
+                    single_diffraction_pattern.block_direct(),
+                ],
+                ("base", "block direct"),
+            ).show(explode=True, cbar=True, figsize=(13, 4))
+            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/diffractionPattern_{defocus}.png")
+            plt.close()
+            plt.imsave(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/difPattern_asis_{defocus}.png", measurement_thick.array[1,1])
+            single_diffraction_pattern.show(power=0.2, cbar=True)
+            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/diffractionPattern_{defocus}_powerScaling.png")
+            plt.close()
+        #measurement_thick : BaseMeasurements= measurement_thick.poisson_noise( 1e5) # type: ignore
         if deviceAfter == "gpu":
             pass
             # measurement_thick = measurement_thick.compute()
@@ -245,7 +292,6 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
 
 
         # plt.imsave("difPattern.png", measurement_thick.array[0,0])
-        #TODO: add noise
         #We dont give angle, conv_angle, energy, real pixelsize to ai because its the same for all training data. Can be done in future
 
         return nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick # type: ignore
@@ -372,7 +418,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
             fileName = os.path.join("..","Zernike",f"measurements_{trainOrTest}{FolderAppendix}",f"{processID}_{timeStamp}.hdf5")
             file = h5py.File(fileName, 'w')
     else: dataArray = []
-    ZernikeObject = Zernike(numberOfOSAANSIMoments= 20)
+    ZernikeObject = Zernike(numberOfOSAANSIMoments= 40)
             
     
     difArrays = difArrays or (generateDiffractionArray(trainOrTest = trainOrTest, structure=structure, start=start, end=end, simple = simple, nonPredictedBorderInA=nonPredictedBorderInA) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))
@@ -386,7 +432,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         # print(measurement_thick.array.shape)
         # exit()
         if initialCoords is None:
-            sparseGridFactor = 4
+            sparseGridFactor = 6
             MaxShift = nonPredictedBorderInCoords - windowLengthinCoords//2  
             xShift = randint(-MaxShift, MaxShift)
             yShift = randint(-MaxShift, MaxShift)
@@ -431,6 +477,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
             if not zernike:
                 dataArray.append(difPatternsResized)
             else:
+                # plt.imsave("/data/scratch/haertelk/Masterarbeit/SimulationImages/difPattern_resized_-150.png", difPatternsResized[15])
                 zernDifPatterns = ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = difPatternsResized, hdf5File = None)
                 dataArray.append(zernDifPatterns)
                 #IMPORTANT: The coords are not appended here. This is done later during reconstruction
@@ -439,6 +486,24 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         return rows
     else:
         return rows, np.array(dataArray) 
+
+# def calc_diameter_bfd_simple(image):
+#     leftEdge = 0
+#     rightEdge = 0
+#     plt.imsave("testMask.png",(image > (np.max(image)*0.1 + np.min(np.abs(image))*0.9)).get().astype(int))
+#     for row in tqdm((image > (np.max(image)*0.1 + np.min(np.abs(image))*0.9)).get().astype(int)):
+#         for i in range(len(row)):
+#             if row[i] == 1 and i < leftEdge:
+#                 leftEdge = i
+#             if row[i] == 1 and i > rightEdge:
+#                 rightEdge = i
+
+#     if rightEdge < leftEdge:
+#         raise Exception("rightEdge < leftEdge")
+        
+#     diameterBFD = rightEdge - leftEdge
+#     return diameterBFD
+
 
 def createTopLineCoords(csvFilePath):
     with open(csvFilePath, 'w+', newline='') as csvfile:
@@ -499,6 +564,7 @@ def writeAllRows(rows, trainOrTest, XDIMTILES, YDIMTILES, processID = "", create
 
 if __name__ == "__main__":
     print("Running")
+    print(f"FolderAppendix: {FolderAppendix}")
     import argparse
     import datetime
     ap = argparse.ArgumentParser()
@@ -513,7 +579,7 @@ if __name__ == "__main__":
     YDIMTILES = 10
     maxPooling = 1
     start = (0,0)   
-    nonPredictedBorderInA = 7
+    nonPredictedBorderInA = 3
     zernike = True
     end = (start[0] + nonPredictedBorderInA * 2 + windowSizeInA , start[1] + nonPredictedBorderInA * 2 + windowSizeInA)
     numberOfPositionsInOneAngstrom = 5

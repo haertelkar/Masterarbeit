@@ -18,4 +18,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun /data/scratch/haertelk/Masterarbeit/python-venv/bin/python -u  evaluateCHKP.py DQN_3004_1035_Z_TrE_49P_emptyBorder_noCSL_40ZM_9000E
+srun /data/scratch/haertelk/Masterarbeit/python-venv/bin/python -u  evaluateCHKP.py DQN_1705_1601_Z_TrE_7sparse_-50def_40ZM_9000E

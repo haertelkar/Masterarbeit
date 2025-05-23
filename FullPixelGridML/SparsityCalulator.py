@@ -17,5 +17,5 @@ def generate_sparse_grid(x_size, y_size, s):
 #         print(s)
 #     else:
 #         continue
-print(generate_sparse_grid(100 ,100 ,14))
-print(len(generate_sparse_grid(100,100,14)))
+print(generate_sparse_grid(100 ,100 ,4))
+print(len(generate_sparse_grid(100,100,4)))

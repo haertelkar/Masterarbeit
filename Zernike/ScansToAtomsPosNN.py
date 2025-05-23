@@ -22,7 +22,7 @@ grid_size_in_A = 3
 grid_size = grid_size_in_A*5
 
 pixelOutput = False
-numberOfAtoms = grid_size_in_A**2
+numberOfAtoms = grid_size_in_A**2 
 if pixelOutput == True:
     label_dims = 0
     label_size = grid_size*grid_size
@@ -112,7 +112,7 @@ class TwoPartLightning(LightningModule):
         self,
         lr: float = 1e-2,
         numberOfPositions = 9,
-        numberOfZernikeMoments = 40
+        numberOfZernikeMoments = 20
     ) -> None:
         """Basic Transformer+Linear Model.
 

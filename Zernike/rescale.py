@@ -5,33 +5,30 @@ import glob
 import matplotlib.pyplot as plt
 # print("[INFO] This script is not necessary.")
 # exit()
-zernikeImages0 = []
-zernikeImages400 = []
-zernikeImages800 = []
-# zernikeImagesAll = []
+# zernikeImages0 = []
+# zernikeImages400 = []
+# zernikeImages800 = []
+zernikeImagesAll = []
 #go through the hdf5 file and scale the data. The vectors are all of the same length. Scale featurewise
 for testOrTrain in ["train"]:
     meanValues = None
-    for cnt, hdf5file in enumerate(tqdm(glob.glob(f"measurements_{testOrTrain}/*.hdf5"), desc = f"Finding the maximum values to scale to one in measurements_{testOrTrain}.")):
-        try:
-            with h5py.File(f"{hdf5file}", "r") as f:
-                for key in tqdm(list(f.keys()), desc = f"Finding the maximum values to scale to one in {hdf5file}.", leave=False):
-                    zernikeImages = np.array(f[key][...]).astype(np.float32)
-                    
-                    # zernikeImages0.append(zernikeImages[:,0])
-                    # zernikeImages400.append(zernikeImages[:,400])
-                    # zernikeImages800.append(zernikeImages[:,800])
-                    tqdm.write(f"{hdf5file}: {str(zernikeImages[0,800])}, {zernikeImages[99,800]}")
-                    # for image in zernikeImages:
-                    #     zernikeImagesAll.append(image)
-        except BlockingIOError:
-            continue
+    with h5py.File(f"measurements_train/training_data.hdf5", "r") as f:
+        for key in tqdm(list(f.keys())[::100], desc = f"Finding the maximum values to scale to one in measurements_train/training_data.hdf5.", leave=False):
+            zernikeImages = np.array(f[key][...]).astype(np.float32)
+            
+            # zernikeImages0.append(zernikeImages[:,0])
+            # zernikeImages400.append(zernikeImages[:,400])
+            # zernikeImages800.append(zernikeImages[:,800])
+            # tqdm.write(f"{hdf5file}: {str(zernikeImages[0,800])}, {zernikeImages[99,800]}")
+            for image in zernikeImages:
+                zernikeImagesAll.append(image)
 
-# zernikeImagesAll = np.array(zernikeImagesAll)
-# meanValues = np.mean(zernikeImagesAll, axis=0)
-# print("meanValues.shape", meanValues.shape)
-# stdValues = np.std(zernikeImagesAll, axis=0)
-# print("stdValues.shape", stdValues.shape)
+
+zernikeImagesAll = np.array(zernikeImagesAll)
+meanValues = np.mean(zernikeImagesAll, axis=0)
+print("meanValues.shape", meanValues.shape)
+stdValues = np.std(zernikeImagesAll, axis=0)
+print("stdValues.shape", stdValues.shape)
 # zernikeImages0 = np.array(zernikeImages0)
 # zernikeImages400 = np.array(zernikeImages400)
 # zernikeImages800 = np.array(zernikeImages800)
@@ -64,12 +61,12 @@ for testOrTrain in ["train"]:
 #         zernikeImages = np.array(f[key][...]).astype(np.float32)
 #         f[key][...] = zernikeImages/meanValues
 
-# with open("meanValues.csv", "w") as f:
-#     for scalar in meanValues:
-#         f.write(f"{scalar},")
-# with open("stdValues.csv", "w") as f:
-#     for scalar in stdValues:
-#         f.write(f"{scalar},")
+with open("meanValues.csv", "w") as f:
+    for scalar in meanValues:
+        f.write(f"{scalar},")
+with open("stdValues.csv", "w") as f:
+    for scalar in stdValues:
+        f.write(f"{scalar},")
 
     #with h5py.File(f"measurements_{testOrTrain}/training_data.hdf5", "r+") as f:
     #    for key in tqdm(f.keys(), desc = "Testing every feature seperately for scaling."):

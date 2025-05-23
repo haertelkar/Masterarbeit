@@ -28,7 +28,7 @@ def combineLabelsAndCSV(workingDir, FolderAppendix = ""):
                     try:
                         #if "training_data.hdf5" != file: filesToDelete.append(file)
                         with h5py.File(os.path.join(*[workingDir, f"measurements_{testOrTrain}{FolderAppendix}",file]),'r') as h5fr:
-                            for datasetName in tqdm(h5fr.keys(), desc = f"Going through file", leave = False):  
+                            for datasetName in tqdm(h5fr.keys(), desc = f"Going through file", leave = False, disable= True):  
                                 try:
                                     h5fw[datasetName] = h5py.ExternalLink(file, datasetName)      
                                 except RuntimeError as e:

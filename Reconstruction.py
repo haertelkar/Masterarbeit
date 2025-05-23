@@ -1,3 +1,4 @@
+import argparse
 import glob
 import os
 import random
@@ -126,10 +127,6 @@ def createMeasurementArray(energy, conv_angle_in_mrad, structure, start, end, DI
         for i in range(measurementArray.shape[0]): 
             realPositions[i,j] = ((j-measurementArray.shape[1]/2)*0.2*1e-10,(i-measurementArray.shape[0]/2)*0.2*1e-10)
             allCoords[i,j] = (i,j)  
-    # for i in tqdm(range(measurementArray.shape[0]), desc = "Resizing the measurementArray"):
-    #     convertedArray = measurement_thick.array[i,:,:,:].compute()
-    #     for j, image in enumerate(convertedArray):
-    #         measurementArray[i,j,:,:] = cv2.resize(image , dsize=(CBEDDim, CBEDDim), interpolation=cv2.INTER_LINEAR)
 
     assert(measurementArray.shape[0] > DIMTILES)
     assert(measurementArray.shape[1] > DIMTILES)
@@ -186,30 +183,35 @@ def createROPFiles(energy, conv_angle_in_mrad, CBEDDim, measurementArrayToFile, 
     # file.write(measurementArrayToFile)
     # file.close()
 
-def plotGTandPred(atomStruct, groundTruth, Predictions, start, end):
+def plotGTandPred(atomStruct, groundTruth, Predictions, start, end, makeNewFolder):
     """Create plots of the ground truth and the predictions. 
     They are transposed because the reconstruction is also transposed.
     """
+    if not makeNewFolder:
+        makeNewFolder = ""
+    else:
+        makeNewFolder+="/"
+
     extent=  (start[0],end[0],start[1],end[1])
     plt.imshow(Predictions.T, origin = "lower", interpolation="none", extent=extent)
     plt.colorbar()
-    plt.savefig("Predictions.png")
+    plt.savefig(makeNewFolder + "Predictions.png")
     plt.close()
     plt.imshow(np.log(Predictions+1).T, origin = "lower", extent=extent)
-    plt.savefig("PredictionsLog.png")
+    plt.savefig(makeNewFolder + "PredictionsLog.png")
     plt.close()
 
     
     plt.imshow(np.log(Predictions+1).T, origin = "lower", extent=extent)
-    plt.savefig("PredictionsLog.png")
+    plt.savefig(makeNewFolder + "PredictionsLog.png")
     plt.close()
     import abtem
     abtem.show_atoms(atomStruct, legend = True)
-    plt.savefig("testStructureOriginal.png")
+    plt.savefig(makeNewFolder + "testStructureOriginal.png")
     plt.close()
     plt.imshow(groundTruth.T, origin = "lower", interpolation="none", extent=extent)
     plt.colorbar()
-    plt.savefig("groundTruth.png")
+    plt.savefig(makeNewFolder + "groundTruth.png")
 
 
     # from matplotlib import cm 
@@ -338,13 +340,23 @@ def createPredictionsWithFiles(indicesSortedByHighestPredicitionMinusInitial, en
     return fullLengthY,fullLengthX
 
 
-def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal, choosenCoords):
+def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal, choosenCoords, sparseGridFactor = 4):
+    #load scaling factors
+    with open('Zernike/stdValues.csv', 'r') as file:
+        line = file.readline()
+        stdValues = [float(x.strip()) for x in line.split(',') if x.strip()]
+        stdValuesArray = torch.tensor(stdValues[:-3])
+    with open('Zernike/meanValues.csv', 'r') as file:
+        line = file.readline()
+        meanValues = [float(x.strip()) for x in line.split(',') if x.strip()]
+        meanValuesArray : torch.Tensor = torch.tensor(meanValues[:-3])
+
     # loop over the all positions and apply the model to the data
     allInitialPositions = []
     Predictions = np.zeros_like(groundTruth)
-    nonPredictedBorderinA = 7
-    nonPredictedBorderinCoordinates = 7 * 5
-    sparseGridFactor = 14
+    nonPredictedBorderinA = None
+    nonPredictedBorderinCoordinates = 0#15 
+    windowSizeInCoords = 15
     # PositionsToScanXSingle = np.arange(0, Predictions.shape[0], 14)
     # PositionsToScanYSingle = np.arange(0, Predictions.shape[1], 14)
     # PositionsToScanX = np.sort(np.array([PositionsToScanXSingle for i in range(len(PositionsToScanYSingle))]).flatten())
@@ -362,8 +374,8 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
 ])
 
     
-    for indexX in tqdm(range(-7 - nonPredictedBorderinCoordinates,Predictions.shape[0]), desc  = "Going through all positions and predicting"):
-        for indexY in range(-7 - nonPredictedBorderinCoordinates,Predictions.shape[1]):
+    for indexX in tqdm(range(-sparseGridFactor - nonPredictedBorderinCoordinates,Predictions.shape[0]), desc  = "Going through all positions and predicting"):
+        for indexY in range(-sparseGridFactor - nonPredictedBorderinCoordinates,Predictions.shape[1]):
             # lowerIndexX = max(indexX, 0)
             # lowerIndexY = max(indexY, 0)
             # upperIndexX = min(indexX+15 + nonPredictedBorderinCoordinates, Predictions.shape[0])
@@ -374,7 +386,7 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
             # zernikeValuesWindowSizeY = upperIndexY - lowerIndexY
             PositionsToScanXLocal = PositionsToScanX - indexX
             PositionsToScanYLocal = PositionsToScanY - indexY
-            mask = (PositionsToScanXLocal >= -nonPredictedBorderinCoordinates) * (PositionsToScanYLocal >= - nonPredictedBorderinCoordinates) * (PositionsToScanXLocal < 15 + nonPredictedBorderinCoordinates) * (PositionsToScanYLocal < 15 + nonPredictedBorderinCoordinates)
+            mask = (PositionsToScanXLocal >= -nonPredictedBorderinCoordinates) * (PositionsToScanYLocal >= - nonPredictedBorderinCoordinates) * (PositionsToScanXLocal < windowSizeInCoords + nonPredictedBorderinCoordinates) * (PositionsToScanYLocal < windowSizeInCoords + nonPredictedBorderinCoordinates)
             if mask.sum() <= 1:
                 continue
             PositionsToScanXLocal = PositionsToScanXLocal[mask]
@@ -387,7 +399,7 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
 
             # imageOrZernikeMoments = zernikeValuesWindow.reshape((zernikeValuesWindowSizeX,zernikeValuesWindowSizeY,-1))[XCoordsLocal + min(indexX,0),YCoordsLocal + min(indexY,0)].reshape((XCoordsLocal.shape[0],-1))
             try: 
-                imageOrZernikeMoments = zernikeValuesTotal[(indexX + XCoordsLocal)//14, (indexY + YCoordsLocal)//14, :].reshape(-1, resultVectorLength)
+                imageOrZernikeMoments = zernikeValuesTotal[(indexX + XCoordsLocal)//sparseGridFactor, (indexY + YCoordsLocal)//sparseGridFactor, :].reshape(-1, resultVectorLength)
             except IndexError as E:
                 print("Error: Index out of bounds")
                 print(f"XCoordsLocal: {XCoordsLocal}")
@@ -396,11 +408,13 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal
                 print(f"indexY: {indexY}")
                 raise Exception(E)
             padding = torch.zeros_like(XCoordsLocal)
+            imageOrZernikeMoments = (imageOrZernikeMoments - meanValuesArray[np.newaxis,:]) / stdValuesArray[np.newaxis,:] 
             imageOrZernikeMomentsCuda = torch.cat((imageOrZernikeMoments, torch.stack([XCoordsLocal, YCoordsLocal, padding]).T), dim = 1).to(torch.device("cuda"))
+
 
             with torch.inference_mode():
                 pred = model(imageOrZernikeMomentsCuda.unsqueeze(0))
-                pred = pred.cpu().detach().numpy().reshape((1,9,2))[0]
+                pred = pred.cpu().detach().numpy().reshape((1,-1,2))[0]
 
             predRealXCoord  = np.round(pred[:,0]).astype(int) + indexX
             predRealYCoord  = np.round(pred[:,1]).astype(int) + indexY
@@ -436,12 +450,12 @@ def rescalePredicitions(Predictions):
         scaler = scaler or 1
         Image = Image / scaler * (maxInner - minInner) + minInner
         return Image
+    windowSizeInCoords = 0
 
-
-    noiseLevelInner = np.median(Predictions[15:-15,15:-15])
-    maxInner = np.max(Predictions[15:-15,15:-15])
-    minInner = np.min(Predictions[15:-15,15:-15])
-    for outerEdge in range(1,15):
+    noiseLevelInner = np.median(Predictions[windowSizeInCoords:-windowSizeInCoords,windowSizeInCoords:-windowSizeInCoords])
+    maxInner = np.max(Predictions[windowSizeInCoords:-windowSizeInCoords,windowSizeInCoords:-windowSizeInCoords])
+    minInner = np.min(Predictions[windowSizeInCoords:-windowSizeInCoords,windowSizeInCoords:-windowSizeInCoords])
+    for outerEdge in range(1,windowSizeInCoords):
         noiseLevelUp = np.median(Predictions.T[outerEdge,outerEdge:-outerEdge])
         noiseLevelDown = np.median(Predictions.T[-outerEdge,outerEdge:-outerEdge])
         noiseLevelLeft = np.median(Predictions[outerEdge,outerEdge:-outerEdge])
@@ -466,10 +480,31 @@ def rescalePredicitions(Predictions):
     Predictions[0,:] -= noiseLevelLeft - noiseLevelInner
     return Predictions
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Reconstruction script for ptychographic data.")
+    parser.add_argument('--structure', type=str, default="/data/scratch/haertelk/Masterarbeit/FullPixelGridML/structures/used/MoS2_hexagonal.cif",
+                        help='Path to the structure .cif file')
+    parser.add_argument('--model', type=str, default="/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0503_1255_Z_TransfEnc_9Pos_5hidlay_9000E/epoch=1169-step=49140.ckpt",
+                        help='Path to the model checkpoint')
+    parser.add_argument('--sparseGridFactor', type=int, default=5,
+                        help='Sparse grid factor for Zernike moment calculation')
+    parser.add_argument('--makeNewFolder', action="store_true", help ="If enabled creates a new folder for the results in ROP Results.")
+    return parser.parse_args()
+
+args = parse_args()
+structure = args.structure
+print(f"Structure: {structure}")
+model_checkpoint = args.model
+print(f"Model: {model_checkpoint}")
+sparseGridFactor = args.sparseGridFactor
+print(f"Sparse grid factor: {sparseGridFactor}")
+makeNewFolder = args.makeNewFolder
+print(  f"Make new folder: {makeNewFolder}")
+
 # measurementArray.astype('float').flatten().tofile("testMeasurement.bin")
 onlyPred = False
 energy = 60e3
-structure="/data/scratch/haertelk/Masterarbeit/FullPixelGridML/structures/used/NaSbF6.cif"
+# structure="/data/scratch/haertelk/Masterarbeit/FullPixelGridML/structures/used/MoS2_hexagonal.cif"#"/data/scratch/haertelk/Masterarbeit/FullPixelGridML/structures/used/NaSbF6.cif"
 conv_angle_in_mrad = 33
 dim = 50
 diameterBFD50Pixels = 18
@@ -518,15 +553,16 @@ del measurement_thick, potential_thick
 #initiate Zernike
 print("generating the zernike moments")
 #ZernikeTransform
-choosenCoords2d = np.array(generate_sparse_grid(xMaxCNT, yMaxCNT, 14, twoD=True))
-choosenCoords = np.array(generate_sparse_grid(xMaxCNT, yMaxCNT, 14, twoD=False))
+print("sparseGridFactor", sparseGridFactor)
+choosenCoords2d = np.array(generate_sparse_grid(xMaxCNT, yMaxCNT, sparseGridFactor, twoD=True))
+choosenCoords = np.array(generate_sparse_grid(xMaxCNT, yMaxCNT, sparseGridFactor, twoD=False))
 RelLabelCSV, zernikeValuesTotal = saveAllPosDifPatterns(None, -1, None, diameterBFD50Pixels,
                                                         processID = 99999, silence = False,
                                                         maxPooling = 1, structure = "None",
                                                         fileWrite = False, difArrays = difArrays,
                                                         start = start, end = end, zernike=True, initialCoords=choosenCoords) # type: ignore
 RelLabelCSV, zernikeValuesTotal = RelLabelCSV[0][1:], zernikeValuesTotal[0]
-zernikeValuesTotal = torch.tensor(zernikeValuesTotal).float().reshape((xMaxCNT-1)//14+1,(yMaxCNT-1)//14+1, -1)
+zernikeValuesTotal = torch.tensor(zernikeValuesTotal).float().reshape((xMaxCNT-1)//sparseGridFactor+1,(yMaxCNT-1)//sparseGridFactor+1, -1)
 
 # print(f"RelLabelCSV : {RelLabelCSV}")
 groundTruth = np.zeros((xMaxCNT, yMaxCNT))
@@ -547,14 +583,15 @@ groundTruthCalculator(RelLabelCSV, groundTruth)
 #poolingFactor = int(3)
 
 #/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0403_1751_Z_GRU_9Pos_5hidlay_9000E/epoch=1069-step=44940.ckpt
-model = TwoPartLightning.load_from_checkpoint(checkpoint_path = "/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_3004_1035_Z_TrE_49P_emptyBorder_noCSL_40ZM_9000E/epoch=32-step=71907.ckpt")#"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0203_1554_Z_GRU_halbeBatch_norHidSize_5statt3hidlay_9000E/epoch=1245-step=104664.ckpt")
+model = TwoPartLightning.load_from_checkpoint(checkpoint_path = model_checkpoint,
+                                              numberOfZernikeMoments = numberOfOSAANSIMoments)#"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0203_1554_Z_GRU_halbeBatch_norHidSize_5statt3hidlay_9000E/epoch=1245-step=104664.ckpt")
 #"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_2202_1030_Z_GRU_Noise_9000E/epoch=766-step=16107.ckpt"
 model.eval().to(torch.device("cuda"))
 
 
 
 
-allInitialPositions, Predictions = CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal, choosenCoords=choosenCoords2d)
+allInitialPositions, Predictions = CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesTotal, choosenCoords=choosenCoords2d, sparseGridFactor = sparseGridFactor)
 PredictionDerivative = np.gradient(Predictions)
 PredictionDerivative = np.sqrt(PredictionDerivative[0]**2 + PredictionDerivative[1]**2)
 PredictionDerivative_abs = np.abs(PredictionDerivative)
@@ -572,8 +609,18 @@ plt.close()
 
 # Predictions.T[0,:] = rescaleToInner(Predictions.T[0,:],minInner, maxInner)
 # Predictions[0,:] = rescaleToInner(Predictions[0,:],minInner, maxInner)
-plotGTandPred(atomStruct, groundTruth, Predictions, start, end)
-if onlyPred:
+if makeNewFolder:
+    
+    makeNewFolder = f"ROPResults/2025_05_22_{structure.split('/')[-1].split('.')[0]}_every{sparseGridFactor}_{model_checkpoint.split('/')[-2].split('.')[0]}"
+    print("Creating new folder", makeNewFolder)
+    try:
+        os.mkdir(makeNewFolder)
+    except FileExistsError:
+        pass
+
+
+plotGTandPred(atomStruct, groundTruth, Predictions, start, end, makeNewFolder)
+if makeNewFolder:
     exit()
 
 
