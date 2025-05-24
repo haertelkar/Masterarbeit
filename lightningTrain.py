@@ -10,7 +10,7 @@ import torch
 import faulthandler
 import signal
 from tqdm import tqdm
-from Zernike.ScansToAtomsPosNN import preCompute, TwoPartLightning
+from Zernike.ScansToAtomsPosNN import preCompute, TwoPartLightning, ThreePartLightning
 from datasets import ptychographicDataLightning
 import torch.nn.functional as F
 import lightning.pytorch as pl
@@ -167,6 +167,7 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 
 def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, numberOfPositions = 9, numberOfZernikeMoments = 40, FolderAppendix = "",
 		 lessBorder = 35, loadCheckpoint = "", sparsity = 1, accelerator = "gpu"):
+	models = ["FullPixelGridML", "ZernikeNormal", "ZernikeBottleneck", "ZernikeComplex", "DQN", "cnnTransformer","unet"]
 	print(f"Training model version {version} for {epochs} epochs.")
 	world_size = getMPIWorldSize()
 	numberOfModels = 0
@@ -187,8 +188,9 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		# if "FullPixelGridML" in modelName:
 		# 	lightnModel = TwoPartLightningCNN()
 		# elif "DQN" in modelName:
-		lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments) 
-		batch_size = 1024#//2**(10//sparsity)
+		if modelName == "DQN": lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments)
+		if modelName == "cnnTransformer": lightnModel = ThreePartLightning(numberOfPositions = numberOfPositions)
+		batch_size = 1024
 		
 
 		checkPointExists = True
@@ -227,12 +229,13 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		else:
 			if loadCheckpoint != "":
 				print(f"loading from checkpoint:\n{loadCheckpoint}")
-				lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments)
+				if modelName == "DQN": lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments)
+				elif modelName == "cnnTransformer": lightnModel = ThreePartLightning.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfPositions = numberOfPositions)
 			#Create a Tuner
 			tuner = Tuner(trainer)
 			# Auto-scale batch size by growing it exponentially
 			# if world_size == 1: 
-			new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, init_val=256, max_trials= 25) 
+			tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, init_val=256, max_trials= 25) 
 			# lightnDataLoader.batch_size = new_batch_size//2
 			print(f"New batch size: {lightnDataLoader.batch_size}")
 				# leads to crashing with slurm but has worked with 2048 batch size
@@ -251,6 +254,8 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		trainer.save_checkpoint(os.path.join("moddels",f"{modelName}_{version}.ckpt"))
 		if "DQN" in modelName:
 			lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"), numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments)
+		elif "cnnTransformer" in modelName:
+			lightnModel = ThreePartLightning.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"), numberOfPositions = numberOfPositions)
 		elif "Zernike" in modelName:
 			lightnModel = lightnModelClass(loadModel(lightnDataLoader.val_dataloader(), modelName)).load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
 		evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, lightnModel, indicesToPredict, modelName, version, classifier)
@@ -260,7 +265,6 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 	if numberOfModels == 0: raise Exception("No model fits the required String.")
 
 if __name__ == '__main__':
-	models = ["FullPixelGridML", "ZernikeNormal", "ZernikeBottleneck", "ZernikeComplex", "DQN"]
 	# construct the argument parser and parse the arguments
 	ap = argparse.ArgumentParser()
 	ap.add_argument("-v", "--version", type=str, required=True,
@@ -288,7 +292,6 @@ if __name__ == '__main__':
 	else:
 		classifier = True
 		indicesToPredict = args["classifier"]
-		models.append("unet")
 
 	if args["indices"] != "all":
 		indices = args["indices"].split(",")

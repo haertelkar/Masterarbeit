@@ -59,7 +59,7 @@ from ZernikePolynomials import Zernike
 windowSizeInA = 3 #every 5th A is a scan (probe radius is 5A), should be at least 3 in a window
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
-FolderAppendix = "_6sparse_noEB_0def"#"_4sparse_noEB_-50def_20Z"
+FolderAppendix = "_14sparse"#"_4sparse_noEB_-50def_20Z"
 
 
 def calc_diameter_bfd(image):
@@ -268,6 +268,8 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
         
         measurement_thick = probe.scan(potential_thick, gridscan, pixelated_detector)
         if generate_graphics:
+            print(f"Measurement shape: {measurement_thick.shape}")
+            print(f"structure: {nameStruct}") 
             single_diffraction_pattern = measurement_thick[1, 1]
 
             abtem.stack(
@@ -379,7 +381,7 @@ def generate_sparse_grid(x_size, y_size, s, xStartShift = 0, yStartShift = 0, xE
 
 def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,maxPooling = 1, processID = 99999, silence = False, 
                           structure = "random", fileWrite = True, difArrays = None,     start = (5,5), end = (8,8), simple = False, 
-                          nonPredictedBorderInA = 0, zernike = False, initialCoords = None):
+                          nonPredictedBorderInA = 0, zernike = False, initialCoords = None, defocus=0):
     """
     Generates all diffraction patterns for the given positions and saves them to a file.
     Args:
@@ -406,27 +408,31 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
     rows = []
     # rowsPixel = []
     dimOrig = 50
-    dimNew = None
+    dimNew = 0
     BFDdiameterScaled = None
     nonPredictedBorderInCoords = nonPredictedBorderInA * 5
     windowLengthinCoords = windowSizeInA * 5
 
     if fileWrite: 
         if not zernike:
-            file = h5py.File(os.path.join(f"measurements_{trainOrTest}{FolderAppendix}",f"{processID}_{timeStamp}.hdf5"), 'w')
+            fileName = os.path.join(f"measurements_{trainOrTest}{FolderAppendix}",f"{processID}_{timeStamp}.hdf5")
         else:
             fileName = os.path.join("..","Zernike",f"measurements_{trainOrTest}{FolderAppendix}",f"{processID}_{timeStamp}.hdf5")
-            file = h5py.File(fileName, 'w')
+        file = h5py.File(fileName, 'w', libver='latest')
     else: dataArray = []
-    ZernikeObject = Zernike(numberOfOSAANSIMoments= 40)
-            
+    if zernike:
+        ZernikeObject = Zernike(numberOfOSAANSIMoments= 40)
+    else:   
+        dimNew = 100   
     
-    difArrays = difArrays or (generateDiffractionArray(trainOrTest = trainOrTest, structure=structure, start=start, end=end, simple = simple, nonPredictedBorderInA=nonPredictedBorderInA) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))
+
+
+    difArrays = difArrays or (generateDiffractionArray(trainOrTest = trainOrTest, structure=structure, start=start, end=end, simple = simple, nonPredictedBorderInA=nonPredictedBorderInA, defocus=defocus) for i in tqdm(range(numberOfPatterns), leave = False, disable=silence, desc = f"Calculating {trainOrTest}ing data {processID}"))
     for cnt, (_, _, atomStruct, measurement_thick, _) in enumerate(difArrays):
         datasetStructID = f"{cnt}{processID}{timeStamp}"         
 
         difPatterns = measurement_thick.array#.copy() # type: ignore
-        dimNew = min(difPatterns.shape[-2],  difPatterns.shape[-1])
+        if zernike: dimNew = min(difPatterns.shape[-2],  difPatterns.shape[-1])
         BFDdiameterScaled = int(BFDdiameter * dimNew / dimOrig)
         difPatterns = np.reshape(difPatterns, (-1,difPatterns.shape[-2], difPatterns.shape[-1]))
         # print(measurement_thick.array.shape)
@@ -442,7 +448,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
             yEndShift = min(yShift, 0)
             choosenCoords : np.ndarray = np.array(generate_sparse_grid(measurement_thick.array.shape[0], measurement_thick.array.shape[1], sparseGridFactor, xStartShift=xStartShift, yStartShift=yStartShift, xEndShift=xEndShift,yEndShift=yEndShift))
         else:
-            choosenCoords = initialCoords                                                                                                                
+            choosenCoords = initialCoords                                                                                                        
 
         difPatterns = difPatterns[choosenCoords].compute()
         if pixelOutput:
@@ -462,16 +468,17 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         # plt.imsave(os.path.join(f"measurements_{trainOrTest}",f"{datasetStructID}.png"), difPatternsOnePositionResized[0])
         
         if fileWrite: 
+            choosenXCoords = (choosenCoords % measurement_thick.array.shape[1]).astype(int) 
+            choosenYCoords = (choosenCoords / measurement_thick.array.shape[1]).astype(int)
             if not zernike:
-                file.create_dataset(f"{datasetStructID}", data = difPatternsResized, compression="lzf", chunks = (1, difPatterns.shape[-2], difPatterns.shape[-1]), shuffle = True)
+                difPatternsResized_reshaped_with_Coords = np.concatenate((difPatternsResized.reshape(difPatternsResized.shape[0],-1), np.stack([choosenXCoords - nonPredictedBorderInCoords, choosenYCoords - nonPredictedBorderInCoords]).T), axis = 1)
+                file.create_dataset(f"{datasetStructID}", data = difPatternsResized_reshaped_with_Coords.astype('float32'), compression="lzf", chunks = (1, difPatterns.shape[-1]), shuffle = True)
             else:
                 zernDifPatterns = ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = difPatternsResized, hdf5File = None)
-                choosenXCoords = (choosenCoords % measurement_thick.array.shape[1]).astype(int) 
-                choosenYCoords = (choosenCoords / measurement_thick.array.shape[1]).astype(int)
                 padding = np.zeros_like(choosenXCoords)
                 zernDifPatterns = np.concatenate((zernDifPatterns, np.stack([choosenXCoords - nonPredictedBorderInCoords, choosenYCoords - nonPredictedBorderInCoords, padding]).T), axis = 1)
                 
-                file.create_dataset(f"{datasetStructID}", data = zernDifPatterns, compression="lzf", chunks = (1, zernDifPatterns.shape[-1]), shuffle = True)
+                file.create_dataset(f"{datasetStructID}", data = zernDifPatterns.astype('float32'), compression="lzf", chunks = (1, zernDifPatterns.shape[-1]), shuffle = True)
             
         else: 
             if not zernike:
@@ -580,9 +587,10 @@ if __name__ == "__main__":
     maxPooling = 1
     start = (0,0)   
     nonPredictedBorderInA = 3
-    zernike = True
+    zernike = False
     end = (start[0] + nonPredictedBorderInA * 2 + windowSizeInA , start[1] + nonPredictedBorderInA * 2 + windowSizeInA)
     numberOfPositionsInOneAngstrom = 5
+    defocus = -150 #in Angstroms
     size = int((end[0] - start[0]) * numberOfPositionsInOneAngstrom)
     BFDdiameter = 18 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
     assert(size % maxPooling == 0)
@@ -595,7 +603,7 @@ if __name__ == "__main__":
             timeStamp = int(str(time()).replace('.', ''))
             rows = saveAllPosDifPatterns(trainOrTest, int(testDivider[trainOrTest]*20), timeStamp, BFDdiameter, processID=args["id"], silence=True, 
                                          structure = args["structure"], start=start, end=end, maxPooling=maxPooling, simple = True, 
-                                         nonPredictedBorderInA=nonPredictedBorderInA, zernike=zernike)
+                                         nonPredictedBorderInA=nonPredictedBorderInA, zernike=zernike, defocus=defocus)
             #rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling, structure = args["structure"], start=start, end=end)
             writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], 
                          timeStamp = timeStamp, maxPooling=maxPooling, size = size, zernike=zernike)

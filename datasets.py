@@ -32,6 +32,23 @@ def collate_fn_gru(batch):
                                     sequence_lengths, batch_first=True, enforce_sorted=False)
 	return padded_sequences, torch.stack(labels), torch.zeros((1,1))
 
+def collate_fn(batch):
+    sequences, labels = zip(*batch)
+
+    max_len = max(len(seq) for seq in sequences)
+    B = len(sequences)
+    H, W = sequences[0][0].shape  # [H, W]
+
+    padded_sequences = torch.zeros((B, max_len, 1, H, W))
+    mask = torch.zeros((B, max_len), dtype=torch.bool)
+
+    for i, seq in enumerate(sequences):
+        seq_len = len(seq)
+        padded_sequences[i, :seq_len] = torch.stack(seq)  # [seq_len, 1, H, W]
+        mask[i, :seq_len] = True
+
+    return padded_sequences, torch.stack(labels), mask
+
 
 
 colFun = collate_fn
@@ -66,7 +83,7 @@ class ptychographicDataLightning(L.LightningDataModule):
 	def setup(self, stage = None) -> None:
 		if self.setupDone: return
 		folderName = None
-		if self.model_name == "FullPixelGridML" or self.model_name == "unet":	folderName = "FullPixelGridML"
+		if self.model_name == "FullPixelGridML" or self.model_name == "unet" or self.model_name == "cnnTransformer":	folderName = "FullPixelGridML"
 		elif self.model_name == "ZernikeNormal" or self.model_name == "ZernikeBottleneck" or self.model_name == "ZernikeComplex" or self.model_name == "DQN": folderName = "Zernike"
 		else:
 			raise Exception(f"model name '{self.model_name}' unknown")
@@ -151,7 +168,7 @@ class ptychographicData(Dataset):
 	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, shift = None, labelIndicesToPredict = None, 
 			  classifier = False, numberOfPositions = 9, numberOfZernikeMoments = 40, lessBorder = 35, sparsity = 1):
 		self.lessBorder = lessBorder
-		img_labels_pd = pd.read_csv(annotations_file).dropna()[:300000]
+		img_labels_pd = pd.read_csv(annotations_file).dropna()
 		self.image_labels = img_labels_pd[img_labels_pd.columns[1:]].to_numpy('float32')
 		self.image_names = img_labels_pd[img_labels_pd.columns[0]].astype(str)
 		self.columns = np.array(list(img_labels_pd.columns))
@@ -159,20 +176,21 @@ class ptychographicData(Dataset):
 		self.transform = transform
 		self.target_transform = target_transform
 		self.labelIndicesToPredict = labelIndicesToPredict
-		self.scalerZernike = 1
 		self.classifier = classifier
-		self.numberOfZernikeMoments  = numberOfZernikeMoments
-		self.zernikeLength = self.zernikeLengthCalc()
-		with open('Zernike/stdValues.csv', 'r') as file:
-			line = file.readline()
-			self.stdValues = [float(x.strip()) for x in line.split(',') if x.strip()]
-			self.stdValuesArray = np.array(self.stdValues[:-3] + [1,1,1])
-			self.stdValuesArray = np.delete(self.stdValuesArray, np.s_[self.zernikeLength:-3])
-		with open('Zernike/meanValues.csv', 'r') as file:
-			line = file.readline()
-			self.meanValues = [float(x.strip()) for x in line.split(',') if x.strip()]
-			self.meanValuesArray : np.ndarray = np.array(self.meanValues[:-3] + [0,0,0])
-			self.meanValuesArray = np.delete(self.meanValuesArray, np.s_[self.zernikeLength:-3])
+		self.zernike = True if "Zernike" in self.img_dir else False
+		if self.zernike:
+			self.numberOfZernikeMoments  = numberOfZernikeMoments
+			self.zernikeLength = self.zernikeLengthCalc()
+			with open('Zernike/stdValues.csv', 'r') as file:
+				line = file.readline()
+				self.stdValues = [float(x.strip()) for x in line.split(',') if x.strip()]
+				self.stdValuesArray = np.array(self.stdValues[:-3] + [1,1,1])
+				self.stdValuesArray = np.delete(self.stdValuesArray, np.s_[self.zernikeLength:-3])
+			with open('Zernike/meanValues.csv', 'r') as file:
+				line = file.readline()
+				self.meanValues = [float(x.strip()) for x in line.split(',') if x.strip()]
+				self.meanValuesArray : np.ndarray = np.array(self.meanValues[:-3] + [0,0,0])
+				self.meanValuesArray = np.delete(self.meanValuesArray, np.s_[self.zernikeLength:-3])
 		self.shift = None
 		self.dataPath = os.path.join(self.img_dir, f"training_data.hdf5")
 		self.dataset = None
@@ -272,19 +290,20 @@ class ptychographicData(Dataset):
 		except OSError as e:
 			print(e)
 			raise Exception(f"OSError: {datasetStructID} in {self.dataPath}")
-		imageOrZernikeMoments = (imageOrZernikeMoments - self.meanValuesArray[np.newaxis,:]) / self.stdValuesArray[np.newaxis,:]
-		if self.lessBorder < 35:
-			BegrenzungAussen = self.lessBorder #less from the outer border
-			
-			imageOrZernikeMoments = imageOrZernikeMoments[(imageOrZernikeMoments[:,-3] >  -BegrenzungAussen) & (imageOrZernikeMoments[:,-3] < (BegrenzungAussen + 15))]
-			imageOrZernikeMoments = imageOrZernikeMoments[(imageOrZernikeMoments[:,-2] >  -BegrenzungAussen) & (imageOrZernikeMoments[:,-2] < (BegrenzungAussen + 15))]
+		if self.zernike:
+			imageOrZernikeMoments = (imageOrZernikeMoments - self.meanValuesArray[np.newaxis,:]) / self.stdValuesArray[np.newaxis,:]
+			if self.lessBorder < 35:
+				BegrenzungAussen = self.lessBorder #less from the outer border
+				
+				imageOrZernikeMoments = imageOrZernikeMoments[(imageOrZernikeMoments[:,-3] >  -BegrenzungAussen) & (imageOrZernikeMoments[:,-3] < (BegrenzungAussen + 15))]
+				imageOrZernikeMoments = imageOrZernikeMoments[(imageOrZernikeMoments[:,-2] >  -BegrenzungAussen) & (imageOrZernikeMoments[:,-2] < (BegrenzungAussen + 15))]
 
-		if self.sparsity > 1:
-			xOffset = imageOrZernikeMoments[0,-3] % self.sparsity
-			yOffset = imageOrZernikeMoments[0,-2] % self.sparsity
-			xEverySecondCordinate = (imageOrZernikeMoments[:,-3] % self.sparsity) == xOffset
-			yEverySecondCordinate = (imageOrZernikeMoments[:,-2] % self.sparsity) == yOffset
-			imageOrZernikeMoments = imageOrZernikeMoments[xEverySecondCordinate & yEverySecondCordinate]
+			if self.sparsity > 1:
+				xOffset = imageOrZernikeMoments[0,-3] % self.sparsity
+				yOffset = imageOrZernikeMoments[0,-2] % self.sparsity
+				xEverySecondCordinate = (imageOrZernikeMoments[:,-3] % self.sparsity) == xOffset
+				yEverySecondCordinate = (imageOrZernikeMoments[:,-2] % self.sparsity) == yOffset
+				imageOrZernikeMoments = imageOrZernikeMoments[xEverySecondCordinate & yEverySecondCordinate]
 		
 
 		imageOrZernikeMoments = imageOrZernikeMoments.astype('float32')

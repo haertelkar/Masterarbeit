@@ -134,7 +134,7 @@ class TwoPartLightning(LightningModule):
                     continue
                 self.obs_size += 1
 
-        self.obs_size += 3 # 2 for x and y position of the agent
+        self.obs_size += 3 # 2 for x and y position 
         self.nhead = 0
         for i in np.arange(8,20, 2):
             if self.obs_size % i == 0:
@@ -214,6 +214,164 @@ class TwoPartLightning(LightningModule):
         else: 
             currentLabelReshaped = currentLabel.flatten(start_dim=1).reshape((batch_size,-1,label_dims))
             atomPositionsLabelReshapedAndScaled = atomPositionsLabel.flatten(start_dim=1).reshape((batch_size,-1,label_dims))/scaler
+            loss = torch.mean(self.loss_fct(currentLabelReshaped, atomPositionsLabelReshapedAndScaled))
+            # lossGen = (sinkhorn(currentLabelReshaped[i], atomPositionsLabelReshapedAndScaled[i])[0] for i in range(len(currentLabel.flatten(start_dim=1).reshape((-1,10,label_dims)))))
+            # loss = torch.mean(torch.stack(list(lossGen)))
+
+        # else: loss, _ = chamfer_distance(currentLabel.flatten(start_dim=1).reshape((-1,10,label_dims)), atomPositionsLabel.flatten(start_dim=1).reshape((-1,10,label_dims))/scaler)#, single_directional=True)
+                                
+        if log: self.log("train_loss", loss, on_step=True, on_epoch=True, logger=True)
+
+        return loss
+    
+    def test_step(self, batch: Tuple[Tensor, Tensor, Tensor], batch_idx: int) -> Tensor:
+        loss = self.training_step(batch, log=False)
+        self.log("test_loss", loss)
+        return loss
+
+    def configure_optimizers(self) -> Optimizer:
+        """Initialize Adam optimizer."""
+        # params = []#self.dqn.parameters(), self.finalLayer.parameters()]
+        # params = [self.finalLayer.parameters()]
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
+        return optimizer
+    
+
+class ThreePartLightning(LightningModule):
+    def __init__(
+        self,
+        lr: float = 1e-2,
+        numberOfPositions = 9
+    ) -> None:
+        """Basic Transformer+Linear Model.
+
+        Args:
+            lr: learning rate
+            numberOfPositions: number of positions in input
+
+        """
+        super().__init__()
+    
+        self.lr = lr
+        
+        print(f"number of heads: {self.nhead}")
+        self.BFD_size = 36 #input size of 36x36 (BFD size at 100x100)
+        self.example_input_array = torch.zeros((1, numberOfPositions, 36,36), device=device, requires_grad=True)
+
+        self.prePreCNN = nn.Sequential(
+            nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2)
+        )
+        self.prePreCNN = torch.compile(self.prePreCNN)
+        cnnOutputSize = 128 * (self.BFD_size // 8) * (self.BFD_size // 8)  
+        self.obs_size = cnnOutputSize + 2  # +2 for x and y position
+        self.nhead = 0
+        for i in np.arange(8,20, 2):
+            if self.obs_size % i == 0:
+                self.nhead = i
+                break
+        if self.nhead == 0:
+            for i in np.arange(2,8, 2):
+                if self.obs_size % i == 0:
+                    self.nhead = i
+                    break
+        self.preComputeNN = preComputeTransformer(obs_size=self.obs_size, numberOfHeads=self.nhead)
+        # self.preComputeNN = torch.compile(self.preComputeNN)
+        self.finalLayerNN = FinalLayer(self.obs_size, label_size) 
+        self.finalLayerNN = torch.compile(self.finalLayerNN)
+
+        if pixelOutput: self.loss_fct = nn.BCEWithLogitsLoss()#nn.MSELoss()
+        else: self.loss_fct = geomloss.SamplesLoss()
+
+    def forward(self, ptychoImagesWithPositions: Tensor) -> Tensor:
+        """Passes in a state x through the network and gets the coordinates of the atoms.
+
+        Args:
+            ptychoImages: current Zernike moments
+
+        Returns:
+            coordinates of the atoms ordered by x position
+
+        """
+        batch_size = ptychoImagesWithPositions.shape[0]
+        numberOfPositions = ptychoImagesWithPositions.shape[1]
+        #shape: (batch_size, numberOfPositions, BFD_size* BFD_size)
+        ptychoImages, coordinates = ptychoImagesWithPositions[:,:,:-2], ptychoImagesWithPositions[:,:,-2:]
+        ptychoImages = ptychoImages.reshape((batch_size*numberOfPositions , 1, self.BFD_size, self.BFD_size))
+        encodedPtychoImages = self.prePreCNN(ptychoImages)  
+        encodedPtychoImages = encodedPtychoImages.reshape((batch_size, numberOfPositions, -1))
+        encodedPtychoImagesWithCoordinates = torch.cat((encodedPtychoImages, coordinates), dim=-1)  # Add coordinates to the end
+        currentHiddenState = self.preComputeNN(encodedPtychoImagesWithCoordinates).flatten(start_dim=1)
+
+        currentLabel :Tensor= self.finalLayerNN(currentHiddenState)
+        # currentLabel : Tensor = self.finalLayer(ptychoImages.flatten(start_dim=1))
+
+        labelOrdered = currentLabel
+        if not pixelOutput:
+            labelOrdered = currentLabel.flatten(start_dim=1).reshape((-1, numberOfAtoms, label_dims))
+            sorted_indices = torch.argsort(labelOrdered[:, :, 0], dim=1)
+            labelOrdered = torch.gather(labelOrdered, 1, sorted_indices.unsqueeze(-1).expand(-1, -1, label_dims))*scaler
+
+        return  (labelOrdered.flatten(start_dim=1) )
+
+    def validation_step(self, batch: Tuple[Tensor, Tensor, Tensor], batch_idx: int) -> Tensor:
+        loss = self.training_step(batch, log=False)
+        self.log("val_loss", loss)
+        return loss
+
+    def training_step(self, batch: Tuple[Tensor, Tensor, Tensor], log = True) -> Tensor:
+        """Passes in a state x through the network and gets the coordinates of the atoms and computes the loss.
+
+        Args:
+            batch: current mini batch of replay data
+            log: whether to log metrics
+
+        Returns:
+            Training loss
+
+        """
+        ptychoImagesWithPositions, atomPositionsLabel, mask = batch
+        # x: [B, T, H*W + metadata_dim]
+        B, T, D = ptychoImagesWithPositions.shape
+        image_dim = self.BFD_size * self.BFD_size 
+        metadata_dim = self.metadata_dim
+
+        image_flat = ptychoImagesWithPositions[:, :, :image_dim]          # [B, T, H*W]
+        metadata = ptychoImagesWithPositions[:, :, image_dim:]            # [B, T, 2]
+        assert metadata.shape[2] == metadata_dim
+
+        # Masked flatten
+        valid_mask = mask.view(B, T)              # [B, T]
+        valid_indices = valid_mask.nonzero(as_tuple=False)  # [N, 2] — (batch_idx, time_idx)
+
+        # Extract valid image patches
+        valid_images = image_flat[valid_mask]     # [N, H*W]
+        valid_images = valid_images.view(-1, 1, self.BFD_size , self.BFD_size )  # [N, 1, H, W]
+
+        # CNN encoding
+        encoded_imgs = self.prePreCNN(valid_images)     # [N, cnn_output_dim]
+
+        # Insert CNN outputs back into [B, T, cnn_output_dim]
+        img_features = torch.zeros((B, T, encoded_imgs.shape[-1]), device=ptychoImagesWithPositions.device)
+        img_features[valid_mask] = encoded_imgs
+
+        # Concatenate with metadata
+        encodedPtychoImagesWithCoordinates = torch.cat([img_features, metadata], dim=2) 
+        currentHiddenState = self.preComputeNN(encodedPtychoImagesWithCoordinates, mask).flatten(start_dim=1)
+        currentLabel :Tensor= self.finalLayerNN(currentHiddenState.flatten(start_dim=1))        
+
+        # loss = torch.nn.MSELoss()(currentLabel.flatten(start_dim=1), atomPositionsLabel.flatten(start_dim=1)/grid_size)
+        if pixelOutput: loss = self.loss_fct(torch.clip(currentLabel.flatten(start_dim=1),0,1), atomPositionsLabel.flatten(start_dim=1))
+        else: 
+            currentLabelReshaped = currentLabel.flatten(start_dim=1).reshape((B,-1,label_dims))
+            atomPositionsLabelReshapedAndScaled = atomPositionsLabel.flatten(start_dim=1).reshape((B,-1,label_dims))/scaler
             loss = torch.mean(self.loss_fct(currentLabelReshaped, atomPositionsLabelReshapedAndScaled))
             # lossGen = (sinkhorn(currentLabelReshaped[i], atomPositionsLabelReshapedAndScaled[i])[0] for i in range(len(currentLabel.flatten(start_dim=1).reshape((-1,10,label_dims)))))
             # loss = torch.mean(torch.stack(list(lossGen)))
