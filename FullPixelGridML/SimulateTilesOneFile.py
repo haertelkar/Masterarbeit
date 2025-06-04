@@ -59,7 +59,7 @@ from ZernikePolynomials import Zernike
 windowSizeInA = 3 #every 5th A is a scan (probe radius is 5A), should be at least 3 in a window
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
-FolderAppendix = "_14sparse"#"_4sparse_noEB_-50def_20Z"
+FolderAppendix = "_18sparse_-150def"#"_4sparse_noEB_-50def_20Z"
 
 
 def calc_diameter_bfd(image):
@@ -107,7 +107,7 @@ def createAtomPillar(xlen, ylen, xPos = None, yPos = None, zPos = None, zAtoms =
 #     atomPillar_slab = moveAndRotateAtomsAndOrthogonalizeAndRepeat(atomPillar, xPos, yPos, zPos, ortho=True)
 #     return atomPillar_slab
 
-def MarcelsEx(xPos = None, yPos = None, zPos = None):
+def MarcelsEx(xlen = None, ylen = None, xPos = None, yPos = None, zPos = None):
     cnt1 = nanotube(10, 4, length=4)
     cnt2 = nanotube(21, 0, length=6)
     double_walled_cnt =  cnt1 + cnt2
@@ -116,7 +116,7 @@ def MarcelsEx(xPos = None, yPos = None, zPos = None):
     orthogonal_atoms = moveAndRotateAtomsAndOrthogonalizeAndRepeat(double_walled_cnt,xPos, yPos, zPos, ortho=True, repeat=False)
     return orthogonal_atoms
 
-def grapheneC(xPos = None, yPos = None, zPos = None) -> Atoms:
+def grapheneC(xlen = None, ylen = None, xPos = None, yPos = None, zPos = None) -> Atoms:
     grapheneC = graphene()
     grapheneC_slab = moveAndRotateAtomsAndOrthogonalizeAndRepeat(grapheneC, xPos, yPos, zPos)
     return grapheneC_slab
@@ -175,7 +175,7 @@ def createStructure(xlen, ylen, specificStructure : str = "random", trainOrTest 
             structFinished = moveAndRotateAtomsAndOrthogonalizeAndRepeat(struct, xlen, ylen)
         else:
             nameStruct = specificStructure
-            structFinished = predefinedFunctions[nameStruct](**kwargs)
+            structFinished = predefinedFunctions[nameStruct](xlen, ylen, **kwargs)
     else:
         if os.path.exists(f'FullPixelGridML/structures'):
             path = 'FullPixelGridML/structures'
@@ -196,6 +196,7 @@ def createStructure(xlen, ylen, specificStructure : str = "random", trainOrTest 
             #     random_numbers = (1,1,1)
             #surfaceStruct = surface(struct, indices=random_numbers, layers=3, periodic=True)
             structFinished = moveAndRotateAtomsAndOrthogonalizeAndRepeat(struct, xlen, ylen) 
+        # print(f"Created structure {nameStruct} with shape {structFinished.get_positions().shape}")
     return nameStruct, structFinished
 
 def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3, 
@@ -203,8 +204,9 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
                              start = (5,5), end = (20,20), simple = False,
                              nonPredictedBorderInA = 0, device = "gpu",
                              deviceAfter = "gpu", generate_graphics = False, defocus = 0) -> Tuple[str, Tuple[float, float], Atoms, BaseMeasurements, Potential]:
-    xlen_structure = end[0] + start[0]
-    ylen_structure = end[1] + end[0]
+    xlen_structure = start[0] + end[0]
+    ylen_structure = start[1] + end[1]
+    # print(f"Generating structure with xlen = {xlen_structure} and ylen = {ylen_structure} and start = {start} and end = {end} and nonPredictedBorderInA = {nonPredictedBorderInA}")
     # print(f"Calculating on {device}")
     nameStruct, atomStruct = createStructure(xlen_structure, ylen_structure, specificStructure= structure, trainOrTest = trainOrTest, simple=simple, nonPredictedBorderInA = nonPredictedBorderInA, start=start)
     try:
@@ -350,11 +352,9 @@ def generateXYE(datasetStructID, rows, atomStruct, start, end, silence = True, n
         if xCoordinate >= xMaxCoord - xMinCoord  or yCoordinate >= yMaxCoord - yMinCoord : continue
         xyes.append([xCoordinate,yCoordinate,atomNo])
         cnt += 1
-    if len(xyes) != numberOfAtomsInWindow and atomStruct == "simple":
-        print("xyes", xyes)
-        raise Exception("Too many/few atoms")
+    # print(f"Found {len(xyes)} atoms with nonPredictedBorderInA = {nonPredictedBorderInA} and start = {start} and end = {end}\n")
     xyes = np.array(xyes)
-    xyes = xyes[xyes[:,0].argsort()] #sort by x coordinate
+    if len(xyes): xyes = xyes[xyes[:,0].argsort()] #sort by x coordinate
 
     rows.append([f"{datasetStructID}"]+list(xyes.flatten().astype(str)))    
     return rows
@@ -419,7 +419,8 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         else:
             fileName = os.path.join("..","Zernike",f"measurements_{trainOrTest}{FolderAppendix}",f"{processID}_{timeStamp}.hdf5")
         file = h5py.File(fileName, 'w', libver='latest')
-    else: dataArray = []
+    else: 
+        dataArray = []
     if zernike:
         ZernikeObject = Zernike(numberOfOSAANSIMoments= 40)
     else:   
@@ -438,8 +439,8 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         # print(measurement_thick.array.shape)
         # exit()
         if initialCoords is None:
-            sparseGridFactor = 6
-            MaxShift = nonPredictedBorderInCoords - windowLengthinCoords//2  
+            sparseGridFactor = 10
+            MaxShift = nonPredictedBorderInCoords + windowLengthinCoords//2  
             xShift = randint(-MaxShift, MaxShift)
             yShift = randint(-MaxShift, MaxShift)
             xStartShift = max(0, xShift)
@@ -449,12 +450,13 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
             choosenCoords : np.ndarray = np.array(generate_sparse_grid(measurement_thick.array.shape[0], measurement_thick.array.shape[1], sparseGridFactor, xStartShift=xStartShift, yStartShift=yStartShift, xEndShift=xEndShift,yEndShift=yEndShift))
         else:
             choosenCoords = initialCoords                                                                                                        
-
+        # print(f"choosenCoords shape: {choosenCoords.shape}, choosenCoords: {choosenCoords}")
         difPatterns = difPatterns[choosenCoords].compute()
         if pixelOutput:
             rows = generateAtomGridNoInterp(datasetStructID, rows, atomStruct, start, end, silence, maxPooling=maxPooling)
         else:
             rows = generateXYE(datasetStructID, rows, atomStruct, start, end, silence, nonPredictedBorderInA)
+
         difPatternsResized = []#[np.zeros((dimNew, dimNew))] #empty array for the first element, works as csl token. IS PROBLEMATIC because the model than expects this in prediction
         for cnt, difPattern in enumerate(difPatterns): 
             difPatternsResized.append(cv2.resize(difPattern, dsize=(dimNew, dimNew), interpolation=cv2.INTER_LINEAR))  # type: ignore
@@ -492,7 +494,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         file.close()
         return rows
     else:
-        return rows, np.array(dataArray) 
+        return rows, np.array(dataArray) # type: ignore
 
 # def calc_diameter_bfd_simple(image):
 #     leftEdge = 0
