@@ -56,10 +56,10 @@ import sys
 
 sys.path.append("/data/scratch/haertelk/Masterarbeit/Zernike")
 from ZernikePolynomials import Zernike 
-windowSizeInA = 3 #every 5th A is a scan (probe radius is 5A), should be at least 3 in a window
+windowSizeInA = 3 # Size of the window in Angstroms
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
-FolderAppendix = "_18sparse_-150def"#"_4sparse_noEB_-50def_20Z"
+FolderAppendix = "_4sparse_0def_0B_20Z"#"_4sparse_noEB_-50def_20Z"
 
 
 def calc_diameter_bfd(image):
@@ -203,17 +203,18 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
                              structure = "random", pbar = False, 
                              start = (5,5), end = (20,20), simple = False,
                              nonPredictedBorderInA = 0, device = "gpu",
-                             deviceAfter = "gpu", generate_graphics = False, defocus = 0) -> Tuple[str, Tuple[float, float], Atoms, BaseMeasurements, Potential]:
+                             deviceAfter = "gpu", generate_graphics = False, defocus = -50) -> Tuple[str, Tuple[float, float], Atoms, BaseMeasurements, Potential]:
     xlen_structure = start[0] + end[0]
-    ylen_structure = start[1] + end[1]
+    ylen_structure = start[1] + end[1] 
+    xlen_structure = ylen_structure = max(xlen_structure, ylen_structure) #make sure its square
     # print(f"Generating structure with xlen = {xlen_structure} and ylen = {ylen_structure} and start = {start} and end = {end} and nonPredictedBorderInA = {nonPredictedBorderInA}")
     # print(f"Calculating on {device}")
     nameStruct, atomStruct = createStructure(xlen_structure, ylen_structure, specificStructure= structure, trainOrTest = trainOrTest, simple=simple, nonPredictedBorderInA = nonPredictedBorderInA, start=start)
     try:
         potential_thick = Potential(
             atomStruct,
-            sampling=0.05,
-            device=device
+            device=device,
+            sampling=0.05 
         )
     except Exception as e:
         print(nameStruct, atomStruct)
@@ -231,12 +232,11 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
         probe.match_grid(potential_thick)
         
 
-        pixelated_detector = PixelatedDetector(max_angle=100)
+        pixelated_detector = PixelatedDetector(max_angle=100, resample="uniform")
 
         #object increase field of view
         #show exit wave before diffraction pattern
         #show probe
-
         gridSampling = (0.2,0.2)
         if end == (-1,-1):
             end : tuple[float,float]= potential_thick.extent # type: ignore
@@ -376,12 +376,12 @@ def generate_sparse_grid(x_size, y_size, s, xStartShift = 0, yStartShift = 0, xE
     assert(xEndShift <= 0)
     assert(yEndShift <= 0)
     if twoD:
-        return [[x, y] for x in range(xStartShift, x_size + xEndShift, s) for y in range(yStartShift, y_size + yEndShift, s)]
+        return [(x, y) for x in range(xStartShift, x_size + xEndShift, s) for y in range(yStartShift, y_size + yEndShift, s)]
     return [x * y_size + y for x in range(xStartShift, x_size + xEndShift, s) for y in range(yStartShift, y_size + yEndShift, s)]
 
 def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,maxPooling = 1, processID = 99999, silence = False, 
                           structure = "random", fileWrite = True, difArrays = None,     start = (5,5), end = (8,8), simple = False, 
-                          nonPredictedBorderInA = 0, zernike = False, initialCoords = None, defocus=0):
+                          nonPredictedBorderInA = 0, zernike = False, initialCoords = None, defocus=-50, numberOfOSAANSIMoments = 20):
     """
     Generates all diffraction patterns for the given positions and saves them to a file.
     Args:
@@ -422,7 +422,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
     else: 
         dataArray = []
     if zernike:
-        ZernikeObject = Zernike(numberOfOSAANSIMoments= 40)
+        ZernikeObject = Zernike(numberOfOSAANSIMoments= numberOfOSAANSIMoments)
     else:   
         dimNew = 100   
     
@@ -433,13 +433,13 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         datasetStructID = f"{cnt}{processID}{timeStamp}"         
 
         difPatterns = measurement_thick.array#.copy() # type: ignore
-        if zernike: dimNew = min(difPatterns.shape[-2],  difPatterns.shape[-1])
+        if zernike: dimNew = min(difPatterns.shape[-2],  difPatterns.shape[-1]) 
         BFDdiameterScaled = int(BFDdiameter * dimNew / dimOrig)
         difPatterns = np.reshape(difPatterns, (-1,difPatterns.shape[-2], difPatterns.shape[-1]))
         # print(measurement_thick.array.shape)
         # exit()
         if initialCoords is None:
-            sparseGridFactor = 10
+            sparseGridFactor = 4
             MaxShift = nonPredictedBorderInCoords + windowLengthinCoords//2  
             xShift = randint(-MaxShift, MaxShift)
             yShift = randint(-MaxShift, MaxShift)
@@ -470,8 +470,14 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         # plt.imsave(os.path.join(f"measurements_{trainOrTest}",f"{datasetStructID}.png"), difPatternsOnePositionResized[0])
         
         if fileWrite: 
+            #TODO x and y are incorrect, should be switched
             choosenXCoords = (choosenCoords % measurement_thick.array.shape[1]).astype(int) 
             choosenYCoords = (choosenCoords / measurement_thick.array.shape[1]).astype(int)
+            # choosenCoords2D : np.ndarray = np.array(generate_sparse_grid(measurement_thick.array.shape[0], measurement_thick.array.shape[1], sparseGridFactor, xStartShift=xStartShift,
+            #                                                              yStartShift=yStartShift, xEndShift=xEndShift,yEndShift=yEndShift, twoD=True))
+            # for cnt, (xCoord, yCoord) in enumerate(choosenCoords2D):
+            #     if xCoord != choosenXCoords[cnt] or yCoord != choosenYCoords[cnt]:
+            #         raise Exception(f"choosenCoords2D and choosenCoords do not match at index {cnt}: {choosenCoords2D[cnt]} != {choosenXCoords[cnt], choosenYCoords[cnt]}")
             if not zernike:
                 difPatternsResized_reshaped_with_Coords = np.concatenate((difPatternsResized.reshape(difPatternsResized.shape[0],-1), np.stack([choosenXCoords - nonPredictedBorderInCoords, choosenYCoords - nonPredictedBorderInCoords]).T), axis = 1)
                 file.create_dataset(f"{datasetStructID}", data = difPatternsResized_reshaped_with_Coords.astype('float32'), compression="lzf", chunks = (1, difPatterns.shape[-1]), shuffle = True)
@@ -588,11 +594,12 @@ if __name__ == "__main__":
     YDIMTILES = 10
     maxPooling = 1
     start = (0,0)   
-    nonPredictedBorderInA = 3
-    zernike = False
+    nonPredictedBorderInA = 0
+    zernike = True
     end = (start[0] + nonPredictedBorderInA * 2 + windowSizeInA , start[1] + nonPredictedBorderInA * 2 + windowSizeInA)
+
     numberOfPositionsInOneAngstrom = 5
-    defocus = -150 #in Angstroms
+    defocus = 0 #in Angstroms
     size = int((end[0] - start[0]) * numberOfPositionsInOneAngstrom)
     BFDdiameter = 18 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
     assert(size % maxPooling == 0)
