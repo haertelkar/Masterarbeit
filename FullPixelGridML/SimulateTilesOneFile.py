@@ -59,7 +59,7 @@ from ZernikePolynomials import Zernike
 windowSizeInA = 3 # Size of the window in Angstroms
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
-FolderAppendix = "_4sparse_0def_0B_20Z"#"_4sparse_noEB_-50def_20Z"
+FolderAppendix = "_4sparse_0def_0B_new_20Z"#"_4sparse_noEB_-50def_20Z"
 
 
 def calc_diameter_bfd(image):
@@ -359,7 +359,7 @@ def generateXYE(datasetStructID, rows, atomStruct, start, end, silence = True, n
     rows.append([f"{datasetStructID}"]+list(xyes.flatten().astype(str)))    
     return rows
 
-def generate_sparse_grid(x_size, y_size, s, xStartShift = 0, yStartShift = 0, xEndShift = 0, yEndShift = 0, twoD = False):
+def generate_sparse_grid(x_size, y_size, s, xStartShift = 0, yStartShift = 0, xEndShift = 0, yEndShift = 0, xOffset = 0, yOffset = 0, twoD = False):
     """
     Generates a 1D array of flattened sparse grid coordinates.
 
@@ -376,8 +376,8 @@ def generate_sparse_grid(x_size, y_size, s, xStartShift = 0, yStartShift = 0, xE
     assert(xEndShift <= 0)
     assert(yEndShift <= 0)
     if twoD:
-        return [(x, y) for x in range(xStartShift, x_size + xEndShift, s) for y in range(yStartShift, y_size + yEndShift, s)]
-    return [x * y_size + y for x in range(xStartShift, x_size + xEndShift, s) for y in range(yStartShift, y_size + yEndShift, s)]
+        return [(x, y) for x in range(xStartShift + xOffset, x_size + xEndShift, s) for y in range(yStartShift + yOffset, y_size + yEndShift, s)]
+    return [x * y_size + y for x in range(xStartShift + xOffset, x_size + xEndShift, s) for y in range(yStartShift + yOffset, y_size + yEndShift, s)]
 
 def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,maxPooling = 1, processID = 99999, silence = False, 
                           structure = "random", fileWrite = True, difArrays = None,     start = (5,5), end = (8,8), simple = False, 
@@ -447,7 +447,12 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
             yStartShift = max(0, yShift)
             xEndShift = min(xShift, 0 )
             yEndShift = min(yShift, 0)
-            choosenCoords : np.ndarray = np.array(generate_sparse_grid(measurement_thick.array.shape[0], measurement_thick.array.shape[1], sparseGridFactor, xStartShift=xStartShift, yStartShift=yStartShift, xEndShift=xEndShift,yEndShift=yEndShift))
+            xOffset = randint(0,sparseGridFactor-1)
+            yOffset = randint(0,sparseGridFactor-1)
+            choosenCoords : np.ndarray = np.array(generate_sparse_grid(measurement_thick.array.shape[0], measurement_thick.array.shape[1],
+                                                                        sparseGridFactor, xStartShift=xStartShift, yStartShift=yStartShift,
+                                                                        xEndShift=xEndShift,yEndShift=yEndShift, xOffset = xOffset, 
+                                                                        yOffset = yOffset, twoD=False)) # type: ignore
         else:
             choosenCoords = initialCoords                                                                                                        
         # print(f"choosenCoords shape: {choosenCoords.shape}, choosenCoords: {choosenCoords}")
