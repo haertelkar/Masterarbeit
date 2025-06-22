@@ -15,10 +15,9 @@ from FullPixelGridML.SimulateTilesOneFile import generateDiffractionArray, creat
 import numpy as np
 from ase.io import write
 from ase.visualize.plot import plot_atoms
-from datasets import ptychographicDataLightning
 from torch import nn
-from lightningTrain import loadModel, lightnModelClass, TwoPartLightning
-from Zernike.ZernikeTransformer import Zernike, calc_diameter_bfd
+from Zernike.ScansToAtomsPosNN import TwoPartLightning
+
 
 
 
@@ -132,7 +131,8 @@ def createMeasurementArray(energy, conv_angle_in_mrad, structure, start, end, de
             realPositions[i,j] = ((j-measurementArray.shape[1]/2)*0.2*1e-10,(i-measurementArray.shape[0]/2)*0.2*1e-10)
             allCoords[i,j] = (i,j)  
             if not onlyPred: measurementArray[i,j,:,:] = cv2.resize(computetRow[j,:,:], dsize=(CBEDDim, CBEDDim), interpolation=cv2.INTER_LINEAR)      
-
+    if not onlyPred: measurementArray[0,0,:,:] = cv2.resize(measurement_thick.array[0,0,:,:].compute(), dsize=(CBEDDim, CBEDDim), interpolation=cv2.INTER_LINEAR)
+    # for BFD calculation
 
     assert(measurementArray.shape[0] > DIMTILES)
     assert(measurementArray.shape[1] > DIMTILES)
@@ -158,6 +158,9 @@ def CleanUpROP():
             os.remove(f"{filename}")
         for filename in glob.glob(f"{folder}/Potential*.png"):
             os.remove(f"{filename}")
+        if folder != ".": 
+            for filename in glob.glob(f"{folder}/slurm*.out"):
+                os.remove(f"{filename}")
 
 def createROPFiles(energy, conv_angle_in_mrad, CBEDDim, measurementArrayToFile, allKnownPositionsInA, diameterBFD, fullLengthX, fullLengthY, folder = ".", grid = False):
     writeParamsCNF(fullLengthX,fullLengthY, allKnownPositionsInA, diameterBFD, conv_angle_in_mrad = conv_angle_in_mrad, energy=energy, CBEDDim=CBEDDim, folder = folder, grid = grid)
@@ -237,9 +240,16 @@ def plotGTandPred(atomStruct, groundTruth, Predictions, start, end, makeNewFolde
     plt.savefig("groundTruthLog.png")
     plt.close()
 
+    
     plt.imshow(predictions_scored_by_gaussian.T, origin = "lower", interpolation="none", extent=extent)
     plt.colorbar()
     plt.savefig(makeNewFolder + "predictions_scored_by_gaussian.png")
+    plt.close()
+
+    predictions_scored_by_gaussian_round_to_lower_1000 = np.floor(predictions_scored_by_gaussian/1000)*1000
+    plt.imshow(predictions_scored_by_gaussian_round_to_lower_1000.T, origin = "lower", interpolation="none", extent=extent)
+    plt.colorbar()
+    plt.savefig(makeNewFolder + "predictions_scored_by_gaussian_rounded.png")
     plt.close()
 
 
@@ -273,14 +283,13 @@ def groundTruthCalculator(LabelCSV, groundTruth):
         else:
             groundTruth[int(xGT), int(yGT)] += 1#element
 
-def createPredictionsWithFiles(indicesSortedByHighestPredicitionMinusInitial, energy, conv_angle_in_mrad, start, end, atomStruct, CBEDDim, measurementArray, allCoords, diameterBFDNotScaled, groundTruth, choosenCoords2d, numberOfPosIndex, rndm = False):
+def createPredictionsWithFiles(indicesSortedByHighestPredicitionMinusInitial, energy, conv_angle_in_mrad, start, end, atomStruct, CBEDDim, measurementArray, allCoords, diameterBFDNotScaled, groundTruth, chosenCoords2d, numberOfPosIndex, rndm = False):
     folder = f"PredROP{numberOfPosIndex}_rndm" if rndm else f"PredROP{numberOfPosIndex}"
     print(f"\n\nCalculating PredROP{numberOfPosIndex}" + ("_rndm" if rndm else "") )
     allKnownPositions = []
-
     Position_Mask = np.zeros_like(groundTruth)
     for x, y in tqdm(allCoords, "Going through all known positions"):
-        if (x,y) in choosenCoords2d or (x,y) in indicesSortedByHighestPredicitionMinusInitial:
+        if (not rndm and ((x,y) in chosenCoords2d)) or (x,y) in indicesSortedByHighestPredicitionMinusInitial:
             allKnownPositions.append((x,y))
             Position_Mask[x,y] = 1
     plt.imshow(Position_Mask.T, origin = "lower", interpolation="none", extent=extent)
@@ -351,28 +360,26 @@ def createPredictionsWithFiles(indicesSortedByHighestPredicitionMinusInitial, en
     return fullLengthY,fullLengthX
 
 
-def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesUnsparsed, choosenCoords, scalerEnabled, windowSizeInCoords):
+def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesUnsparsed, chosenCoords, scalerEnabled, windowSizeInCoords, nonPredictedBorderinCoordinates):
     #load scaling factors
     with open('Zernike/stdValues.csv', 'r') as file:
         line = file.readline()
         stdValues = [float(x.strip()) for x in line.split(',') if x.strip()]
-        stdValuesArray = torch.tensor(stdValues[:-3])
+        stdValuesArray = torch.tensor(stdValues[:resultVectorLength])
     with open('Zernike/meanValues.csv', 'r') as file:
         line = file.readline()
         meanValues = [float(x.strip()) for x in line.split(',') if x.strip()]
-        meanValuesArray : torch.Tensor = torch.tensor(meanValues[:-3])
+        meanValuesArray : torch.Tensor = torch.tensor(meanValues[:resultVectorLength])
 
     # loop over the all positions and apply the model to the data
     Predictions = np.zeros_like(groundTruth)
-    nonPredictedBorderinA = None
-    nonPredictedBorderinCoordinates = 0#15 
     # PositionsToScanXSingle = np.arange(0, Predictions.shape[0], 14)
     # PositionsToScanYSingle = np.arange(0, Predictions.shape[1], 14)
     # PositionsToScanX = np.sort(np.array([PositionsToScanXSingle for i in range(len(PositionsToScanYSingle))]).flatten())
     # PositionsToScanY= np.array([PositionsToScanYSingle for i in range(len(PositionsToScanXSingle))]).flatten()
+    PositionsToScanX = chosenCoords[:,0]
+    PositionsToScanY = chosenCoords[:,1]
 
-    PositionsToScanX = choosenCoords[:,0]
-    PositionsToScanY = choosenCoords[:,1]
 
     circleWeights = np.array([
     [1, 1, 1, 1, 1],
@@ -381,15 +388,18 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesUnspa
     [1, 2, 2, 2, 1],
     [1, 1, 1, 1, 1]
 ])
+    
+
+    
 
     imageOrZernikeMoments = None
-    
     for indexX in tqdm(range(-windowSizeInCoords - nonPredictedBorderinCoordinates,Predictions.shape[0]), desc  = "Going through all positions and predicting"):
         for indexY in range(-windowSizeInCoords - nonPredictedBorderinCoordinates,Predictions.shape[1]):
             PositionsToScanXLocal = PositionsToScanX - indexX
             PositionsToScanYLocal = PositionsToScanY - indexY
-            mask = (PositionsToScanXLocal >= -nonPredictedBorderinCoordinates) * (PositionsToScanYLocal >= - nonPredictedBorderinCoordinates) * (PositionsToScanXLocal < windowSizeInCoords + nonPredictedBorderinCoordinates) * (PositionsToScanYLocal < windowSizeInCoords + nonPredictedBorderinCoordinates)
-            if mask.sum() <= 1:
+            mask = (PositionsToScanXLocal >= -nonPredictedBorderinCoordinates) * (PositionsToScanYLocal >= - nonPredictedBorderinCoordinates) * (PositionsToScanXLocal < (windowSizeInCoords + nonPredictedBorderinCoordinates)) * (PositionsToScanYLocal < (windowSizeInCoords + nonPredictedBorderinCoordinates))
+            numberOfAtomsInWindow = mask.sum()
+            if numberOfAtomsInWindow <= 1:
                 continue
             PositionsToScanXLocal = PositionsToScanXLocal[mask]
             PositionsToScanYLocal = PositionsToScanYLocal[mask]
@@ -410,18 +420,20 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesUnspa
                 raise Exception(E)
             padding = torch.zeros_like(XCoordsLocal)
             if scalerEnabled: imageOrZernikeMoments = (imageOrZernikeMoments - meanValuesArray[np.newaxis,:]) / stdValuesArray[np.newaxis,:] 
-            imageOrZernikeMomentsCuda = torch.cat((imageOrZernikeMoments, torch.stack([XCoordsLocal, YCoordsLocal, padding]).T), dim = 1).to(torch.device("cuda"))
+            #TODO y and x are swapped in the simulation, so we need to swap them back here
+            #TODO DONT SWITCH FOR THE OLD MODEL
+            imageOrZernikeMomentsCuda = torch.cat((imageOrZernikeMoments, torch.stack([YCoordsLocal, XCoordsLocal, padding]).T), dim = 1).to(torch.device("cuda"))
 
 
             with torch.inference_mode():
                 pred = model(imageOrZernikeMomentsCuda.unsqueeze(0))
                 pred = pred.cpu().detach().numpy().reshape((1,-1,2))[0]
-
-            predRealXCoord  = np.round(pred[:,0]).astype(int) + indexX
-            predRealYCoord  = np.round(pred[:,1]).astype(int) + indexY
-            predRealCoordInside = (predRealXCoord >= 0) * (predRealYCoord >= 0) * (predRealXCoord < Predictions.shape[0]) * (predRealYCoord < Predictions.shape[1])
-            scaler = 0 if predRealCoordInside.sum() == 0 else 1#(zernikeValuesWindowSizeX/15 * zernikeValuesWindowSizeY/15 / (predRealCoordInside.sum()/10)) #10 is the number of predictions, 15 is the window size, only make as many predictions as there are 
-                                                                                                                #positions inside
+            #TODO scaler wieder einfügen? Macht Randpositionen vielleicht besser
+            # predRealXCoord  = np.round(pred[:,0]).astype(int) + indexX
+            # predRealYCoord  = np.round(pred[:,1]).astype(int) + indexY
+            # predRealCoordInside = (predRealXCoord >= 0) * (predRealYCoord >= 0) * (predRealXCoord < Predictions.shape[0]) * (predRealYCoord < Predictions.shape[1])
+            # scaler = 0 if predRealCoordInside.sum() == 0 else 1#(zernikeValuesWindowSizeX/15 * zernikeValuesWindowSizeY/15 / (predRealCoordInside.sum()/10)) #10 is the number of predictions, 15 is the window size, only make as many predictions as there are 
+            scaler = 1                                                                                          #positions inside
 
             for predXY in pred:
                 for xCircle in range(-2,3):
@@ -437,7 +449,7 @@ def CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesUnspa
                         #     tqdm.write(f"\tPredicted position: {xMostLikely + indexX}, {yMostLikely + indexY}, Predicted values: {predXY}")
                             pass
                         else:
-                            Predictions[xMostLikely + indexX, yMostLikely + indexY] += circleWeights[xCircle+2,yCircle+2] * scaler #*len(PositionsToScanXLocal)#for some reason the reconstruction is transposed. Is adjusted later when plotted
+                            Predictions[xMostLikely + indexX, yMostLikely + indexY] += circleWeights[xCircle+2,yCircle+2] *scaler #*len(PositionsToScanXLocal)#for some reason the reconstruction is transposed. Is adjusted later when plotted
 
     return Predictions
 
@@ -481,13 +493,13 @@ def rescalePredicitions(Predictions, windowSizeInCoords = 15):
 
 from scipy.ndimage import gaussian_filter
 
-def greedy_gaussian_suppression(pred_map, choosenCoords2d, num_points=20, suppression_sigma=3.0, suppression_strength=1.0):
+def greedy_gaussian_suppression(pred_map, chosenCoords2d, num_points=20, suppression_sigma=3.0, suppression_strength=1.0):
     """
     Selects top-scoring pixels with spatial diversity using greedy selection with Gaussian suppression.
 
     Parameters:
         pred_map (np.ndarray): 2D prediction map.
-        choosenCoords2d (np.ndarray): List of (y, x) coordinates already visited (will be masked).
+        chosenCoords2d (np.ndarray): List of (y, x) coordinates already visited (will be masked).
         num_points (int): Number of top points to select.
         suppression_sigma (float): Sigma for Gaussian suppression kernel.
         suppression_strength (float): Multiplier for how much to suppress (1.0 = full subtraction).
@@ -495,33 +507,36 @@ def greedy_gaussian_suppression(pred_map, choosenCoords2d, num_points=20, suppre
     Returns:
         selected_indices (list of tuples): Selected (y, x) indices.
     """
-    h, w = pred_map.shape
     pred = pred_map.copy()
     
     # Mask already scanned positions
-    for y, x in choosenCoords2d:
-        pred[y, x] = -np.inf
+    for x, y in chosenCoords2d:
+        pred, exit = gaussian_suppressor(np.s_[x,y], suppression_sigma, 1, pred, radius=3)
 
     selected_indices = []
-
     for _ in tqdm(range(num_points), desc="Greedy selection with Gaussian suppression on the prediction"):
         max_idx = np.unravel_index(np.argmax(pred), pred.shape)
-        max_val = pred[max_idx]
-
-        if max_val == -np.inf:
-            break  # No more valid points
-
+        pred, exit = gaussian_suppressor(max_idx, suppression_sigma, suppression_strength, pred, radius = 3)
+        if exit is True:
+            break
         selected_indices.append(max_idx)
-
-        # Create Gaussian mask centered at max_idx
-        mask = np.zeros_like(pred)
-        mask[max_idx] = suppression_strength * max_val
-        gaussian_mask = gaussian_filter(mask, sigma=suppression_sigma)
-
-        # Subtract the Gaussian mask to suppress surrounding area
-        pred = pred - gaussian_mask
-
     return selected_indices
+
+def gaussian_suppressor(idx, suppression_sigma, suppression_strength, pred, radius):
+    val_at_idx = pred[idx]
+    
+    if val_at_idx == -np.inf:
+        return pred, True #no more valid points
+
+    # Create Gaussian mask centered at max_idx
+    mask = np.zeros_like(pred)
+    mask[idx] = suppression_strength * val_at_idx
+    gaussian_mask = gaussian_filter(mask, sigma=suppression_sigma, radius = radius)
+
+    # Subtract the Gaussian mask to suppress surrounding area
+    pred = pred - gaussian_mask
+    pred[idx] = -np.inf
+    return pred, False
 
 from math import ceil, sqrt
 
@@ -548,7 +563,7 @@ def generate_even_grid(shape, num_points):
     xs = np.linspace(0, w - 1, n_cols)
 
     # Cartesian product
-    grid = [(int(round(y)), int(round(x))) for y in ys for x in xs]
+    grid = [(int(round(x)), int(round(y))) for x in xs for y in ys]
 
     # Return exactly num_points (may slice off extras)
     return grid[:num_points]
@@ -566,6 +581,7 @@ def parse_args():
                         help='Defocus value for the reconstruction, default is 0.')
     parser.add_argument("--noScaler", action="store_true", help="If enabled, the zernike moments are NOT scaled before usage. Only for old model")
     parser.add_argument('--onlyPred', action="store_true", help='If enabled, only the predictions are calculated without the full reconstruction.')
+    parser.add_argument("--nonPredictedBorderinCoordinates", "-b",type=int, default=15, help="The border in coordinates that is not predicted. Default is 15.")
     return parser.parse_args()
 
 args = parse_args()
@@ -577,12 +593,23 @@ sparseGridFactor = args.sparseGridFactor
 print(f"Sparse grid factor: {sparseGridFactor}")
 defocus = args.defocus
 print(f"defocus: {defocus}")
+if defocus != 0 and model_checkpoint == "/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0503_1255_Z_TransfEnc_9Pos_5hidlay_9000E/epoch=1169-step=49140.ckpt":
+    raise Exception("Using the old model, which does not use defocus.")
 makeNewFolder = args.makeNewFolder
 print(  f"Make new folder: {makeNewFolder}")
 scalerEnabled = not args.noScaler
 print(f"Scaler enabled: {scalerEnabled}")
+if scalerEnabled and model_checkpoint == "/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0503_1255_Z_TransfEnc_9Pos_5hidlay_9000E/epoch=1169-step=49140.ckpt":
+    raise Exception("Using the old model, which does not use scaling for the Zernike moments.")
+elif not scalerEnabled and model_checkpoint != "/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0503_1255_Z_TransfEnc_9Pos_5hidlay_9000E/epoch=1169-step=49140.ckpt":
+    raise Exception("Using the new model, which uses scaling for the Zernike moments.")
 onlyPred = args.onlyPred
 print(f"Only prediction: {onlyPred}")
+nonPredictedBorderinCoordinates = args.nonPredictedBorderinCoordinates
+print(f"Non predicted border in coordinates: {nonPredictedBorderinCoordinates}")
+if nonPredictedBorderinCoordinates > 0 and model_checkpoint == "/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0503_1255_Z_TransfEnc_9Pos_5hidlay_9000E/epoch=1169-step=49140.ckpt":
+    raise Exception("Using the old model, which does not use non predicted border in coordinates.")
+
 
 # measurementArray.astype('float').flatten().tofile("testMeasurement.bin")
 energy = 60e3
@@ -592,10 +619,14 @@ diameterBFD50Pixels = 18
 start = (5,5)
 end = (25,25)
 windowSizeInCoords = 15
+numberOfAtoms = 9
+
+print(f"Number of atoms: {numberOfAtoms}")
+print(f"Window size in coordinates: {windowSizeInCoords}")
 
 print("Calculating the number of Zernike moments:")
 resultVectorLength = 0 
-numberOfOSAANSIMoments = 40	
+numberOfOSAANSIMoments = 20
 for n in range(numberOfOSAANSIMoments + 1):
     for mShifted in range(2*n+1):
         m = mShifted - n
@@ -607,12 +638,17 @@ print("number of Zernike Moments",resultVectorLength)
 
 if not onlyPred: CleanUpROP()
 nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick, CBEDDim, measurementArray, realPositions, allCoords = createMeasurementArray(energy, conv_angle_in_mrad, structure, start, end, defocus, onlyPred=onlyPred) 
-diameterBFDNotScaled = calc_diameter_bfd(measurementArray[0,0,:,:])
+diameterBFDNotScaled = diameterBFD50Pixels / 50 * min((measurementArray.shape[-1], measurementArray.shape[-2])) #diameterBFD50Pixels is the diameter in pixels, not in nm
+if not onlyPred:
+    from Zernike.ZernikeTransformer import calc_diameter_bfd
+    diameterBFDNotScaled = calc_diameter_bfd(measurement_thick.array[0,0,:,:].compute())
+    print(f"Calculated BFD not scaled to 50 pixels: {diameterBFDNotScaled}")
+    print(f"Calculated BFD scaled to 50 pixels: {diameterBFDNotScaled/min((measurementArray[0,0,:,:].shape[-1], measurementArray[0,0,:,:].shape[-2])) * 50}")
 plt.imsave("detectorImage.png",measurement_thick.array[0,0,:,:].compute())
 
-print(f"Calculated BFD not scaled to 50 pixels: {diameterBFDNotScaled}")
+
 print(f"imageDim Not Scaled to 50 Pixels: {min((measurementArray[0,0,:,:].shape[-1], measurementArray[0,0,:,:].shape[-2]))}")
-print(f"Calculated BFD scaled to 50 pixels: {diameterBFDNotScaled/min((measurementArray[0,0,:,:].shape[-1], measurementArray[0,0,:,:].shape[-2])) * 50}")
+
 print(f"Actually used BFD with margin: {diameterBFD50Pixels}")
 
 
@@ -632,23 +668,24 @@ print("xMaxCNT, yMaxCNT", xMaxCNT, yMaxCNT)
 difArrays = [[nameStruct, gridSampling, atomStruct, measurement_thick, potential_thick]]
 del measurement_thick, potential_thick
 
-#initiate Zernike
-print("generating the zernike moments")
-#ZernikeTransform
 print("sparseGridFactor", sparseGridFactor)
-choosenCoords2d = np.array(generate_sparse_grid(xMaxCNT, yMaxCNT, sparseGridFactor, twoD=True))
-choosenCoords = np.array(generate_sparse_grid(xMaxCNT, yMaxCNT, sparseGridFactor, twoD=False))
+chosenCoords2d = generate_sparse_grid(xMaxCNT, yMaxCNT, sparseGridFactor, twoD=True)
+chosenCoords2dArray = np.array(chosenCoords2d)
+chosenCoords = np.array(generate_sparse_grid(xMaxCNT, yMaxCNT, sparseGridFactor, twoD=False))
 RelLabelCSV, zernikeValuesSparse = saveAllPosDifPatterns(None, -1, None, diameterBFD50Pixels,
                                                         processID = 99999, silence = False,
                                                         maxPooling = 1, structure = "None",
-                                                        fileWrite = False, difArrays = difArrays,
-                                                        start = start, end = end, zernike=True, initialCoords=choosenCoords, defocus = defocus) # type: ignore
+                                                        fileWrite = False, difArrays = difArrays, nonPredictedBorderInA=0,
+                                                        start = start, end = end, zernike=True, initialCoords=chosenCoords,
+                                                        defocus = defocus, numberOfOSAANSIMoments=numberOfOSAANSIMoments) # type: ignore
 RelLabelCSV, zernikeValuesSparse = RelLabelCSV[0][1:], zernikeValuesSparse[0]
 
-zernikeValuesUnsparsed = torch.empty((measurementArray.shape[0], measurementArray.shape[1], resultVectorLength), dtype=torch.float32)
+zernikeValuesUnsparsed = torch.zeros((measurementArray.shape[0], measurementArray.shape[1], resultVectorLength), dtype=torch.float32)
 
-for cnt, (x,y) in enumerate(tqdm(choosenCoords2d, desc="Filling zernike values unsparsed")):
-    zernikeValuesUnsparsed[choosenCoords2d[cnt,0], choosenCoords2d[cnt,1], :] = torch.tensor(zernikeValuesSparse[cnt, :]).float()
+for cnt, (x,y) in enumerate(tqdm(chosenCoords2dArray, desc="Filling zernike values unsparsed")):
+    zernikeValuesUnsparsed[x, y, :] = torch.tensor(zernikeValuesSparse[cnt, :]).float()
+
+plt.imsave("ZernikeValuesSparse.png", zernikeValuesSparse)
 
 # print(f"RelLabelCSV : {RelLabelCSV}")
 groundTruth = np.zeros((xMaxCNT, yMaxCNT))
@@ -670,14 +707,14 @@ groundTruthCalculator(RelLabelCSV, groundTruth)
 
 #/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0403_1751_Z_GRU_9Pos_5hidlay_9000E/epoch=1069-step=44940.ckpt
 model = TwoPartLightning.load_from_checkpoint(checkpoint_path = model_checkpoint,
-                                              numberOfZernikeMoments = numberOfOSAANSIMoments)#"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_0203_1554_Z_GRU_halbeBatch_norHidSize_5statt3hidlay_9000E/epoch=1245-step=104664.ckpt")
-#"/data/scratch/haertelk/Masterarbeit/checkpoints/DQN_2202_1030_Z_GRU_Noise_9000E/epoch=766-step=16107.ckpt"
+                                              numberOfZernikeMoments = numberOfOSAANSIMoments,
+                                                numberOfAtoms = numberOfAtoms )
 model.eval().to(torch.device("cuda"))
 
 
 
 
-Predictions = CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesUnsparsed, choosenCoords=choosenCoords2d, scalerEnabled = scalerEnabled, windowSizeInCoords=windowSizeInCoords)
+Predictions = CreatePredictions(resultVectorLength, model, groundTruth, zernikeValuesUnsparsed, chosenCoords=chosenCoords2dArray, scalerEnabled = scalerEnabled, windowSizeInCoords=windowSizeInCoords, nonPredictedBorderinCoordinates = nonPredictedBorderinCoordinates)
 PredictionDerivative = np.gradient(Predictions)
 PredictionDerivative = np.sqrt(PredictionDerivative[0]**2 + PredictionDerivative[1]**2)
 PredictionDerivative_abs = np.abs(PredictionDerivative)
@@ -708,9 +745,9 @@ if makeNewFolder:
 del zernikeValuesUnsparsed
 
 
-indicesSortedByHighestPredicitionMinusInitial = greedy_gaussian_suppression(Predictions, choosenCoords2d, num_points=Predictions.shape[0]*Predictions.shape[1]- len(choosenCoords2d))
+indicesSortedByHighestPredicitionMinusInitial = greedy_gaussian_suppression(Predictions, chosenCoords2dArray, num_points=Predictions.shape[0]*Predictions.shape[1]- len(chosenCoords2dArray))
 
-numberOfPositions = [0.5,0.4,0.3,0.2,0.1,0.08,0.06,0.05]
+numberOfPositions = [0.5,0.4,0.3,0.2,0.1,0.08,0.07,0.063]
 
 predictions_scored_by_gaussian = np.zeros_like(Predictions)
 
@@ -732,7 +769,7 @@ if makeNewFolder:
 # # Remove the initial positions from the sorted indices
 # indicesSortedByHighestPredicitionMinusInitial = []
 # for x, y in indicesSortedByHighestPredicition:
-#     if (x,y) not in choosenCoords2d:
+#     if (x,y) not in chosenCoords2d:
 #         indicesSortedByHighestPredicitionMinusInitial.append((x,y))
 
 
@@ -740,16 +777,15 @@ if makeNewFolder:
 
 
 for numberOfPosIndex, ratioPos in zip(range(2,10), numberOfPositions):
-    numberOfPos = max(int(np.around(ratioPos*Predictions.shape[0]*Predictions.shape[1])) - len(choosenCoords2d),0)
+    numberOfPos = max(int(np.around(ratioPos*Predictions.shape[0]*Predictions.shape[1])) - len(chosenCoords2dArray),0)
     numberOfPreditions = min((numberOfPos, len(indicesSortedByHighestPredicitionMinusInitial)))
-    fullLengthY, fullLengthX = createPredictionsWithFiles(indicesSortedByHighestPredicitionMinusInitial[:numberOfPreditions], energy, conv_angle_in_mrad, start, end, atomStruct, CBEDDim, measurementArray, allCoords, diameterBFDNotScaled, groundTruth, choosenCoords2d, numberOfPosIndex)
+    fullLengthY, fullLengthX = createPredictionsWithFiles(indicesSortedByHighestPredicitionMinusInitial[:numberOfPreditions], energy, conv_angle_in_mrad, start, end, atomStruct, CBEDDim, measurementArray, allCoords, diameterBFDNotScaled, groundTruth, chosenCoords2d, numberOfPosIndex)
 
 #now create the ROP files but with just evenly spaced points instead of the predictions
 for numberOfPosIndex, ratioPos in zip(range(2,10), numberOfPositions):
-    numberOfPos = max(int(np.around(ratioPos*Predictions.shape[0]*Predictions.shape[1])) - len(choosenCoords2d),0)
-    numberOfPreditions = min((numberOfPos, len(indicesSortedByHighestPredicitionMinusInitial)))
-    evenlySpacedIndices = generate_even_grid(Predictions.shape, numberOfPreditions)
-    fullLengthY, fullLengthX = createPredictionsWithFiles(evenlySpacedIndices, energy, conv_angle_in_mrad, start, end, atomStruct, CBEDDim, measurementArray, allCoords, diameterBFDNotScaled, groundTruth, choosenCoords2d, numberOfPosIndex, rndm = True)
+    numberOfPos = int(np.around(ratioPos*Predictions.shape[0]*Predictions.shape[1]))
+    evenlySpacedIndices = generate_even_grid(Predictions.shape, numberOfPos)
+    fullLengthY, fullLengthX = createPredictionsWithFiles(evenlySpacedIndices, energy, conv_angle_in_mrad, start, end, atomStruct, CBEDDim, measurementArray, allCoords, diameterBFDNotScaled, groundTruth, chosenCoords2d, numberOfPosIndex, rndm = True)
 
 if onlyPred:
     print("Only predictions were made, not the full reconstruction.")
