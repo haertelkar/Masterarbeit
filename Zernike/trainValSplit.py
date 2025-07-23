@@ -16,7 +16,7 @@ for filename in tqdm(glob(f"measurements_train{Folder_Appendix}/labels*.csv"), d
     df = pd.read_csv(filename)
     
     # Calculate the number of rows for train and validation sets
-    train_rows = int(len(df) * 0.75)
+    train_rows = int(len(df) * 0.9)
     vali_rows = len(df) - train_rows
     
     # Split the dataframe into train and validation sets

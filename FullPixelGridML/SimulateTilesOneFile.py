@@ -18,7 +18,15 @@ from abtem.transfer import CTF, scherzer_defocus, point_resolution, energy2wavel
 from abtem.scan import GridScan
 from abtem import orthogonalize_cell, PixelatedDetector, GridScan
 from abtem.measurements import BaseMeasurements, DiffractionPatterns
+import nvidia_smi
 
+
+
+def get_gpu_memory():
+    nvidia_smi.nvmlInit()
+    handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
+    info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+    print(f"Total memory: {info.total / (1024 ** 2)} MB, Free memory: {info.free / (1024 ** 2)} MB, Used memory: {info.used / (1024 ** 2)} MB")
 import abtem
 import torch
 from tqdm import tqdm
@@ -59,7 +67,7 @@ from ZernikePolynomials import Zernike
 windowSizeInA = 3 # Size of the window in Angstroms
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
-FolderAppendix = "_4sparse_0def_0B_new_20Z"#"_4sparse_noEB_-50def_20Z"
+FolderAppendix = "_4to8s_-50def_15B_new"#"_4sparse_noEB_-50def_20Z"
 
 
 def calc_diameter_bfd(image):
@@ -69,6 +77,10 @@ def calc_diameter_bfd(image):
     diameterBFD = np.sqrt(bfdArea/np.pi) * 2
     return diameterBFD
 
+def emptySpace(xlen, ylen, zlen = 1, xPos = None, yPos = None, zPos = None) -> Atoms:
+    """Creates an empty Atoms object with the given dimensions."""
+    return Atoms(cell=[xlen, ylen, zlen, 90, 90, 90], pbc=True, positions=[[xPos or 0, yPos or 0, zPos or 0]])
+
 def moveAndRotateAtomsAndOrthogonalizeAndRepeat(atoms : Atoms, xlen, ylen, xPos = None, yPos = None, zPos = None, ortho = True, repeat = True) -> Atoms:
     if ortho: atoms = orthogonalize_cell(atoms, max_repetitions=10) # type: ignore
     xLength, yLength, zLength = np.max(atoms.positions, axis = 0)
@@ -77,7 +89,7 @@ def moveAndRotateAtomsAndOrthogonalizeAndRepeat(atoms : Atoms, xlen, ylen, xPos 
     else: atoms_slab = atoms
     return atoms_slab # type: ignore
 
-def createAtomPillar(xlen, ylen, xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), xAtomShift = 0, yAtomShift = 0, element = None) -> Atoms:
+def createAtomPillar(xlen, ylen, xPos = None, yPos = None, zPos = None, zAtoms = randint(1,10), xAtomShift :float = 0, yAtomShift :float= 0, element = None) -> Atoms:
     element = randint(1, 100) if element is None else element
     # maxShiftFactorPerLayer = 0.01
     #(random()  - 1/2) * maxShiftFactorPerLayer * xlen  #slant of atom pillar
@@ -93,19 +105,19 @@ def createAtomPillar(xlen, ylen, xPos = None, yPos = None, zPos = None, zAtoms =
     return atomPillar
 
 #BROKEN #TODO use poisson disk
-# def multiPillars(xAtomShift = 0, yAtomShift = 0, element = None, numberOfRandomAtomPillars = None) -> Atoms:
-#     numberOfRandomAtomPillars = numberOfRandomAtomPillars or randint(25,50)
-#     xPos = random()*ylen 
-#     yPos = random()*xlen
-#     zPos = 0
-#     atomPillar = createAtomPillar(xPos = xPos, yPos = yPos, zPos = zPos)
-#     for _ in range(numberOfRandomAtomPillars - 1):
-#         xPos = random()*ylen 
-#         yPos = random()*xlen
-#         atomPillar.extend(createAtomPillar(xPos = xPos, yPos = yPos, zPos = zPos))
-#     #atomPillar_011 = surface(atomPillar, indices=(0, 1, 1), layers=2, periodic=True)
-#     atomPillar_slab = moveAndRotateAtomsAndOrthogonalizeAndRepeat(atomPillar, xPos, yPos, zPos, ortho=True)
-#     return atomPillar_slab
+def multiPillars(xlen, ylen, xAtomShift = 0, yAtomShift = 0, element = None, numberOfRandomAtomPillars = None) -> Atoms:
+    numberOfRandomAtomPillars = numberOfRandomAtomPillars or randint(25,50)
+    xPos = random()*ylen 
+    yPos = random()*xlen
+    zPos = 0
+    atomPillar = createAtomPillar(xlen, ylen, xPos = xPos, yPos = yPos, zPos = zPos)
+    for _ in range(numberOfRandomAtomPillars - 1):
+        xPos = random()*ylen 
+        yPos = random()*xlen
+        atomPillar.extend(createAtomPillar(xlen, ylen,xPos = xPos, yPos = yPos, zPos = zPos, xAtomShift = np.random.random()-0.5, yAtomShift = np.random.random()-0.5))
+    #atomPillar_011 = surface(atomPillar, indices=(0, 1, 1), layers=2, periodic=True)
+    atomPillar_slab = moveAndRotateAtomsAndOrthogonalizeAndRepeat(atomPillar, xPos, yPos, zPos, ortho=True)
+    return atomPillar_slab
 
 def MarcelsEx(xlen = None, ylen = None, xPos = None, yPos = None, zPos = None):
     cnt1 = nanotube(10, 4, length=4)
@@ -164,9 +176,10 @@ def createStructure(xlen, ylen, specificStructure : str = "random", trainOrTest 
         return nameStruct, structFinished # type: ignore
     predefinedFunctions = {
         "createAtomPillar" : createAtomPillar,
-        #"multiPillars" : multiPillars,
+        "multiPillars" : multiPillars,
         "MarcelsEx" : MarcelsEx,
         "grapheneC" : grapheneC,
+        "emptySpace" : emptySpace,
     }
     if specificStructure != "random":
         if ".cif" in specificStructure:
@@ -209,7 +222,11 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
     xlen_structure = ylen_structure = max(xlen_structure, ylen_structure) #make sure its square
     # print(f"Generating structure with xlen = {xlen_structure} and ylen = {ylen_structure} and start = {start} and end = {end} and nonPredictedBorderInA = {nonPredictedBorderInA}")
     # print(f"Calculating on {device}")
-    nameStruct, atomStruct = createStructure(xlen_structure, ylen_structure, specificStructure= structure, trainOrTest = trainOrTest, simple=simple, nonPredictedBorderInA = nonPredictedBorderInA, start=start)
+    if structure == "emptySpace":
+        nameStruct = "emptySpace"
+        atomStruct = np.zeros(grid.shape)
+    else:
+        nameStruct, atomStruct = createStructure(xlen_structure, ylen_structure, specificStructure= structure, trainOrTest = trainOrTest, simple=simple, nonPredictedBorderInA = nonPredictedBorderInA, start=start)
     try:
         potential_thick = Potential(
             atomStruct,
@@ -381,7 +398,7 @@ def generate_sparse_grid(x_size, y_size, s, xStartShift = 0, yStartShift = 0, xE
 
 def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,maxPooling = 1, processID = 99999, silence = False, 
                           structure = "random", fileWrite = True, difArrays = None,     start = (5,5), end = (8,8), simple = False, 
-                          nonPredictedBorderInA = 0, zernike = False, initialCoords = None, defocus=-50, numberOfOSAANSIMoments = 20):
+                          nonPredictedBorderInA = 0, zernike = False, initialCoords = None, defocus=-50, numberOfOSAANSIMoments = 20, step_size = 10):
     """
     Generates all diffraction patterns for the given positions and saves them to a file.
     Args:
@@ -439,7 +456,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         # print(measurement_thick.array.shape)
         # exit()
         if initialCoords is None:
-            sparseGridFactor = 4
+            sparseGridFactor = randint(4,8)
             MaxShift = nonPredictedBorderInCoords + windowLengthinCoords//2  
             xShift = randint(-MaxShift, MaxShift)
             yShift = randint(-MaxShift, MaxShift)
@@ -456,14 +473,23 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         else:
             choosenCoords = initialCoords                                                                                                        
         # print(f"choosenCoords shape: {choosenCoords.shape}, choosenCoords: {choosenCoords}")
-        difPatterns = difPatterns[choosenCoords].compute()
+        splitting = min(step_size, len(choosenCoords)) #split the calculation into smaller chunks to avoid memory issues
+        difPatternsComputed = np.empty((len(choosenCoords), difPatterns.shape[-2], difPatterns.shape[-1]), dtype=difPatterns.dtype) # type: ignore
+        for cnt in range((len(choosenCoords) // splitting) + 1):
+            chosenCoordsSplit = choosenCoords[cnt*splitting:min((cnt+1)*splitting, len(choosenCoords))]
+            
+            if len(chosenCoordsSplit) == 0: continue
+            if not silence:
+                get_gpu_memory()
+                print(f"Calculating {cnt * splitting} to {min((cnt + 1) * splitting, len(choosenCoords))} of  {len(choosenCoords)} coordinates")
+            difPatternsComputed[cnt*splitting:min((cnt+1)*splitting, len(choosenCoords))] = difPatterns[chosenCoordsSplit].compute(progress_bar = not silence)
         if pixelOutput:
             rows = generateAtomGridNoInterp(datasetStructID, rows, atomStruct, start, end, silence, maxPooling=maxPooling)
         else:
             rows = generateXYE(datasetStructID, rows, atomStruct, start, end, silence, nonPredictedBorderInA)
 
         difPatternsResized = []#[np.zeros((dimNew, dimNew))] #empty array for the first element, works as csl token. IS PROBLEMATIC because the model than expects this in prediction
-        for cnt, difPattern in enumerate(difPatterns): 
+        for cnt, difPattern in enumerate(difPatternsComputed): 
             difPatternsResized.append(cv2.resize(difPattern, dsize=(dimNew, dimNew), interpolation=cv2.INTER_LINEAR))  # type: ignore
         difPatternsResized = np.array(difPatternsResized)
         #     difPatternsOnePositionResized.append(difPattern)
@@ -599,12 +625,12 @@ if __name__ == "__main__":
     YDIMTILES = 10
     maxPooling = 1
     start = (0,0)   
-    nonPredictedBorderInA = 0
-    zernike = True
+    nonPredictedBorderInA = 3
+    zernike = False
     end = (start[0] + nonPredictedBorderInA * 2 + windowSizeInA , start[1] + nonPredictedBorderInA * 2 + windowSizeInA)
 
     numberOfPositionsInOneAngstrom = 5
-    defocus = 0 #in Angstroms
+    defocus = -50 #in Angstroms
     size = int((end[0] - start[0]) * numberOfPositionsInOneAngstrom)
     BFDdiameter = 18 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
     assert(size % maxPooling == 0)
@@ -617,7 +643,7 @@ if __name__ == "__main__":
             timeStamp = int(str(time()).replace('.', ''))
             rows = saveAllPosDifPatterns(trainOrTest, int(testDivider[trainOrTest]*20), timeStamp, BFDdiameter, processID=args["id"], silence=True, 
                                          structure = args["structure"], start=start, end=end, maxPooling=maxPooling, simple = True, 
-                                         nonPredictedBorderInA=nonPredictedBorderInA, zernike=zernike, defocus=defocus)
+                                         nonPredictedBorderInA=nonPredictedBorderInA, zernike=zernike, defocus=defocus, numberOfOSAANSIMoments= 20)
             #rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling, structure = args["structure"], start=start, end=end)
             writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], 
                          timeStamp = timeStamp, maxPooling=maxPooling, size = size, zernike=zernike)

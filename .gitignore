@@ -211,3 +211,8 @@ python-venv/*
 */measurements_train*/*
 SimulationImages/*
 SimulationImages/*/*
+FullPixelGridML/structures/yolo_training/*
+ROPResults/*/*
+runs/detect/*/*
+runs/detect/*/*/*
+Yolo_Data/labels/*/*

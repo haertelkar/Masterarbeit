@@ -32,32 +32,33 @@ def collate_fn_gru(batch):
                                     sequence_lengths, batch_first=True, enforce_sorted=False)
 	return padded_sequences, torch.stack(labels), torch.zeros((1,1))
 
-def collate_fn(batch):
-    sequences, labels = zip(*batch)
-
-    max_len = max(len(seq) for seq in sequences)
-    B = len(sequences)
-    H, W = sequences[0][0].shape  # [H, W]
-
-    padded_sequences = torch.zeros((B, max_len, 1, H, W))
-    mask = torch.zeros((B, max_len), dtype=torch.bool)
-
-    for i, seq in enumerate(sequences):
-        seq_len = len(seq)
-        padded_sequences[i, :seq_len] = torch.stack(seq)  # [seq_len, 1, H, W]
-        mask[i, :seq_len] = True
-
-    return padded_sequences, torch.stack(labels), mask
+#def collate_fn(batch):
+ #   sequences, labels = zip(*batch)
+#
+ #   max_len = max(len(seq) for seq in sequences)
+#    B = len(sequences)
+ #   H, W = sequences[0][0].shape  # [H, W]
+#
+ #   padded_sequences = torch.zeros((B, max_len, 1, H, W))
+#    mask = torch.zeros((B, max_len), dtype=torch.bool)
+#
+ #   for i, seq in enumerate(sequences):
+#        seq_len = len(seq)
+ #       padded_sequences[i, :seq_len] = torch.stack(seq)  # [seq_len, 1, H, W]
+#        mask[i, :seq_len] = True
+#
+ #   return padded_sequences, torch.stack(labels), mask
 
 
 
 colFun = collate_fn
 
 class ptychographicDataLightning(L.LightningDataModule):
-	def __init__(self, model_name, batch_size = 1024, num_workers = 20, classifier = False, indicesToPredict = None, 
+	def __init__(self, model_name, batch_size = 128, num_workers = 20, classifier = False, indicesToPredict = None, 
 			    labelFile = "labels.csv", trainDirectories = ["measurements_train"],testDirectories = ["measurements_test"],
-			    onlyTest = False, weighted  = True, numberOfPositions = 9, numberOfZernikeMoments = 40, lessBorder = 35, sparsity = 1):
+			    onlyTest = False, weighted  = True, numberOfPositions = 20, numberOfZernikeMoments = 40, lessBorder = 35, sparsity = 1):
 		super().__init__()
+		print(f"Using num workers {num_workers}")
 		self.batch_size = batch_size
 		self.num_workers = num_workers
 		self.model_name = model_name
@@ -83,7 +84,7 @@ class ptychographicDataLightning(L.LightningDataModule):
 	def setup(self, stage = None) -> None:
 		if self.setupDone: return
 		folderName = None
-		if self.model_name == "FullPixelGridML" or self.model_name == "unet" or self.model_name == "cnnTransformer":	folderName = "FullPixelGridML"
+		if self.model_name == "FullPixelGridML" or self.model_name == "unet" or self.model_name == "cnnTransformer" or self.model_name == "visionTransformer":	folderName = "FullPixelGridML"
 		elif self.model_name == "ZernikeNormal" or self.model_name == "ZernikeBottleneck" or self.model_name == "ZernikeComplex" or self.model_name == "DQN": folderName = "Zernike"
 		else:
 			raise Exception(f"model name '{self.model_name}' unknown")
@@ -142,7 +143,7 @@ class ptychographicDataLightning(L.LightningDataModule):
 			# if len(train_dataset.columns[1:]) == 1 and not self.onlyTest and self.weighted:
 			# 	self.weights = pd.read_csv(os.path.abspath(os.path.join(folderName,self.trainDirectories, "weights_"+self.labelFile)), header = None, index_col = None).to_numpy(dtype=float).T[0]
 			trainDatasets.append(train_dataset)
-			if cnt == 0: valiDatasets.append(val_dataset)
+			valiDatasets.append(val_dataset)
 			# testDatasets.append(test_dataset)
 		self.train_dataset = torch.utils.data.ConcatDataset(trainDatasets)
 		self.val_dataset = torch.utils.data.ConcatDataset(valiDatasets)
@@ -179,6 +180,7 @@ class ptychographicData(Dataset):
 		self.classifier = classifier
 		self.zernike = True if "Zernike" in self.img_dir else False
 		if self.zernike:
+			self.actualLenZernike = 0
 			self.numberOfZernikeMoments  = numberOfZernikeMoments
 			self.zernikeLength = self.zernikeLengthCalc()
 			with open('Zernike/stdValues.csv', 'r') as file:
@@ -197,9 +199,10 @@ class ptychographicData(Dataset):
 		self.numberOfPositions = numberOfPositions
 		self.sparsity = sparsity
 		
+		
 
 		
-		print(f"Loading {self.dataPath} with {len(self.image_labels)} zernike data. The data is using {self.numberOfZernikeMoments} zernike moments (length = {self.zernikeLength}) and a maximum of {self.numberOfPositions} positions.")
+		if self.zernike: print(f"Loading {self.dataPath} with {len(self.image_labels)} zernike data. The data is using {self.numberOfZernikeMoments} zernike moments (length = {self.zernikeLength}) and a maximum of {self.numberOfPositions} positions.")
 
 		#removed option to classify
 		#removed option to select labels to predict
@@ -291,24 +294,26 @@ class ptychographicData(Dataset):
 			print(e)
 			raise Exception(f"OSError: {datasetStructID} in {self.dataPath}")
 		if self.zernike:
-			imageOrZernikeMoments = (imageOrZernikeMoments - self.meanValuesArray[np.newaxis,:]) / self.stdValuesArray[np.newaxis,:]
+			if self.actualLenZernike == 0:
+				self.actualLenZernike = imageOrZernikeMoments.shape[1] - 3
 			if self.lessBorder < 35:
 				BegrenzungAussen = self.lessBorder #less from the outer border
 				
 				imageOrZernikeMoments = imageOrZernikeMoments[(imageOrZernikeMoments[:,-3] >  -BegrenzungAussen) & (imageOrZernikeMoments[:,-3] < (BegrenzungAussen + 15))]
 				imageOrZernikeMoments = imageOrZernikeMoments[(imageOrZernikeMoments[:,-2] >  -BegrenzungAussen) & (imageOrZernikeMoments[:,-2] < (BegrenzungAussen + 15))]
-
+			if self.numberOfZernikeMoments != 40 and self.actualLenZernike != self.zernikeLength:
+				imageOrZernikeMoments = np.delete(imageOrZernikeMoments, np.s_[self.zernikeLength:-3], axis=1) #remove the higher order zernike moments but keep x,y and padding
 			if self.sparsity > 1:
 				xOffset = imageOrZernikeMoments[0,-3] % self.sparsity
 				yOffset = imageOrZernikeMoments[0,-2] % self.sparsity
 				xEverySecondCordinate = (imageOrZernikeMoments[:,-3] % self.sparsity) == xOffset
 				yEverySecondCordinate = (imageOrZernikeMoments[:,-2] % self.sparsity) == yOffset
 				imageOrZernikeMoments = imageOrZernikeMoments[xEverySecondCordinate & yEverySecondCordinate]
+			imageOrZernikeMoments = (imageOrZernikeMoments - self.meanValuesArray[np.newaxis,:]) / self.stdValuesArray[np.newaxis,:]
 		
 
 		imageOrZernikeMoments = imageOrZernikeMoments.astype('float32')
-		# if self.numberOfZernikeMoments != 40:
-		# 	imageOrZernikeMoments = np.delete(imageOrZernikeMoments, np.s_[self.zernikeLength:-3], axis=1) #remove the higher order zernike moments but keep x,y and padding
+
 		# cslToken = np.zeros((1,imageOrZernikeMoments.shape[1]), dtype = "float32")
 		# imageOrZernikeMoments[1:] = imageOrZernikeMoments[:-1]
 		# imageOrZernikeMoments[0] = cslToken

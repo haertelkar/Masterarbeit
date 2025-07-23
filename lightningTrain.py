@@ -1,33 +1,26 @@
 import csv
-import warnings
-from torch.utils.data import random_split
-from torch.utils.data import DataLoader
-import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 import os
-import torch
 import faulthandler
 import signal
 from tqdm import tqdm
-from Zernike.ScansToAtomsPosNN import preCompute, TwoPartLightning, ThreePartLightning
+from Zernike.ScansToAtomsPosNN import TwoPartLightning, ThreePartLightning, ThreePartLightningVIT
 from datasets import ptychographicDataLightning
 import torch.nn.functional as F
 import lightning.pytorch as pl
-from lightning.pytorch.callbacks import StochasticWeightAveraging
-from lightning.pytorch.callbacks.early_stopping import EarlyStopping
 from lightning.pytorch.tuner.tuning import Tuner
 from lightning.pytorch.callbacks.callback import Callback
-from torch import nn
+from torch import nn, save, inference_mode
+from torch.optim import Adam
 from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.plugins.environments import SLURMEnvironment as SLURMEnvironment # type: ignore
 from lightning.pytorch.callbacks import ModelCheckpoint
-from lightning.pytorch.profilers import AdvancedProfiler
 
 
 
 
-faulthandler.register(signal.SIGUSR1.value)
+# faulthandler.register(signal.SIGUSR1.value)
 
 
 def getMPIWorldSize():
@@ -65,7 +58,7 @@ class lightnModelClass(pl.LightningModule):
 		return loss
 
 	def configure_optimizers(self):
-		optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+		optimizer = Adam(self.model.parameters(), lr=self.lr)
 		return optimizer
 	
 	# def train_dataloader(self):
@@ -133,7 +126,7 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 	model.to('cuda')
 
 	# turn off autograd for testing evaluation
-	with torch.inference_mode(), open(os.path.join("testDataEval",f'results_{modelName}_{version}.csv'), 'w+', newline='') as resultsTest:
+	with inference_mode(), open(os.path.join("testDataEval",f'results_{modelName}_{version}.csv'), 'w+', newline='') as resultsTest:
 		Writer = csv.writer(resultsTest, delimiter=',', quotechar='|', quoting=csv.QUOTE_MINIMAL)
 		if not classifier and indicesToPredict is None:
 			predColumnNames = []
@@ -166,8 +159,8 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 
 
 def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, numberOfPositions = 9, numberOfZernikeMoments = 40, FolderAppendix = "",
-		 lessBorder = 35, loadCheckpoint = "", sparsity = 1, accelerator = "gpu"):
-	models = ["FullPixelGridML", "ZernikeNormal", "ZernikeBottleneck", "ZernikeComplex", "DQN", "cnnTransformer","unet"]
+		 lessBorder = 35, loadCheckpoint = "", sparsity = 1, accelerator = "gpu", numberOfAtoms = 9, hidden_size = 1024, num_layers = 5, fc_num_layers = 3):
+	models = ["DQN", "cnnTransformer","visionTransformer"]
 	print(f"Training model version {version} for {epochs} epochs.")
 	world_size = getMPIWorldSize()
 	numberOfModels = 0
@@ -188,9 +181,11 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		# if "FullPixelGridML" in modelName:
 		# 	lightnModel = TwoPartLightningCNN()
 		# elif "DQN" in modelName:
-		if modelName == "DQN": lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments)
-		if modelName == "cnnTransformer": lightnModel = ThreePartLightning(numberOfPositions = numberOfPositions)
-		batch_size = 1024
+		if modelName == "DQN": lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, numberOfAtoms = numberOfAtoms, hidden_size = hidden_size, num_layers = num_layers, fc_num_layers = fc_num_layers)
+		elif modelName == "cnnTransformer": lightnModel = ThreePartLightning(numberOfAtoms = numberOfAtoms)
+		elif modelName == "visionTransformer": lightnModel = ThreePartLightningVIT(numberOfAtoms = numberOfAtoms)
+		else: raise Exception(f"Model {modelName} is not supported for training.")
+		batch_size = 256
 		
 
 		checkPointExists = True
@@ -229,20 +224,21 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		else:
 			if loadCheckpoint != "":
 				print(f"loading from checkpoint:\n{loadCheckpoint}")
-				if modelName == "DQN": lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments)
-				elif modelName == "cnnTransformer": lightnModel = ThreePartLightning.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfPositions = numberOfPositions)
+				if modelName == "DQN": lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, numberOfAtoms = numberOfAtoms)
+				elif modelName == "cnnTransformer": lightnModel = ThreePartLightning.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfAtoms = numberOfAtoms)
+				elif modelName == "visionTransformer": lightnModel = ThreePartLightningVIT.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfAtoms = numberOfAtoms)
 			#Create a Tuner
 			tuner = Tuner(trainer)
 			# Auto-scale batch size by growing it exponentially
 			# if world_size == 1: 
-			tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, init_val=256, max_trials= 25) 
-			# lightnDataLoader.batch_size = new_batch_size//2
+			new_batch_size = tuner.scale_batch_size(lightnModel, datamodule = lightnDataLoader, init_val=128, max_trials= 25) 
+			lightnDataLoader.batch_size = new_batch_size//2
 			print(f"New batch size: {lightnDataLoader.batch_size}")
 				# leads to crashing with slurm but has worked with 2048 batch size
 				# lightnDataLoader.batch_size is automatically set to new_batch_size
 			# finds learning rate automatically
 			if world_size == 1:
-				# lr_finder = tuner.lr_find(lightnModel, num_training=100, datamodule = lightnDataLoader, min_lr = 1e-11, max_lr = 1 * np.sqrt(lightnDataLoader.batch_size/16), early_stop_threshold=4)
+				# lr_finder = tuner.lr_find(lightnModel, num_training=100, datamodule = lightnDataLoader, min_lr = 1e-6, max_lr = 1 * np.sqrt(lightnDataLoader.batch_size/16), early_stop_threshold=4)
 				# assert(lr_finder is not None)
 				# new_lr = lr_finder.suggestion()
 				new_lr = None
@@ -253,13 +249,16 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 			trainer.fit(lightnModel, datamodule = lightnDataLoader)
 		trainer.save_checkpoint(os.path.join("moddels",f"{modelName}_{version}.ckpt"))
 		if "DQN" in modelName:
-			lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"), numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments)
+			lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"), numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, 
+													   hidden_size = hidden_size, num_layers = num_layers, fc_num_layers = fc_num_layers)
 		elif "cnnTransformer" in modelName:
-			lightnModel = ThreePartLightning.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"), numberOfPositions = numberOfPositions)
+			lightnModel = ThreePartLightning.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
+		elif modelName == "visionTransformer":
+			lightnModel = ThreePartLightningVIT.load_from_checkpoint(checkpoint_path = loadCheckpoint)
 		elif "Zernike" in modelName:
 			lightnModel = lightnModelClass(loadModel(lightnDataLoader.val_dataloader(), modelName)).load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
 		evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, lightnModel, indicesToPredict, modelName, version, classifier)
-		torch.save(lightnModel.state_dict(), os.path.join("models",f"{modelName}_{version}.m"))
+		save(lightnModel.state_dict(), os.path.join("models",f"{modelName}_{version}.m"))
 		numberOfModels += 1
 	print(f"Finished training {numberOfModels} models.")
 	if numberOfModels == 0: raise Exception("No model fits the required String.")
@@ -282,9 +281,12 @@ if __name__ == '__main__':
 	ap.add_argument("-lc" ,"--loadCheckpoint", type=str, required=False, default="", help = "Specify the checkpoint to load to continue training. Default is empty.")
 	ap.add_argument("-s" ,"--sparsity", type=int, required=False, default=1, help = "Specify the sparsity of the data. Default is 1.")
 	ap.add_argument("-ac", "--accelerator", type=str, required=False,help="accelerator to use (eg. 'gpu')", default="gpu")
+	ap.add_argument("-nA", "--numAtoms", type=int, required=False, default=9, help="Number of atoms to predict. Default is 9.")
+	ap.add_argument("-hi", "--hiddenSize", type=int, required=False, default=1024, help = "Specify the hidden size of the model. Default is 1024.")
+	ap.add_argument("-enNL", "--encoderNumLayers", type=int, required=False, default=5, help = "Specify the number of layers in the encoder model. Default is 5.")
+	ap.add_argument("-fcNL", "--fcNumLayers", type=int, required=False, default=3, help = "Specify the number of layers in the final fully connected layer. Default is 3.")
 	# ap.add_argument("-b" ,"--batchSize", type=int, required=False, default=256, help = "Specify the highest order of zernike moments to use. Default and max is 40.")
 	args = vars(ap.parse_args())
-
 
 	if not args["classifier"]:
 		classifier = None
@@ -299,4 +301,6 @@ if __name__ == '__main__':
 	main(args["epochs"], args["version"] + "_s" + str(args["sparsity"]), classifier, indicesToPredict,
 	   args["models"], args["labelsFile"], numberOfPositions=args["numberOfPositions"],
 		 numberOfZernikeMoments=args["numberOfZernikeMoments"], FolderAppendix = args["FolderAppendix"],
-		 lessBorder = args["lessBorder"], loadCheckpoint = args["loadCheckpoint"], sparsity = args["sparsity"], accelerator = args["accelerator"])     
+		 lessBorder = args["lessBorder"], loadCheckpoint = args["loadCheckpoint"], sparsity = args["sparsity"], accelerator = args["accelerator"], numberOfAtoms = args["numAtoms"],
+		 hidden_size = args["hiddenSize"], num_layers = args["encoderNumLayers"], fc_num_layers = args["fcNumLayers"])
+

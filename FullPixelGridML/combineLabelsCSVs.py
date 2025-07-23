@@ -6,12 +6,12 @@ import h5py
 import sys
 
 def combineLabelsAndCSV(workingDir, FolderAppendix = ""):
+    
     for testOrTrain in ["train", "test"]:
         filesToDelete = []
         labelsToConcat = []
         indicesToConcat = []
         filesToIgnore = []
-        df = pd.DataFrame()
         noOfLabelCSVs = 0
         if len(os.listdir(os.path.join(workingDir,f"measurements_{testOrTrain}{FolderAppendix}"))) <= 3:
             continue
@@ -54,14 +54,18 @@ def combineLabelsAndCSV(workingDir, FolderAppendix = ""):
         #         data = pd.read_csv(os.path.join(f"measurements_{testOrTrain}",file))
         #         df = pd.concat([df, data], axis = 0)
         #     df.to_csv(os.path.join(f"measurements_{testOrTrain}","fractionOfNonZeroIndices.csv"), index= False)
-
-        for file in labelsToConcat:
+        
+        dfToConcat = []
+        for file in tqdm(labelsToConcat, desc = "Reading in labels"):
             id = "_".join(".".join(file.split(".")[:-1]).split("_")[1:])
             if f"{id}.hdf5" in filesToIgnore:
                 cntCor += 1
                 continue
             data = pd.read_csv(os.path.join(f"measurements_{testOrTrain}{FolderAppendix}",file), converters={'File Name': str})
-            df = pd.concat([df, data], axis = 0)
+            dfToConcat.append(data)
+        tqdm.pandas(desc="Combining labels")
+        df = pd.concat(dfToConcat, axis = 0)
+        tqdm.pandas(desc="Saving labels")
         df.to_csv(os.path.join(f"measurements_{testOrTrain}{FolderAppendix}","labels.csv"), index= False)
 
         print(f"Of all corrupted files, {cntCor} had labels files that needed to be deleted.")
