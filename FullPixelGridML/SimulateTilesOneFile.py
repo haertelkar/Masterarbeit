@@ -67,7 +67,8 @@ from ZernikePolynomials import Zernike
 windowSizeInA = 3 # Size of the window in Angstroms
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
-FolderAppendix = "_4to8s_-50def_15B_new"#"_4sparse_noEB_-50def_20Z"
+FolderAppendix = "_4to8s_-50def_15B_new_betZern"#"_4sparse_noEB_-50def_20Z"
+#now Zernike moments don't start at 0,0
 
 
 def calc_diameter_bfd(image):
@@ -216,7 +217,7 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
                              structure = "random", pbar = False, 
                              start = (5,5), end = (20,20), simple = False,
                              nonPredictedBorderInA = 0, device = "gpu",
-                             deviceAfter = "gpu", generate_graphics = False, defocus = -50) -> Tuple[str, Tuple[float, float], Atoms, BaseMeasurements, Potential]:
+                             deviceAfter = "gpu", generate_graphics = False, defocus = -50, noise :float= 0) -> Tuple[str, Tuple[float, float], Atoms, BaseMeasurements, Potential]:
     xlen_structure = start[0] + end[0]
     ylen_structure = start[1] + end[1] 
     xlen_structure = ylen_structure = max(xlen_structure, ylen_structure) #make sure its square
@@ -304,7 +305,7 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
             single_diffraction_pattern.show(power=0.2, cbar=True)
             plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/diffractionPattern_{defocus}_powerScaling.png")
             plt.close()
-        #measurement_thick : BaseMeasurements= measurement_thick.poisson_noise( 1e5) # type: ignore
+        if noise > 0: measurement_thick : BaseMeasurements= measurement_thick.poisson_noise( noise) # type: ignore
         if deviceAfter == "gpu":
             pass
             # measurement_thick = measurement_thick.compute()

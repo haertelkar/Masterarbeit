@@ -1,4 +1,5 @@
 #!/bin/bash
+#SBATCH --exclude pool32
 
 #Submit this script with: sbatch thefilename
 
@@ -13,4 +14,4 @@
 
 
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
-/data/scratch/haertelk/Masterarbeit/python-venv/bin/python combineLabelsCSVs.py
+/data/scratch/haertelk/Masterarbeit/python-venv/bin/python combineLabelsCSVs.py _4to8s_-50def_15B_new

@@ -1,4 +1,5 @@
 #!/bin/bash
+#SBATCH --exclude pool32
 
 # SLURM SUBMIT SCRIPT
 #SBATCH --nodes=1             

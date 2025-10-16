@@ -1,12 +1,12 @@
 #!/bin/bash
+#SBATCH --exclude pool32
 
 # SLURM SUBMIT SCRIPT
 #SBATCH --nodes=1               
 #SBATCH --ntasks-per-node=1    
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=10
 #SBATCH --time=24:00:00
 #SBATCH -J "ROP"   # job name
-#SBATCH --exclusive
 
 # Debugging flags (optional)
 export NCCL_DEBUG=INFO

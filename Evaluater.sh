@@ -1,4 +1,5 @@
 #!/bin/bash
+#SBATCH --exclude pool32
 
 # SLURM SUBMIT SCRIPT
 #SBATCH --nodes=1             
@@ -18,4 +19,4 @@ export PYTHONFAULTHANDLER=1
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script
-srun /data/scratch/haertelk/Masterarbeit/python-venv/bin/python -u  evaluateCHKP.py DQN_1705_1601_Z_TrE_7sparse_-50def_40ZM_9000E
+srun /data/scratch/haertelk/Masterarbeit/python-venv/bin/python -u  evaluateCHKP.py /data/scratch/haertelk/Masterarbeit/checkpoints/DQN_1506_1254_Z_TrE_4to7sparse_nz16_cont2_-50def_s1

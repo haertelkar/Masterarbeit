@@ -68,10 +68,11 @@ for folder in tqdm(os.listdir("checkpoints")):
         tqdm.write(f"Evaluating {epochAndStep} of {version}")
         checkpoint_path = os.path.join("checkpoints",f"{version}",f"{epochAndStep}")
         # checkpoint_path = os.path.join("models/DQN_0711_chamfer_1e-9_BatS4096_AdamW_1343.ckpt")
-        lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = checkpoint_path, numberOfZernikeMoments = 40)
+        lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = checkpoint_path, numberOfZernikeMoments = 16)
         #lightnModel = lightnModelClass(model)
 
-        lightnDataLoader = ptychographicDataLightning(modelName, testDirectories= ["measurements_train_7sparse_noEB_-50def"],indicesToPredict = None, labelFile = labelFile, batch_size=512, weighted = False, numberOfPositions=49, lessBorder=35)
+        lightnDataLoader = ptychographicDataLightning(modelName, testDirectories= ["measurements_train_7sparse_noEB_-50def"],indicesToPredict = None, labelFile = labelFile, batch_size=512, 
+                                                        weighted = False, numberOfZernikeMoments=16)
         lightnDataLoader.setup(stage = "predict")
 
         # lightnDataLoader = ptychographicDataLightning(modelName, labelFile=labelFile, testDirectory="measurements_test", onlyTest=True)

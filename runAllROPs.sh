@@ -1,4 +1,15 @@
 #!/bin/bash
+#SBATCH --exclude pool32
+# SLURM SUBMIT SCRIPT
+#SBATCH --nodes=1               
+#SBATCH --ntasks-per-node=1    
+#SBATCH --cpus-per-task=1
+#SBATCH --time=1:00:00
+#SBATCH -J "runROP"   # job name
+#SBATCH --mail-user=haertelk@physik.hu-berlin.de   # email addres
+
+#SBATCH --mail-type=END
+#SBATCH --mail-type=FAIL
 
 # Automatically find all folders starting with 'PredROP' and submit the script.sh file in each of them
 for folder in PredROP*/; do

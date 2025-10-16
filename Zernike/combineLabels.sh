@@ -1,5 +1,6 @@
 #!/bin/bash
-
+#SBATCH --exclude pool32
+#SBATCH --exclude pool33
 #Submit this script with: sbatch thefilename
 
 #SBATCH --time=48:00:00   # walltime
@@ -13,4 +14,4 @@
 
 
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
-/data/scratch/haertelk/Masterarbeit/python-venv/bin/python ../FullPixelGridML/combineLabelsCSVs.py
+/data/scratch/haertelk/Masterarbeit/python-venv/bin/python ../FullPixelGridML/combineLabelsCSVs.py _2to6s_0def_15B_new_20Z

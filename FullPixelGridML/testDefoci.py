@@ -5,8 +5,9 @@ from tqdm import tqdm
 energy = 60e3
 for defocus in tqdm([0, -10, -30, -50, -100, -150]):
     generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = energy, 
-                                structure = "/data/scratch/haertelk/Masterarbeit/FullPixelGridML/structures/used/NaSbF6.cif", pbar = False, 
-                                start = (5,5), end = (20,20), simple = True,
+                                #structure = "/data/scratch/haertelk/Masterarbeit/FullPixelGridML/structures/used/NaSbF6.cif",
+                                pbar = False, 
+                                start = (5,5), end = (20,20), #simple = True,
                                 generate_graphics = True, defocus = defocus)
     
 h_times_c_dividedBy_keV_in_A = 12.4

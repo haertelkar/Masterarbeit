@@ -1,4 +1,5 @@
 #!/bin/bash
+#SBATCH --exclude pool32
 
 #Submit this script with: sbatch thefilename
 
