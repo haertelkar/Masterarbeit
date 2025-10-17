@@ -18,8 +18,8 @@ def visualize_coords_hdf5(file_path):
                 continue
             for cnt, position in enumerate(data):
                 # if len(position) == 864:
-                x = position[-3]
-                y = position[-2]
+                x = position[-2]
+                y = position[-1]
                 if -35 <= x <= 49 and -35 <= y <= 49:
                     x_coords.append(x)
                     y_coords.append(y)

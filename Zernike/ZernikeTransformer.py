@@ -60,7 +60,7 @@ def readProgressAcrossAllRuns(path:str):
     return fileNamesDone
 
 
-def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMoments = 40, leave = True): #radius set below & noOfMoment = 10 tested works, noOfMoment = 40 optimal performance
+def zernikeTransformation(pathToZernikeFolder = os.getcwd(), radius = 0, noOfMoments = 860, leave = True): #radius set below & noOfMoment = 10 tested works, noOfMoment = 860 optimal performance
     comm = MPI.COMM_WORLD
     rank = comm.Get_rank()
     worldsize = comm.Get_size()

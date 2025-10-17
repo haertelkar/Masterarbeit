@@ -56,7 +56,7 @@ colFun = collate_fn
 class ptychographicDataLightning(L.LightningDataModule):
 	def __init__(self, model_name, batch_size = 128, num_workers = 20, classifier = False, indicesToPredict = None, 
 			    labelFile = "labels.csv", trainDirectories = ["measurements_train"],testDirectories = ["measurements_test"],
-			    onlyTest = False, weighted  = True, numberOfPositions = 20, numberOfZernikeMoments = 40, lessBorder = 35, sparsity = 1):
+			    onlyTest = False, weighted  = True, numberOfPositions = 20, numberOfZernikeMoments = 860, lessBorder = 35, sparsity = 1):
 		super().__init__()
 		print(f"Using num workers {num_workers}")
 		self.batch_size = batch_size
@@ -167,7 +167,7 @@ class ptychographicDataLightning(L.LightningDataModule):
 
 class ptychographicData(Dataset):
 	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, shift = None, labelIndicesToPredict = None, 
-			  classifier = False, numberOfPositions = 9, numberOfZernikeMoments = 40, lessBorder = 35, sparsity = 1):
+			  classifier = False, numberOfPositions = 9, numberOfZernikeMoments = 860, lessBorder = 35, sparsity = 1):
 		self.lessBorder = lessBorder
 		img_labels_pd = pd.read_csv(annotations_file).dropna()
 		self.image_labels = img_labels_pd[img_labels_pd.columns[1:]].to_numpy('float32')
@@ -182,17 +182,16 @@ class ptychographicData(Dataset):
 		if self.zernike:
 			self.actualLenZernike = 0
 			self.numberOfZernikeMoments  = numberOfZernikeMoments
-			self.zernikeLength = self.zernikeLengthCalc()
 			with open('Zernike/stdValues.csv', 'r') as file:
 				line = file.readline()
 				self.stdValues = [float(x.strip()) for x in line.split(',') if x.strip()]
-				self.stdValuesArray = np.array(self.stdValues[:-3] + [1,1,1])
-				self.stdValuesArray = np.delete(self.stdValuesArray, np.s_[self.zernikeLength:-3])
+				self.stdValuesArray = np.array(self.stdValues[1:-2] + [1,1,1])
+				self.stdValuesArray = np.delete(self.stdValuesArray, np.s_[self.numberOfZernikeMoments:-2])
 			with open('Zernike/meanValues.csv', 'r') as file:
 				line = file.readline()
 				self.meanValues = [float(x.strip()) for x in line.split(',') if x.strip()]
-				self.meanValuesArray : np.ndarray = np.array(self.meanValues[:-3] + [0,0,0])
-				self.meanValuesArray = np.delete(self.meanValuesArray, np.s_[self.zernikeLength:-3])
+				self.meanValuesArray : np.ndarray = np.array(self.meanValues[1:-2] + [0,0,0])
+				self.meanValuesArray = np.delete(self.meanValuesArray, np.s_[self.numberOfZernikeMoments:-2])
 		self.shift = None
 		self.dataPath = os.path.join(self.img_dir, f"training_data.hdf5")
 		self.dataset = None
@@ -202,7 +201,7 @@ class ptychographicData(Dataset):
 		
 
 		
-		if self.zernike: print(f"Loading {self.dataPath} with {len(self.image_labels)} zernike data. The data is using {self.numberOfZernikeMoments} zernike moments (length = {self.zernikeLength}) and a maximum of {self.numberOfPositions} positions.")
+		if self.zernike: print(f"Loading {self.dataPath} with {len(self.image_labels)} zernike data. The data is using {self.numberOfZernikeMoments} zernike moments and a maximum of {self.numberOfPositions} positions.")
 
 		#removed option to classify
 		#removed option to select labels to predict
@@ -218,16 +217,6 @@ class ptychographicData(Dataset):
 		# 	assert(type(labelIndicesToPredict) != list)
 		# 	self.smallestElem = self.img_labels.iloc[:, labelIndicesToPredict].min()
 		# 	self.numberOfClasses = self.img_labels.iloc[:, labelIndicesToPredict].max() - self.smallestElem + 1
-	def zernikeLengthCalc(self):
-		resultVectorLength = 0 
-		numberOfOSAANSIMoments = self.numberOfZernikeMoments
-		for n in range(numberOfOSAANSIMoments + 1):
-			for mShifted in range(2*n+1):
-				m = mShifted - n
-				if (n-m)%2 != 0:
-					continue
-				resultVectorLength += 1
-		return resultVectorLength		
 
 	def __len__(self):
 		file_count = len(self.image_labels)
@@ -301,8 +290,8 @@ class ptychographicData(Dataset):
 				
 				imageOrZernikeMoments = imageOrZernikeMoments[(imageOrZernikeMoments[:,-3] >  -BegrenzungAussen) & (imageOrZernikeMoments[:,-3] < (BegrenzungAussen + 15))]
 				imageOrZernikeMoments = imageOrZernikeMoments[(imageOrZernikeMoments[:,-2] >  -BegrenzungAussen) & (imageOrZernikeMoments[:,-2] < (BegrenzungAussen + 15))]
-			if self.numberOfZernikeMoments != 40 and self.actualLenZernike != self.zernikeLength:
-				imageOrZernikeMoments = np.delete(imageOrZernikeMoments, np.s_[self.zernikeLength:-3], axis=1) #remove the higher order zernike moments but keep x,y and padding
+			if self.numberOfZernikeMoments != 860 and self.actualLenZernike != self.numberOfZernikeMoments:
+				imageOrZernikeMoments = np.delete(imageOrZernikeMoments, np.s_[self.numberOfZernikeMoments:-2], axis=1) #remove the higher order zernike moments but keep x,y
 			if self.sparsity > 1:
 				xOffset = imageOrZernikeMoments[0,-3] % self.sparsity
 				yOffset = imageOrZernikeMoments[0,-2] % self.sparsity

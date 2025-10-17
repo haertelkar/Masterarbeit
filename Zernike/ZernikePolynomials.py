@@ -17,45 +17,6 @@ class Zernike(object):
         # self.indexYNonZero = None
         self.dimToBasis = {
         }
-        self.resultVectorLength = 0 
-
-        for n in range(self.numberOfOSAANSIMoments + 1):
-            for mShifted in range(2*n+1):
-                m = mShifted - n
-                if (n-m)%2 != 0:
-                    continue
-                self.resultVectorLength += 1
-
-    # def zernikeTransformMultiImages(self, fileName, images, zernikeTotalImages, shapeOfMomentsAllCoords = None):
-    #     if shapeOfMomentsAllCoords is None: 
-    #         shapeOfZernikeMoments = list(np.shape(images))[:-2]
-    #         shapeOfZernikeMoments[-1] = self.resultVectorLength * shapeOfZernikeMoments[-1]
-    #         momentsAllCoords = np.zeros(shapeOfZernikeMoments)
-    #     else:
-    #         shapeOfMomentsAllCoords[-1] = self.resultVectorLength * shapeOfMomentsAllCoords[-1]
-    #         momentsAllCoords = np.zeros(shapeOfMomentsAllCoords)
-    #     for xCNT, lineOfGroupsOfPatterns in enumerate(images): #X Coord
-    #         for yCNT, groupOfPatterns in enumerate(lineOfGroupsOfPatterns): #Y Coord
-    #             moments = []
-    #             for im in groupOfPatterns:
-    #                 dim = np.shape(im)[0]
-    #                 if self.dimToBasis.get(dim) is None:
-    #                     basisObject = self.basisObject(self, dim)
-    #                     self.dimToBasis[dim] = basisObject.basis
-    #                 basis = self.dimToBasis[dim]
-    #                 if not np.any(im):
-    #                     #most diffraction patterns are left empty, so this is a good optimization
-    #                     moments.append(np.zeros(self.resultVectorLength))
-    #                 else:
-    #                     moments.append(self.calculateZernikeWeights(basis, im)*1e3) #scaled up so it's more useful
-    #             moments = np.array(moments).flatten()
-    #             momentsAllCoords[xCNT,yCNT] = moments
-
-        
-    #     if fileName is not None:
-    #         zernikeTotalImages.create_dataset(fileName, data = momentsAllCoords, compression="gzip")
-    #     else:
-    #         return momentsAllCoords
     
     def calculateZernikeWeightsOnWholeGroup(self, basis, groupOfPatterns):
         return njitcalculateZernikeWeights(basis, groupOfPatterns)
@@ -70,7 +31,7 @@ class Zernike(object):
     
     def zernikeTransform(self, dataSetName, groupOfPatterns, hdf5File, radius = None, shapeOfMomentsAllCoords = None):
         assert(len(np.shape(groupOfPatterns)) == 3)
-        moments = np.zeros((len(groupOfPatterns), self.resultVectorLength),dtype=np.float32)
+        moments = np.zeros((len(groupOfPatterns), self.numberOfOSAANSIMoments),dtype=np.float32)
         dim = np.shape(groupOfPatterns)[-1]
         if radius is None:
             radius = dim//2
@@ -139,14 +100,12 @@ class Zernike(object):
         def computeZernikeBasis(self):
             basis = []
             
-            for n in range(self.ZernikeObject.numberOfOSAANSIMoments + 1):
-                for mShifted in range(2*n+1):
-                    m = mShifted - n
-                    if (n-m)%2 != 0:
-                        continue
-                    radialPart = self.ZernikePolynomialRadial(n,np.abs(m))
-                    angularPart = self.ZernikePolynomialAngular(m)
-                    basis.append(radialPart*angularPart) # pixel representation of basis indexed by OSAIndex
+            for OSAANSIIndex in range(1,self.ZernikeObject.numberOfOSAANSIMoments + 1):
+                m,n = self.OSAANSIIndexToMNIndex(OSAANSIIndex)
+                assert((n-m)%2 == 0)
+                radialPart = self.ZernikePolynomialRadial(n,np.abs(m))
+                angularPart = self.ZernikePolynomialAngular(m)
+                basis.append(radialPart*angularPart) # pixel representation of basis indexed by OSAIndex
 
             return np.array(basis)
 

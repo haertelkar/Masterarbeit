@@ -192,7 +192,7 @@ class TwoPartLightning(LightningModule):
         self,
         lr: float = 1e-2,
         numberOfPositions = 9,
-        numberOfZernikeMoments = 40,
+        numberOfZernikeMoments = 860,
         numberOfAtoms = grid_size_in_A**2,
         hidden_size: int = 1024, 
         num_layers = 5,
@@ -209,16 +209,8 @@ class TwoPartLightning(LightningModule):
     
         self.lr = lr
         
-        self.obs_size = 0
-        numberOfOSAANSIMoments = numberOfZernikeMoments
-        for n in range(numberOfOSAANSIMoments + 1):
-            for mShifted in range(2*n+1):
-                m = mShifted - n
-                if (n-m)%2 != 0:
-                    continue
-                self.obs_size += 1
-
-        self.obs_size += 3 # 2 for x and y position 
+        self.obs_size = numberOfZernikeMoments
+        self.obs_size += 2 # 2 for x and y position 
         self.nhead = 0
         for i in np.arange(8,20, 2):
             if self.obs_size % i == 0:

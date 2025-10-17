@@ -158,7 +158,7 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 					Writer.writerow([int(predEntry.argmax() == yEntry.argmax())])
 
 
-def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, numberOfPositions = 9, numberOfZernikeMoments = 40, FolderAppendix = "",
+def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, numberOfPositions = 9, numberOfZernikeMoments = 860, FolderAppendix = "",
 		 lessBorder = 35, loadCheckpoint = "", sparsity = 1, accelerator = "gpu", numberOfAtoms = 9, hidden_size = 1024, num_layers = 5, fc_num_layers = 3):
 	models = ["DQN", "cnnTransformer","visionTransformer"]
 	print(f"Training model version {version} for {epochs} epochs.")
@@ -274,7 +274,7 @@ if __name__ == '__main__':
 	ap.add_argument("-c" ,"--classifier", type=int, required=False, default=0, help = "Use if the model is to be a classfier. Choose the label index to be classified")
 	ap.add_argument("-i" ,"--indices", type=str, required=False, default="all", help = "specify indices of labels to predict (eg. '1, 2, 5'). Default is all.")
 	ap.add_argument("-np" ,"--numberOfPositions", type=int, required=False, default=9, help = "Specify the number of Positions that the nn gets as input. Default is 9.")
-	ap.add_argument("-nz" ,"--numberOfZernikeMoments", type=int, required=False, default=40, help = "Specify the highest order of zernike moments to use. Default and max is 40.")
+	ap.add_argument("-nz" ,"--numberOfZernikeMoments", type=int, required=False, default=860, help = "Specify the highest order of zernike moments to use. Default and max is 860.")
 	ap.add_argument("-l" ,"--labelsFile", type=str, required=False, default="labels.csv", help = "Specify the name of the labels-file. Default is labels.csv.")
 	ap.add_argument("-fa" ,"--FolderAppendix", type=str, required=False, default="", help = "Appendix on the folder measurements_train and measurements_test.")
 	ap.add_argument("-lb" ,"--lessBorder", type=int, required=False, default=35, help = "Specify the border around the image that is not used. Default/Max is 35.")
@@ -285,7 +285,7 @@ if __name__ == '__main__':
 	ap.add_argument("-hi", "--hiddenSize", type=int, required=False, default=1024, help = "Specify the hidden size of the model. Default is 1024.")
 	ap.add_argument("-enNL", "--encoderNumLayers", type=int, required=False, default=5, help = "Specify the number of layers in the encoder model. Default is 5.")
 	ap.add_argument("-fcNL", "--fcNumLayers", type=int, required=False, default=3, help = "Specify the number of layers in the final fully connected layer. Default is 3.")
-	# ap.add_argument("-b" ,"--batchSize", type=int, required=False, default=256, help = "Specify the highest order of zernike moments to use. Default and max is 40.")
+	# ap.add_argument("-b" ,"--batchSize", type=int, required=False, default=256, help = "Specify the highest order of zernike moments to use. Default and max is 860.")
 	args = vars(ap.parse_args())
 
 	if not args["classifier"]:

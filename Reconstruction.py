@@ -431,13 +431,11 @@ def CreatePredictions(resultVectorLength, model, PredShape, zernikeValuesUnspars
                 raise Exception(E)
             
             if scalerEnabled: imageOrZernikeMoments = (imageOrZernikeMoments - meanValuesArray[np.newaxis,:]) / stdValuesArray[np.newaxis,:] 
-            #TODO y and x are accidentally swapped in the simulation, so we need to swap them back here
-            #TODO DONT SWITCH FOR THE OLD MODEL
+            #TODO x and y are no longer switched
             if zernike:
-                padding = torch.zeros_like(XCoordsLocal)
-                imageOrZernikeMomentsCuda = torch.cat((imageOrZernikeMoments, torch.stack([YCoordsLocal, XCoordsLocal, padding]).T), dim = 1).to(torch.device("cuda"))
+                imageOrZernikeMomentsCuda = torch.cat((imageOrZernikeMoments, torch.stack([XCoordsLocal, YCoordsLocal]).T), dim = 1).to(torch.device("cuda"))
             else:
-                imageOrZernikeMomentsCuda = torch.cat((imageOrZernikeMoments, torch.stack([YCoordsLocal, XCoordsLocal]).T), dim = 1).to(torch.device("cuda"))
+                imageOrZernikeMomentsCuda = torch.cat((imageOrZernikeMoments, torch.stack([XCoordsLocal, YCoordsLocal]).T), dim = 1).to(torch.device("cuda"))
 
             with torch.inference_mode():
                 pred = model(imageOrZernikeMomentsCuda.unsqueeze(0))
@@ -616,26 +614,13 @@ def BFD_calculation(onlyPred, diameterBFD50Pixels, measurement_thick, measuremen
     #print(f"Actually used BFD with margin: {diameterBFD50Pixels}")
     return diameterBFDNotScaled
 
-def calculate_zernike_vector_length(numberOfOSAANSIMoments):
-    """
-    Calculate the length of the zernike vector based on the number of OSA-ANSI moments to be used.
-    """
-    resultVectorLength = 0 
-    for n in range(numberOfOSAANSIMoments + 1):
-        for mShifted in range(2*n+1):
-            m = mShifted - n
-            if (n-m)%2 != 0:
-                continue
-            resultVectorLength += 1
-    print("number of Zernike Moments",resultVectorLength)
-
     # The result vector length is the number of OSA-ANSI moments times the number of atoms
-    return resultVectorLength
 
 def createEmptyBackground(diameterBFD50Pixels, zernike, resultVectorLength, chosenCoords2dArray,
                           model, scalerEnabled, windowSizeInCoords, xMaxCNT, yMaxCNT,
                           nonPredictedBorderinCoordinates, circleWeights = None, emptyInput = False):
     if zernike: 
+        raise Exception("New empty zernike pattern with OSA have to be calculated")
         empty_background_image = np.load("empty_zernike_pattern.npy", allow_pickle=True)
         if emptyInput: empty_background_image = np.zeros_like(empty_background_image)
     else: 
@@ -693,14 +678,14 @@ def parse_args_full():
     return structure,model_checkpoint,sparseGridFactor,defocus,makeNewFolder,scalerEnabled,onlyPred,nonPredictedBorderinCoordinates, zernike
 
 def full_routine(structure, model_checkpoint, sparseGridFactor, defocus, makeNewFolder, scalerEnabled, onlyPred, nonPredictedBorderinCoordinates, energy= 60e3,
-                 conv_angle_in_mrad = 33, diameterBFD50Pixels = 18, start = (5,5), end = (25,25), windowSizeInCoords = 15, numberOfAtoms = 9, numberOfOSAANSIMoments = 40, hidden_size_encoder = 1024,
+                 conv_angle_in_mrad = 33, diameterBFD50Pixels = 18, start = (5,5), end = (25,25), windowSizeInCoords = 15, numberOfAtoms = 9, numberOfOSAANSIMoments = 860, hidden_size_encoder = 1024,
                  zernike = True
                  ):
     print(f"Structure: {structure}")
     print(f"Number of atoms: {numberOfAtoms}")
     print(f"Window size in coordinates: {windowSizeInCoords}")
     if zernike:
-        resultVectorLength = calculate_zernike_vector_length(numberOfOSAANSIMoments)
+        resultVectorLength = numberOfOSAANSIMoments
     else: 
         resultVectorLength = 38*38
 

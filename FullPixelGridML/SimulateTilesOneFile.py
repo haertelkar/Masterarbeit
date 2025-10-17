@@ -67,7 +67,7 @@ from ZernikePolynomials import Zernike
 windowSizeInA = 3 # Size of the window in Angstroms
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
-FolderAppendix = "_4to8s_-50def_15B_new_betZern"#"_4sparse_noEB_-50def_20Z"
+FolderAppendix = "_1710_4to8s_-50def_15B_860Z_OSA"#"_4sparse_noEB_-50def_20Z"
 #now Zernike moments don't start at 0,0
 
 
@@ -223,11 +223,7 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
     xlen_structure = ylen_structure = max(xlen_structure, ylen_structure) #make sure its square
     # print(f"Generating structure with xlen = {xlen_structure} and ylen = {ylen_structure} and start = {start} and end = {end} and nonPredictedBorderInA = {nonPredictedBorderInA}")
     # print(f"Calculating on {device}")
-    if structure == "emptySpace":
-        nameStruct = "emptySpace"
-        atomStruct = np.zeros(grid.shape)
-    else:
-        nameStruct, atomStruct = createStructure(xlen_structure, ylen_structure, specificStructure= structure, trainOrTest = trainOrTest, simple=simple, nonPredictedBorderInA = nonPredictedBorderInA, start=start)
+    nameStruct, atomStruct = createStructure(xlen_structure, ylen_structure, specificStructure= structure, trainOrTest = trainOrTest, simple=simple, nonPredictedBorderInA = nonPredictedBorderInA, start=start)
     try:
         potential_thick = Potential(
             atomStruct,
@@ -399,7 +395,7 @@ def generate_sparse_grid(x_size, y_size, s, xStartShift = 0, yStartShift = 0, xE
 
 def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,maxPooling = 1, processID = 99999, silence = False, 
                           structure = "random", fileWrite = True, difArrays = None,     start = (5,5), end = (8,8), simple = False, 
-                          nonPredictedBorderInA = 0, zernike = False, initialCoords = None, defocus=-50, numberOfOSAANSIMoments = 20, step_size = 10):
+                          nonPredictedBorderInA = 0, zernike = False, initialCoords = None, defocus=-50, numberOfOSAANSIMoments = 860, step_size = 10):
     """
     Generates all diffraction patterns for the given positions and saves them to a file.
     Args:
@@ -489,7 +485,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         else:
             rows = generateXYE(datasetStructID, rows, atomStruct, start, end, silence, nonPredictedBorderInA)
 
-        difPatternsResized = []#[np.zeros((dimNew, dimNew))] #empty array for the first element, works as csl token. IS PROBLEMATIC because the model than expects this in prediction
+        difPatternsResized = []
         for cnt, difPattern in enumerate(difPatternsComputed): 
             difPatternsResized.append(cv2.resize(difPattern, dsize=(dimNew, dimNew), interpolation=cv2.INTER_LINEAR))  # type: ignore
         difPatternsResized = np.array(difPatternsResized)
@@ -502,9 +498,9 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         # plt.imsave(os.path.join(f"measurements_{trainOrTest}",f"{datasetStructID}.png"), difPatternsOnePositionResized[0])
         
         if fileWrite: 
-            #TODO x and y are incorrect, should be switched
-            choosenXCoords = (choosenCoords % measurement_thick.array.shape[1]).astype(int) 
-            choosenYCoords = (choosenCoords / measurement_thick.array.shape[1]).astype(int)
+            #x and y are now correct and switched
+            choosenYCoords = (choosenCoords % measurement_thick.array.shape[1]).astype(int) 
+            choosenXCoords = (choosenCoords / measurement_thick.array.shape[1]).astype(int)
             # choosenCoords2D : np.ndarray = np.array(generate_sparse_grid(measurement_thick.array.shape[0], measurement_thick.array.shape[1], sparseGridFactor, xStartShift=xStartShift,
             #                                                              yStartShift=yStartShift, xEndShift=xEndShift,yEndShift=yEndShift, twoD=True))
             # for cnt, (xCoord, yCoord) in enumerate(choosenCoords2D):
@@ -515,8 +511,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
                 file.create_dataset(f"{datasetStructID}", data = difPatternsResized_reshaped_with_Coords.astype('float32'), compression="lzf", chunks = (1, difPatterns.shape[-1]), shuffle = True)
             else:
                 zernDifPatterns = ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = difPatternsResized, hdf5File = None)
-                padding = np.zeros_like(choosenXCoords)
-                zernDifPatterns = np.concatenate((zernDifPatterns, np.stack([choosenXCoords - nonPredictedBorderInCoords, choosenYCoords - nonPredictedBorderInCoords, padding]).T), axis = 1)
+                zernDifPatterns = np.concatenate((zernDifPatterns, np.stack([choosenXCoords - nonPredictedBorderInCoords, choosenYCoords - nonPredictedBorderInCoords]).T), axis = 1)
                 
                 file.create_dataset(f"{datasetStructID}", data = zernDifPatterns.astype('float32'), compression="lzf", chunks = (1, zernDifPatterns.shape[-1]), shuffle = True)
             
@@ -627,7 +622,7 @@ if __name__ == "__main__":
     maxPooling = 1
     start = (0,0)   
     nonPredictedBorderInA = 3
-    zernike = False
+    zernike = True
     end = (start[0] + nonPredictedBorderInA * 2 + windowSizeInA , start[1] + nonPredictedBorderInA * 2 + windowSizeInA)
 
     numberOfPositionsInOneAngstrom = 5
@@ -642,9 +637,9 @@ if __name__ == "__main__":
                 continue
             print(f"PID {os.getpid()} on step {i+1} of {trainOrTest}-data at {datetime.datetime.now()}")
             timeStamp = int(str(time()).replace('.', ''))
-            rows = saveAllPosDifPatterns(trainOrTest, int(testDivider[trainOrTest]*20), timeStamp, BFDdiameter, processID=args["id"], silence=True, 
+            rows = saveAllPosDifPatterns(trainOrTest, int(testDivider[trainOrTest]*40), timeStamp, BFDdiameter, processID=args["id"], silence=True, 
                                          structure = args["structure"], start=start, end=end, maxPooling=maxPooling, simple = True, 
-                                         nonPredictedBorderInA=nonPredictedBorderInA, zernike=zernike, defocus=defocus, numberOfOSAANSIMoments= 20)
+                                         nonPredictedBorderInA=nonPredictedBorderInA, zernike=zernike, defocus=defocus, numberOfOSAANSIMoments= 860)
             #rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling, structure = args["structure"], start=start, end=end)
             writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], 
                          timeStamp = timeStamp, maxPooling=maxPooling, size = size, zernike=zernike)

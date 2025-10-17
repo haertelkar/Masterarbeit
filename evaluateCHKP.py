@@ -5,14 +5,6 @@ import lightning.pytorch as pl
 import sys
 from tqdm import tqdm
 
-resultVectorLength = 0 
-numberOfOSAANSIMoments = 40	
-for n in range(numberOfOSAANSIMoments + 1):
-    for mShifted in range(2*n+1):
-        m = mShifted - n
-        if (n-m)%2 != 0:
-            continue
-        resultVectorLength += 1
 
 DIMTILES = 10
 DIMENSION = DIMTILES//3 + 1
@@ -32,7 +24,6 @@ for folder in tqdm(os.listdir("checkpoints")):
             continue
 
         if "Zernike" in version or True:
-            numChannels=resultVectorLength * 9#DIMENSION**2
             modelName = "ZernikeNormal"
         else:
             numChannels = DIMENSION**2
