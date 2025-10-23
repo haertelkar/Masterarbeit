@@ -67,7 +67,7 @@ from ZernikePolynomials import Zernike
 windowSizeInA = 3 # Size of the window in Angstroms
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
-FolderAppendix = "_1710_4to8s_-50def_15B_860Z_OSA"#"_4sparse_noEB_-50def_20Z"
+FolderAppendix = "_1710_4to8s_-50def_15B_860Z_OSA_2"#"_4sparse_noEB_-50def_20Z"
 #now Zernike moments don't start at 0,0
 
 
@@ -358,7 +358,7 @@ def generateXYE(datasetStructID, rows, atomStruct, start, end, silence = True, n
     xMinCoord, yMinCoord = int(nonPredictedBorderInA*numberOfPositionsInOneAngstrom), int(nonPredictedBorderInA*numberOfPositionsInOneAngstrom)
     xyes = []
     cnt = 0
-    for (x, y), atomNo in tqdm(zip(allPositionsShifted[:,0:2], atomStruct.get_atomic_numbers()), leave=False, desc = f"Going through diffraction Pattern in atoms.", total= len(allPositionsShifted), disable=silence):
+    for (x, y), atomNo in tqdm(zip(allPositionsShifted[:,0:2], atomStruct.get_atomic_numbers()), leave=False, desc = f"Going through diffraction pattern in atoms.", total= len(allPositionsShifted), disable=silence):
         xCoordinate = x*numberOfPositionsInOneAngstrom - xMinCoord
         yCoordinate = y*numberOfPositionsInOneAngstrom - yMinCoord
         
