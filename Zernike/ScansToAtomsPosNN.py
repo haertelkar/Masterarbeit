@@ -191,12 +191,13 @@ class TwoPartLightning(LightningModule):
     def __init__(
         self,
         lr: float = 1e-2,
-        numberOfPositions = 9,
-        numberOfZernikeMoments = 860,
-        numberOfAtoms = grid_size_in_A**2,
+        numberOfPositions :int = 9,
+        numberOfZernikeMoments :int = 860,
+        numberOfAtoms : int = grid_size_in_A**2,
         hidden_size: int = 1024, 
-        num_layers = 5,
-        fc_num_layers = 3
+        num_layers :int = 5,
+        fc_num_layers :int = 3,
+        label_dims :int =2
     ) -> None:
         """Basic Transformer+Linear Model.
 
@@ -230,7 +231,7 @@ class TwoPartLightning(LightningModule):
             label_size = grid_size*grid_size
             self.scaler = 1
         else:
-            self.label_dims = 2
+            self.label_dims = label_dims 
             label_size = self.label_dims*numberOfAtoms
             self.scaler = grid_size
 

@@ -162,7 +162,13 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 	for modelName in models:  
 		if modelString and modelString not in modelName:
 			continue
-		if modelName == "TrE": lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, numberOfAtoms = numberOfAtoms, hidden_size = hidden_size, num_layers = num_layers, fc_num_layers = fc_num_layers)
+		if "lem" in labelFile:
+			label_dims = 1
+		elif "ist" in labelFile:
+			label_dims = 2
+		else:
+			label_dims = 3
+		if modelName == "TrE": lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, numberOfAtoms = numberOfAtoms, hidden_size = hidden_size, num_layers = num_layers, fc_num_layers = fc_num_layers, label_dims=label_dims)
 		elif modelName == "cnnTransformer": lightnModel = ThreePartLightning(numberOfAtoms = numberOfAtoms)
 		elif modelName == "visionTransformer": lightnModel = ThreePartLightningVIT(numberOfAtoms = numberOfAtoms)
 		else: raise Exception(f"Model {modelName} is not supported for training.")

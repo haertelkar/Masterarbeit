@@ -192,6 +192,7 @@ class ptychographicData(Dataset):
 				self.stdValues = [float(x.strip()) for x in line.split(',') if x.strip()]
 				self.stdValuesArray = np.array(self.stdValues) #TODO previously there was 1,1 as scaling for the coordinates
 				self.stdValuesArray = np.delete(self.stdValuesArray, np.s_[self.numberOfZernikeMoments:-2])
+				self.stdValuesArray = np.clip(self.stdValuesArray, a_min=1e-5, a_max=None) #avoid division by zero
 			with open('Zernike/meanValues.csv', 'r') as file:
 				line = file.readline()
 				self.meanValues = [float(x.strip()) for x in line.split(',') if x.strip()]
