@@ -15,5 +15,5 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 /data/scratch/haertelk/Masterarbeit/python-venv/bin/python -u lightningTrain.py \
     -v 3006_1041_Z_TrE_4to8sparse_nz40_new_hi2048_en5_fc \
-    -e 9000 -nA 9 -nz 40 -m DQN -l labels_only_Dist.csv \
+    -e 9000 -nA 9 -nz 40 -m TrE -l labels_only_Dist.csv \
     -fa _4to8s_-50def_15B_new_40Z -hi 1024 -enNL 5 -fcNL 3

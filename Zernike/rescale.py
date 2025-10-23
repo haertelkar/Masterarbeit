@@ -12,8 +12,8 @@ zernikeImagesAll = []
 #go through the hdf5 file and scale the data. The vectors are all of the same length. Scale featurewise
 for testOrTrain in ["train"]:
     meanValues = None
-    with h5py.File(f"measurements_train/training_data.hdf5", "r") as f:
-        for key in tqdm(list(f.keys())[::100], desc = f"Finding the maximum values to scale to one in measurements_train/training_data.hdf5.", leave=False):
+    with h5py.File(f"measurements_train_1710_4to8s_-50def_15B_860Z_OSA/training_data.hdf5", "r") as f:
+        for key in tqdm(list(f.keys())[::100], desc = f"Finding the maximum values to scale to one in measurements_train_1710_4to8s_-50def_15B_860Z_OSA/training_data.hdf5."):
             zernikeImages = np.array(f[key][...]).astype(np.float32)
             
             # zernikeImages0.append(zernikeImages[:,0])

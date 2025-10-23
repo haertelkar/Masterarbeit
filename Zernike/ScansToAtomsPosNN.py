@@ -318,8 +318,6 @@ class TwoPartLightning(LightningModule):
 
     def configure_optimizers(self) -> Optimizer:
         """Initialize Adam optimizer."""
-        # params = []#self.dqn.parameters(), self.finalLayer.parameters()]
-        # params = [self.finalLayer.parameters()]
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
         return optimizer
     
@@ -330,7 +328,7 @@ class ThreePartLightning(LightningModule):
         lr: float = 1e-2,
         numberOfAtoms = grid_size_in_A**2
     ) -> None:
-        """Basic Transformer+Linear Model.
+        """Basic Transformer+ Linear Model.
 
         Args:
             lr: learning rate
@@ -486,8 +484,6 @@ class ThreePartLightning(LightningModule):
 
     def configure_optimizers(self) -> Optimizer:
         """Initialize Adam optimizer."""
-        # params = []#self.dqn.parameters(), self.finalLayer.parameters()]
-        # params = [self.finalLayer.parameters()]
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
         return optimizer
     
@@ -651,8 +647,6 @@ class ThreePartLightningVIT(LightningModule):
 
     def configure_optimizers(self) -> Optimizer:
         """Initialize Adam optimizer."""
-        # params = []#self.dqn.parameters(), self.finalLayer.parameters()]
-        # params = [self.finalLayer.parameters()]
         optimizer = torch.optim.AdamW(self.parameters(), lr=self.lr)
         return optimizer
 

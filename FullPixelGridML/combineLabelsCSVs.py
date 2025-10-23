@@ -32,7 +32,7 @@ def combineLabelsAndCSV(workingDir, FolderAppendix = ""):
                                 try:
                                     h5fw[datasetName] = h5py.ExternalLink(file, datasetName)      
                                 except RuntimeError as e:
-                                    print(f"Warning in {file}\n{e}\n\n IGNORED FOR NOW")
+                                    print(f"Warning in {file}\n{e}\n\n IGNORED FOR NOW, dataset {datasetName}")
                     except OSError as e:
                         filesToIgnore.append(file)
                     except Exception as e:

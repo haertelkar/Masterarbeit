@@ -94,27 +94,12 @@ def loadModel(trainDataLoader = None, modelName = "ZernikeNormal", numChannels =
 			numChannels=numChannels,
 			classes=numLabels)
 
-	elif modelName == "ZernikeBottleneck":
-		from Zernike.znnBottleneck import znnBottleneck
-		print("[INFO] initializing the znnBottleneck model...")
-		model = znnBottleneck(
-			inFeatures = numChannels,
-			outFeatures=numLabels)
-
 	elif modelName == "ZernikeNormal":
 		from Zernike.znn import znn
 		print("[INFO] initializing the znn model...")
 		model = znn(
 			inFeatures = numChannels,
 			outFeatures=numLabels)
-		
-	elif modelName == "ZernikeComplex":
-		from Zernike.znnMoreComplex import znn
-		print("[INFO] initializing the znnComplex model...")
-		model = znn(
-			inFeatures = len(trainFeatures[0]),
-			outFeatures=numLabels)
-		
 	else:
 		raise Exception(f"{modelName} is not a known model")
 	
@@ -159,8 +144,8 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 
 
 def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, numberOfPositions = 9, numberOfZernikeMoments = 860, FolderAppendix = "",
-		 lessBorder = 35, loadCheckpoint = "", sparsity = 1, accelerator = "gpu", numberOfAtoms = 9, hidden_size = 1024, num_layers = 5, fc_num_layers = 3):
-	models = ["DQN", "cnnTransformer","visionTransformer"]
+		 lessBorder = 15, loadCheckpoint = "", sparsity = 1, accelerator = "gpu", numberOfAtoms = 9, hidden_size = 1024, num_layers = 5, fc_num_layers = 3, number_of_samples = 0):
+	models = ["TrE", "cnnTransformer","visionTransformer"]
 	print(f"Training model version {version} for {epochs} epochs.")
 	world_size = getMPIWorldSize()
 	numberOfModels = 0
@@ -177,11 +162,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 	for modelName in models:  
 		if modelString and modelString not in modelName:
 			continue
-		# if modelName == "DQN": 
-		# if "FullPixelGridML" in modelName:
-		# 	lightnModel = TwoPartLightningCNN()
-		# elif "DQN" in modelName:
-		if modelName == "DQN": lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, numberOfAtoms = numberOfAtoms, hidden_size = hidden_size, num_layers = num_layers, fc_num_layers = fc_num_layers)
+		if modelName == "TrE": lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, numberOfAtoms = numberOfAtoms, hidden_size = hidden_size, num_layers = num_layers, fc_num_layers = fc_num_layers)
 		elif modelName == "cnnTransformer": lightnModel = ThreePartLightning(numberOfAtoms = numberOfAtoms)
 		elif modelName == "visionTransformer": lightnModel = ThreePartLightningVIT(numberOfAtoms = numberOfAtoms)
 		else: raise Exception(f"Model {modelName} is not supported for training.")
@@ -196,11 +177,11 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		lightnDataLoader = ptychographicDataLightning(modelName, classifier = classifier, indicesToPredict = indicesToPredict,
 												 labelFile = labelFile, batch_size=batch_size, weighted = False, numberOfPositions = numberOfPositions,
 												   numberOfZernikeMoments = numberOfZernikeMoments, trainDirectories = trainDirectories,
-													 testDirectories = testDirectories, lessBorder = lessBorder, sparsity = sparsity)
+													 testDirectories = testDirectories, lessBorder = lessBorder, sparsity = sparsity, number_of_samples = number_of_samples)
 		lightnDataLoader.setup()
-		
-			
-		# if modelName != "DQN":
+
+
+		# if modelName != "TrE":
 		# 	model = loadModel(lightnDataLoader.val_dataloader(), modelName)
 		# 	lightnModel = lightnModelClass(model)
 		# early_stop_callback = EarlyStopping(monitor="val_loss", min_delta=0.00, patience=5, verbose=False, mode="min", stopping_threshold = 1e-10)
@@ -224,7 +205,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		else:
 			if loadCheckpoint != "":
 				print(f"loading from checkpoint:\n{loadCheckpoint}")
-				if modelName == "DQN": lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, numberOfAtoms = numberOfAtoms)
+				if modelName == "TrE": lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, numberOfAtoms = numberOfAtoms)
 				elif modelName == "cnnTransformer": lightnModel = ThreePartLightning.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfAtoms = numberOfAtoms)
 				elif modelName == "visionTransformer": lightnModel = ThreePartLightningVIT.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfAtoms = numberOfAtoms)
 			#Create a Tuner
@@ -248,7 +229,7 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 			print(f"New learning rate: {lightnModel.lr}")
 			trainer.fit(lightnModel, datamodule = lightnDataLoader)
 		trainer.save_checkpoint(os.path.join("moddels",f"{modelName}_{version}.ckpt"))
-		if "DQN" in modelName:
+		if "TrE" in modelName:
 			lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"), numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, 
 													   hidden_size = hidden_size, num_layers = num_layers, fc_num_layers = fc_num_layers)
 		elif "cnnTransformer" in modelName:
@@ -277,7 +258,7 @@ if __name__ == '__main__':
 	ap.add_argument("-nz" ,"--numberOfZernikeMoments", type=int, required=False, default=860, help = "Specify the highest order of zernike moments to use. Default and max is 860.")
 	ap.add_argument("-l" ,"--labelsFile", type=str, required=False, default="labels.csv", help = "Specify the name of the labels-file. Default is labels.csv.")
 	ap.add_argument("-fa" ,"--FolderAppendix", type=str, required=False, default="", help = "Appendix on the folder measurements_train and measurements_test.")
-	ap.add_argument("-lb" ,"--lessBorder", type=int, required=False, default=35, help = "Specify the border around the image that is not used. Default/Max is 35.")
+	ap.add_argument("-lb" ,"--lessBorder", type=int, required=False, default=15, help = "Specify the border around the image that is not used. Default/Max is 15.")
 	ap.add_argument("-lc" ,"--loadCheckpoint", type=str, required=False, default="", help = "Specify the checkpoint to load to continue training. Default is empty.")
 	ap.add_argument("-s" ,"--sparsity", type=int, required=False, default=1, help = "Specify the sparsity of the data. Default is 1.")
 	ap.add_argument("-ac", "--accelerator", type=str, required=False,help="accelerator to use (eg. 'gpu')", default="gpu")
@@ -285,6 +266,7 @@ if __name__ == '__main__':
 	ap.add_argument("-hi", "--hiddenSize", type=int, required=False, default=1024, help = "Specify the hidden size of the model. Default is 1024.")
 	ap.add_argument("-enNL", "--encoderNumLayers", type=int, required=False, default=5, help = "Specify the number of layers in the encoder model. Default is 5.")
 	ap.add_argument("-fcNL", "--fcNumLayers", type=int, required=False, default=3, help = "Specify the number of layers in the final fully connected layer. Default is 3.")
+	ap.add_argument("-nos", "--numberofsamples", type=int, required=False, default=0, help = "Specify the number of training samples")
 	# ap.add_argument("-b" ,"--batchSize", type=int, required=False, default=256, help = "Specify the highest order of zernike moments to use. Default and max is 860.")
 	args = vars(ap.parse_args())
 
@@ -302,5 +284,5 @@ if __name__ == '__main__':
 	   args["models"], args["labelsFile"], numberOfPositions=args["numberOfPositions"],
 		 numberOfZernikeMoments=args["numberOfZernikeMoments"], FolderAppendix = args["FolderAppendix"],
 		 lessBorder = args["lessBorder"], loadCheckpoint = args["loadCheckpoint"], sparsity = args["sparsity"], accelerator = args["accelerator"], numberOfAtoms = args["numAtoms"],
-		 hidden_size = args["hiddenSize"], num_layers = args["encoderNumLayers"], fc_num_layers = args["fcNumLayers"])
+		 hidden_size = args["hiddenSize"], num_layers = args["encoderNumLayers"], fc_num_layers = args["fcNumLayers"],number_of_samples = args["numberofsamples"])
 

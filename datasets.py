@@ -56,7 +56,7 @@ colFun = collate_fn
 class ptychographicDataLightning(L.LightningDataModule):
 	def __init__(self, model_name, batch_size = 128, num_workers = 20, classifier = False, indicesToPredict = None, 
 			    labelFile = "labels.csv", trainDirectories = ["measurements_train"],testDirectories = ["measurements_test"],
-			    onlyTest = False, weighted  = True, numberOfPositions = 20, numberOfZernikeMoments = 860, lessBorder = 35, sparsity = 1):
+			    onlyTest = False, weighted  = True, numberOfPositions = 20, numberOfZernikeMoments = 860, lessBorder = 15, sparsity = 1, number_of_samples = 0):
 		super().__init__()
 		print(f"Using num workers {num_workers}")
 		self.batch_size = batch_size
@@ -80,12 +80,13 @@ class ptychographicDataLightning(L.LightningDataModule):
 		self.testDirectories = testDirectories
 		self.lessBorder = lessBorder
 		self.sparsity = sparsity
+		self.number_of_samples = number_of_samples
 
 	def setup(self, stage = None) -> None:
 		if self.setupDone: return
 		folderName = None
 		if self.model_name == "FullPixelGridML" or self.model_name == "unet" or self.model_name == "cnnTransformer" or self.model_name == "visionTransformer":	folderName = "FullPixelGridML"
-		elif self.model_name == "ZernikeNormal" or self.model_name == "ZernikeBottleneck" or self.model_name == "ZernikeComplex" or self.model_name == "DQN": folderName = "Zernike"
+		elif self.model_name == "ZernikeNormal" or self.model_name == "ZernikeBottleneck" or self.model_name == "ZernikeComplex" or self.model_name == "TrE": folderName = "Zernike"
 		else:
 			raise Exception(f"model name '{self.model_name}' unknown")
 		trainDatasets = []
@@ -99,7 +100,7 @@ class ptychographicDataLightning(L.LightningDataModule):
 						target_transform=None,#torch.as_tensor,
 						labelIndicesToPredict= self.indicesToPredict, classifier= self.classifier, 
 						numberOfPositions = self.numberOfPositions, numberOfZernikeMoments = self.numberOfZernikeMoments,
-						lessBorder = self.lessBorder, sparsity = self.sparsity
+						lessBorder = self.lessBorder, sparsity = self.sparsity, number_of_samples = self.number_of_samples
 					)		
 			val_dataset = ptychographicData(
 				os.path.abspath(os.path.join(folderName,trainDirectory, "vali_"+self.labelFile)), 
@@ -167,9 +168,13 @@ class ptychographicDataLightning(L.LightningDataModule):
 
 class ptychographicData(Dataset):
 	def __init__(self, annotations_file, img_dir, transform=None, target_transform=None, shift = None, labelIndicesToPredict = None, 
-			  classifier = False, numberOfPositions = 9, numberOfZernikeMoments = 860, lessBorder = 35, sparsity = 1):
+			  classifier = False, numberOfPositions = 9, numberOfZernikeMoments = 860, lessBorder = 15, sparsity = 1, number_of_samples = 0):
 		self.lessBorder = lessBorder
 		img_labels_pd = pd.read_csv(annotations_file).dropna()
+		if number_of_samples != 0:
+			number_of_samples = min((len(img_labels_pd), number_of_samples))
+			print(f"limited data to {number_of_samples} samples of {len(img_labels_pd)}")
+			img_labels_pd = img_labels_pd[:number_of_samples]
 		self.image_labels = img_labels_pd[img_labels_pd.columns[1:]].to_numpy('float32')
 		self.image_names = img_labels_pd[img_labels_pd.columns[0]].astype(str)
 		self.columns = np.array(list(img_labels_pd.columns))
@@ -185,12 +190,12 @@ class ptychographicData(Dataset):
 			with open('Zernike/stdValues.csv', 'r') as file:
 				line = file.readline()
 				self.stdValues = [float(x.strip()) for x in line.split(',') if x.strip()]
-				self.stdValuesArray = np.array(self.stdValues[1:-2] + [1,1,1])
+				self.stdValuesArray = np.array(self.stdValues) #TODO previously there was 1,1 as scaling for the coordinates
 				self.stdValuesArray = np.delete(self.stdValuesArray, np.s_[self.numberOfZernikeMoments:-2])
 			with open('Zernike/meanValues.csv', 'r') as file:
 				line = file.readline()
 				self.meanValues = [float(x.strip()) for x in line.split(',') if x.strip()]
-				self.meanValuesArray : np.ndarray = np.array(self.meanValues[1:-2] + [0,0,0])
+				self.meanValuesArray : np.ndarray = np.array(self.meanValues)  #TODO previously there was 0,0 as mean for the coordinates
 				self.meanValuesArray = np.delete(self.meanValuesArray, np.s_[self.numberOfZernikeMoments:-2])
 		self.shift = None
 		self.dataPath = os.path.join(self.img_dir, f"training_data.hdf5")
@@ -284,19 +289,19 @@ class ptychographicData(Dataset):
 			raise Exception(f"OSError: {datasetStructID} in {self.dataPath}")
 		if self.zernike:
 			if self.actualLenZernike == 0:
-				self.actualLenZernike = imageOrZernikeMoments.shape[1] - 3
-			if self.lessBorder < 35:
+				self.actualLenZernike = imageOrZernikeMoments.shape[1] - 2
+			if self.lessBorder < 15:
 				BegrenzungAussen = self.lessBorder #less from the outer border
 				
-				imageOrZernikeMoments = imageOrZernikeMoments[(imageOrZernikeMoments[:,-3] >  -BegrenzungAussen) & (imageOrZernikeMoments[:,-3] < (BegrenzungAussen + 15))]
 				imageOrZernikeMoments = imageOrZernikeMoments[(imageOrZernikeMoments[:,-2] >  -BegrenzungAussen) & (imageOrZernikeMoments[:,-2] < (BegrenzungAussen + 15))]
+				imageOrZernikeMoments = imageOrZernikeMoments[(imageOrZernikeMoments[:,-1] >  -BegrenzungAussen) & (imageOrZernikeMoments[:,-1] < (BegrenzungAussen + 15))]
 			if self.numberOfZernikeMoments != 860 and self.actualLenZernike != self.numberOfZernikeMoments:
 				imageOrZernikeMoments = np.delete(imageOrZernikeMoments, np.s_[self.numberOfZernikeMoments:-2], axis=1) #remove the higher order zernike moments but keep x,y
 			if self.sparsity > 1:
-				xOffset = imageOrZernikeMoments[0,-3] % self.sparsity
-				yOffset = imageOrZernikeMoments[0,-2] % self.sparsity
-				xEverySecondCordinate = (imageOrZernikeMoments[:,-3] % self.sparsity) == xOffset
-				yEverySecondCordinate = (imageOrZernikeMoments[:,-2] % self.sparsity) == yOffset
+				xOffset = imageOrZernikeMoments[0,-2] % self.sparsity
+				yOffset = imageOrZernikeMoments[0,-1] % self.sparsity
+				xEverySecondCordinate = (imageOrZernikeMoments[:,-2] % self.sparsity) == xOffset
+				yEverySecondCordinate = (imageOrZernikeMoments[:,-1] % self.sparsity) == yOffset
 				imageOrZernikeMoments = imageOrZernikeMoments[xEverySecondCordinate & yEverySecondCordinate]
 			imageOrZernikeMoments = (imageOrZernikeMoments - self.meanValuesArray[np.newaxis,:]) / self.stdValuesArray[np.newaxis,:]
 		

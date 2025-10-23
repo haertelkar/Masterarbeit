@@ -14,4 +14,5 @@
 
 
 # LOAD MODULES, INSERT CODE, AND RUN YOUR PROGRAMS HERE
-/data/scratch/haertelk/Masterarbeit/python-venv/bin/python combineLabelsCSVs.py _4to8s_-50def_15B_new
+/data/scratch/haertelk/Masterarbeit/python-venv/bin/python combineLabelsCSVs.py _1710_4to8s_-50def_15B_860Z_OSA
+

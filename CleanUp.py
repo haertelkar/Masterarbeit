@@ -1,13 +1,15 @@
 import shutil
 import os
 from tqdm import tqdm
+import sys
 
-def cleanUp(directory = "", printEmptiedDirs = False):
+def cleanUp(directory = "", printEmptiedDirs = False, cleanCurrentDir = False):
     emptyDirs = set()
     measurementDirs = ["measurements_test","measurements_train"]
     zmD = [os.path.join("Zernike",d) for d in measurementDirs]
     fmD = [os.path.join("FullPixelGridML",d) for d in measurementDirs]
     measurementDirs+= zmD + fmD
+    if cleanCurrentDir: measurementDirs = [directory]
     currentMainDir = os.path.join(os.getcwd(),directory)
     for filename in tqdm(os.listdir(currentMainDir), desc = f"deleting content {currentMainDir}", leave = False):
         if ".progress" in filename or ("progress" in filename and ".txt" in filename):
@@ -50,4 +52,7 @@ def cleanUp(directory = "", printEmptiedDirs = False):
             print(dir)
 
 if __name__ == "__main__":
-    cleanUp(printEmptiedDirs=True)
+    if len(sys.argv) ==2:
+        cleanUp(directory=sys.argv[1], printEmptiedDirs=True, cleanCurrentDir=True)
+    else:
+        cleanUp(printEmptiedDirs=True)

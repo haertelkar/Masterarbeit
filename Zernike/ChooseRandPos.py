@@ -10,7 +10,7 @@ nonPredictedBorderInA = 7
 windowSizeInA = 3
 nonPredictedBorderInCoordinates = 5*nonPredictedBorderInA
 Size = windowSizeInA * 5 + 2*nonPredictedBorderInCoordinates
-for n in range(numberOfOSAANSIMoments + 1):
+for n in range(1,numberOfOSAANSIMoments + 1):
     for mShifted in range(2*n+1):
         m = mShifted - n
         if (n-m)%2 != 0:
@@ -30,8 +30,7 @@ for testOrTrain in ["train", "test"]:
             randCoords : np.ndarray = np.random.permutation(Size*Size)[:numberOfScans]
             randXCoords = (randCoords % Size).astype(int) 
             randYCoords = (randCoords / Size).astype(int) 
-            padding = np.zeros_like(randXCoords)
             imageOrZernikeMoment = zernikeMoments.reshape((Size,Size,-1))[randXCoords,randYCoords].reshape((numberOfScans,-1))
-            imageOrZernikeMomentsWithCoords = np.concatenate((imageOrZernikeMoment, np.stack([randXCoords - nonPredictedBorderInCoordinates, randYCoords - nonPredictedBorderInCoordinates, padding]).T), axis = 1)
+            imageOrZernikeMomentsWithCoords = np.concatenate((imageOrZernikeMoment, np.stack([randXCoords - nonPredictedBorderInCoordinates, randYCoords - nonPredictedBorderInCoordinates]).T), axis = 1)
 
             fOut.create_dataset(key, data = imageOrZernikeMomentsWithCoords, compression="lzf", shuffle = True, chunks = (1,obs_size))

@@ -26,4 +26,4 @@ export 'PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True'
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script#
-/data/scratch/haertelk/Masterarbeit/python-venv/bin/python -u lightningTrain.py -v 2007_1131_viT_TrE_4to8sparse_hiddenSize512_enL3_CSL_-50def -e 9000 -nA 9 -m visionTransformer -l labels_only_Dist.csv -fa _4to8s_-50def_15B_new -hi 512 -enNL 3
+/data/scratch/haertelk/Masterarbeit/python-venv/bin/python -u lightningTrain.py -v 2310_0903_Z_TrE_230OSA_4to8sparse_hS12_enL3_FIXScaler_-50d -e 9000 -nA 9 -m TrE -nz 230 -l labels_only_Dist.csv -fa _1710_4to8s_-50def_15B_860Z_OSA -enNL 3 -hi 512

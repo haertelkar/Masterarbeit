@@ -223,7 +223,11 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
     xlen_structure = ylen_structure = max(xlen_structure, ylen_structure) #make sure its square
     # print(f"Generating structure with xlen = {xlen_structure} and ylen = {ylen_structure} and start = {start} and end = {end} and nonPredictedBorderInA = {nonPredictedBorderInA}")
     # print(f"Calculating on {device}")
-    nameStruct, atomStruct = createStructure(xlen_structure, ylen_structure, specificStructure= structure, trainOrTest = trainOrTest, simple=simple, nonPredictedBorderInA = nonPredictedBorderInA, start=start)
+    if structure == "emptySpace":
+        nameStruct = "emptySpace"
+        atomStruct = np.zeros(grid.shape)
+    else:
+        nameStruct, atomStruct = createStructure(xlen_structure, ylen_structure, specificStructure= structure, trainOrTest = trainOrTest, simple=simple, nonPredictedBorderInA = nonPredictedBorderInA, start=start)
     try:
         potential_thick = Potential(
             atomStruct,

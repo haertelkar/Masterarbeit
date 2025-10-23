@@ -619,9 +619,17 @@ def BFD_calculation(onlyPred, diameterBFD50Pixels, measurement_thick, measuremen
 def createEmptyBackground(diameterBFD50Pixels, zernike, resultVectorLength, chosenCoords2dArray,
                           model, scalerEnabled, windowSizeInCoords, xMaxCNT, yMaxCNT,
                           nonPredictedBorderinCoordinates, circleWeights = None, emptyInput = False):
+    
+
+    
     if zernike: 
-        raise Exception("New empty zernike pattern with OSA have to be calculated")
-        empty_background_image = np.load("empty_zernike_pattern.npy", allow_pickle=True)
+        from Zernike.ZernikePolynomials import Zernike
+        ZernikeObject = Zernike(resultVectorLength)
+        #raise Exception("New empty zernike pattern with OSA have to be calculated")
+        #empty zernike pattern.npy is old
+        empty_background_image = np.load("diffraction_pattern_full_size_empty_space.npy", allow_pickle=True)[None,:,:]
+        empty_background_image = ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = empty_background_image, hdf5File = None)[0]
+        
         if emptyInput: empty_background_image = np.zeros_like(empty_background_image)
     else: 
         empty_background_image = np.load("diffraction_pattern_full_size_empty_space.npy", allow_pickle=True)
