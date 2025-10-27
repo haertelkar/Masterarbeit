@@ -301,58 +301,14 @@ class ptychographicData(Dataset):
 			if self.sparsity > 1:
 				xOffset = imageOrZernikeMoments[0,-2] % self.sparsity
 				yOffset = imageOrZernikeMoments[0,-1] % self.sparsity
-				xEverySecondCordinate = (imageOrZernikeMoments[:,-2] % self.sparsity) == xOffset
-				yEverySecondCordinate = (imageOrZernikeMoments[:,-1] % self.sparsity) == yOffset
-				imageOrZernikeMoments = imageOrZernikeMoments[xEverySecondCordinate & yEverySecondCordinate]
+				xEverySthCordinate = (imageOrZernikeMoments[:,-2] % self.sparsity) == xOffset
+				yEverySthCordinate = (imageOrZernikeMoments[:,-1] % self.sparsity) == yOffset
+				imageOrZernikeMoments = imageOrZernikeMoments[xEverySthCordinate & yEverySthCordinate]
 			imageOrZernikeMoments = (imageOrZernikeMoments - self.meanValuesArray[np.newaxis,:]) / self.stdValuesArray[np.newaxis,:]
 		
 
 		imageOrZernikeMoments = imageOrZernikeMoments.astype('float32')
 
-		# cslToken = np.zeros((1,imageOrZernikeMoments.shape[1]), dtype = "float32")
-		# imageOrZernikeMoments[1:] = imageOrZernikeMoments[:-1]
-		# imageOrZernikeMoments[0] = cslToken
-		# imageOrZernikeMoments = np.vstack([cslToken, imageOrZernikeMoments])
 		if self.transform:
 			imageOrZernikeMoments = self.transform(imageOrZernikeMoments) #not scaled here because it has to be datatype uint8 to be scaled automatically
 		return imageOrZernikeMoments
-
-	# def createScaleAndShift(self, scalingFactors, shift):
-	# 	dontShift = []
-	# 	for index in rowsIndexToHeader.keys():
-	# 		if "element" or "pixel" in rowsIndexToHeader[index]: #don't scale elements
-	# 			dontShift.append(index)
-
-	# 	if self.classifier:
-	# 		return
-		
-	# 	if scalingFactors is not None:
-	# 		self.scalingFactors = scalingFactors
-	# 	else:
-	# 		self.scalingFactors = np.array(self.image_labels.max(axis=0))
-	# 		#self.scalingFactors[np.array(dontScale)-1] = 1
-	# 		if self.labelIndicesToPredict is not None: self.scalingFactors = self.scalingFactors[np.array(self.labelIndicesToPredict)-1]
-
-	# 	if shift is not None:
-	# 		self.shift = shift 
-	# 	else:
-	# 		self.shift = np.array(self.image_labels.mean(axis=0))
-	# 		self.shift[np.array(dontShift)-1] = 0
-	# 		if self.labelIndicesToPredict is not None: self.shift = self.shift[np.array(self.labelIndicesToPredict)-1]
-
-	# def createOneHotEncodedVector(self, classIndex):
-	# 	classes = np.zeros(self.numberOfClasses)
-	# 	classes[classIndex - self.smallestElem] = 1
-	# 	return classes
-
-	# def scaleUp(self, row):
-	# 	row = np.array(row)
-	# 	row *= self.scalingFactors
-	# 	row += self.shift
-	# 	return row
-	
-	# def scaleDown(self, row):
-	# 	row = np.array(row)
-	# 	row -= self.shift
-	# 	row /= self.scalingFactors + 0.00000001
-	# 	return row
