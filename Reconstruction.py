@@ -375,15 +375,19 @@ def createPredictionsWithFiles(indicesSortedByHighestPredicitionMinusInitial, en
 
 def CreatePredictions(resultVectorLength, model, PredShape, zernikeValuesUnsparsed, chosenCoords, scalerEnabled, windowSizeInCoords, nonPredictedBorderinCoordinates, zernike = True, circleWeights = None):
     #load scaling factors
+
     if scalerEnabled:
+
+
         with open('Zernike/stdValues.csv', 'r') as file:
             line = file.readline()
-            stdValues = [float(x.strip()) for x in line.split(',') if x.strip()]
-            stdValuesArray = torch.tensor(stdValues[:resultVectorLength])
+            stdValues = [float(x.strip()) for x in line.split(',') if x.strip()] #TODO es werden hier auch die Koordinaten mitgeladen, raus wenn im dataset raus
+            stdValuesArray = torch.tensor(stdValues[:resultVectorLength] + stdValues[-2:]) 
+            stdValuesArray = torch.clamp(stdValuesArray, min=1e-5, max=None) #avoid division by zero #TODO hier wird jetzt geclipt, im dataset neuerdings auch
         with open('Zernike/meanValues.csv', 'r') as file:
             line = file.readline()
             meanValues = [float(x.strip()) for x in line.split(',') if x.strip()]
-            meanValuesArray : torch.Tensor = torch.tensor(meanValues[:resultVectorLength])
+            meanValuesArray : torch.Tensor = torch.tensor(meanValues[:resultVectorLength]  + meanValues[-2:])  #TODO es werden hier auch die Koordinaten mitgeladen, raus wenn im dataset raus
 
     # loop over the all positions and apply the model to the data
     Predictions = np.zeros(PredShape)
@@ -429,13 +433,10 @@ def CreatePredictions(resultVectorLength, model, PredShape, zernikeValuesUnspars
                 print(f"indexX: {indexX}")
                 print(f"indexY: {indexY}")
                 raise Exception(E)
-            
+            imageOrZernikeMoments = torch.cat((imageOrZernikeMoments, torch.stack([XCoordsLocal, YCoordsLocal]).T), dim = 1)
             if scalerEnabled: imageOrZernikeMoments = (imageOrZernikeMoments - meanValuesArray[np.newaxis,:]) / stdValuesArray[np.newaxis,:] 
-            #TODO x and y are no longer switched
-            if zernike:
-                imageOrZernikeMomentsCuda = torch.cat((imageOrZernikeMoments, torch.stack([XCoordsLocal, YCoordsLocal]).T), dim = 1).to(torch.device("cuda"))
-            else:
-                imageOrZernikeMomentsCuda = torch.cat((imageOrZernikeMoments, torch.stack([XCoordsLocal, YCoordsLocal]).T), dim = 1).to(torch.device("cuda"))
+            #y and x are now correct
+            imageOrZernikeMomentsCuda = imageOrZernikeMoments.to(torch.device("cuda"))
 
             with torch.inference_mode():
                 pred = model(imageOrZernikeMomentsCuda.unsqueeze(0))
