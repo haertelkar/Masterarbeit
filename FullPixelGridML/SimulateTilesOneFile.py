@@ -515,6 +515,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
                 file.create_dataset(f"{datasetStructID}", data = difPatternsResized_reshaped_with_Coords.astype('float32'), compression="lzf", chunks = (1, difPatterns.shape[-1]), shuffle = True)
             else:
                 zernDifPatterns = ZernikeObject.zernikeTransform(dataSetName = None, groupOfPatterns = difPatternsResized, hdf5File = None)
+                
                 zernDifPatterns = np.concatenate((zernDifPatterns, np.stack([choosenXCoords - nonPredictedBorderInCoords, choosenYCoords - nonPredictedBorderInCoords]).T), axis = 1)
                 
                 file.create_dataset(f"{datasetStructID}", data = zernDifPatterns.astype('float32'), compression="lzf", chunks = (1, zernDifPatterns.shape[-1]), shuffle = True)
