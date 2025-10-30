@@ -67,7 +67,7 @@ from ZernikePolynomials import Zernike
 windowSizeInA = 3 # Size of the window in Angstroms
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
-FolderAppendix = "_2310_4to8s_-50def_15B_860Z_OSA_noisy10e3"#"_4sparse_noEB_-50def_20Z"
+FolderAppendix = "_3010_4to8s_50def_15B_54Z_OSA_2"#"_4sparse_noEB_-50def_20Z"
 #now Zernike moments don't start at 0,0
 
 
@@ -217,7 +217,7 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
                              structure = "random", pbar = False, 
                              start = (5,5), end = (20,20), simple = False,
                              nonPredictedBorderInA = 0, device = "gpu",
-                             deviceAfter = "gpu", generate_graphics = False, defocus = -50, noise :float= 10**3) -> Tuple[str, Tuple[float, float], Atoms, BaseMeasurements, Potential]:
+                             deviceAfter = "gpu", generate_graphics = False, defocus = -50, noise :float= 0) -> Tuple[str, Tuple[float, float], Atoms, BaseMeasurements, Potential]:
     xlen_structure = start[0] + end[0]
     ylen_structure = start[1] + end[1] 
     xlen_structure = ylen_structure = max(xlen_structure, ylen_structure) #make sure its square
@@ -631,7 +631,7 @@ if __name__ == "__main__":
     end = (start[0] + nonPredictedBorderInA * 2 + windowSizeInA , start[1] + nonPredictedBorderInA * 2 + windowSizeInA)
 
     numberOfPositionsInOneAngstrom = 5
-    defocus = -50 #in Angstroms
+    defocus = 50 #in Angstroms
     size = int((end[0] - start[0]) * numberOfPositionsInOneAngstrom)
     BFDdiameter = 18 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
     assert(size % maxPooling == 0)
@@ -644,7 +644,7 @@ if __name__ == "__main__":
             timeStamp = int(str(time()).replace('.', ''))
             rows = saveAllPosDifPatterns(trainOrTest, int(testDivider[trainOrTest]*40), timeStamp, BFDdiameter, processID=args["id"], silence=True, 
                                          structure = args["structure"], start=start, end=end, maxPooling=maxPooling, simple = True, 
-                                         nonPredictedBorderInA=nonPredictedBorderInA, zernike=zernike, defocus=defocus, numberOfOSAANSIMoments= 860)
+                                         nonPredictedBorderInA=nonPredictedBorderInA, zernike=zernike, defocus=defocus, numberOfOSAANSIMoments= 54)
             #rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling, structure = args["structure"], start=start, end=end)
             writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], 
                          timeStamp = timeStamp, maxPooling=maxPooling, size = size, zernike=zernike)

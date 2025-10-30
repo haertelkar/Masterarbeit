@@ -144,7 +144,8 @@ def evaluater(testDataLoader, test_data, model, indicesToPredict, modelName, ver
 
 
 def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, numberOfPositions = 9, numberOfZernikeMoments = 860, FolderAppendix = "",
-		 lessBorder = 15, loadCheckpoint = "", sparsity = 1, accelerator = "gpu", numberOfAtoms = 9, hidden_size = 1024, num_layers = 5, fc_num_layers = 3, number_of_samples = 0):
+		 lessBorder = 15, loadCheckpoint = "", sparsity = 1, accelerator = "gpu", numberOfAtoms = 9, hidden_size = 1024, num_layers = 5, fc_num_layers = 3, number_of_samples = 0,
+		 number_of_heads = 0):
 	models = ["TrE", "cnnTransformer","visionTransformer"]
 	print(f"Training model version {version} for {epochs} epochs.")
 	world_size = getMPIWorldSize()
@@ -168,9 +169,9 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 			label_dims = 2
 		else:
 			label_dims = 3
-		if modelName == "TrE": lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, numberOfAtoms = numberOfAtoms, hidden_size = hidden_size, num_layers = num_layers, fc_num_layers = fc_num_layers, label_dims=label_dims)
+		if modelName == "TrE": lightnModel = TwoPartLightning(numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, numberOfAtoms = numberOfAtoms, hidden_size = hidden_size, num_layers = num_layers, fc_num_layers = fc_num_layers, label_dims=label_dims, number_of_heads=number_of_heads)
 		elif modelName == "cnnTransformer": lightnModel = ThreePartLightning(numberOfAtoms = numberOfAtoms)
-		elif modelName == "visionTransformer": lightnModel = ThreePartLightningVIT(numberOfAtoms = numberOfAtoms)
+		elif modelName == "visionTransformer": lightnModel = ThreePartLightningVIT(numberOfAtoms = numberOfAtoms, hidden_size= hidden_size, num_layers=num_layers, fc_num_layers=fc_num_layers)
 		else: raise Exception(f"Model {modelName} is not supported for training.")
 		batch_size = 256
 		
@@ -211,9 +212,10 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		else:
 			if loadCheckpoint != "":
 				print(f"loading from checkpoint:\n{loadCheckpoint}")
-				if modelName == "TrE": lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, numberOfAtoms = numberOfAtoms)
+				if modelName == "TrE": lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, 
+													   number_of_atoms = numberOfAtoms, hidden_size = hidden_size, num_layers = num_layers, fc_num_layers = fc_num_layers, label_dims = label_dims, number_of_heads=number_of_heads)
 				elif modelName == "cnnTransformer": lightnModel = ThreePartLightning.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfAtoms = numberOfAtoms)
-				elif modelName == "visionTransformer": lightnModel = ThreePartLightningVIT.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfAtoms = numberOfAtoms)
+				elif modelName == "visionTransformer": lightnModel = ThreePartLightningVIT.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfAtoms = numberOfAtoms, hidden_size= hidden_size, num_layers=num_layers, fc_num_layers=fc_num_layers)
 			#Create a Tuner
 			tuner = Tuner(trainer)
 			# Auto-scale batch size by growing it exponentially
@@ -237,11 +239,11 @@ def main(epochs, version, classifier, indicesToPredict, modelString, labelFile, 
 		trainer.save_checkpoint(os.path.join("moddels",f"{modelName}_{version}.ckpt"))
 		if "TrE" in modelName:
 			lightnModel = TwoPartLightning.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"), numberOfPositions = numberOfPositions, numberOfZernikeMoments = numberOfZernikeMoments, 
-													   hidden_size = hidden_size, num_layers = num_layers, fc_num_layers = fc_num_layers)
+													   number_of_atoms = numberOfAtoms, hidden_size = hidden_size, num_layers = num_layers, fc_num_layers = fc_num_layers, label_dims = label_dims, number_of_heads=number_of_heads)
 		elif "cnnTransformer" in modelName:
 			lightnModel = ThreePartLightning.load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
 		elif modelName == "visionTransformer":
-			lightnModel = ThreePartLightningVIT.load_from_checkpoint(checkpoint_path = loadCheckpoint)
+			lightnModel = ThreePartLightningVIT.load_from_checkpoint(checkpoint_path = loadCheckpoint, numberOfAtoms = numberOfAtoms, hidden_size= hidden_size, num_layers=num_layers, fc_num_layers=fc_num_layers)
 		elif "Zernike" in modelName:
 			lightnModel = lightnModelClass(loadModel(lightnDataLoader.val_dataloader(), modelName)).load_from_checkpoint(checkpoint_path = os.path.join("models",f"{modelName}_{version}.ckpt"))
 		evaluater(lightnDataLoader.test_dataloader(), lightnDataLoader.test_dataset, lightnModel, indicesToPredict, modelName, version, classifier)
@@ -273,6 +275,8 @@ if __name__ == '__main__':
 	ap.add_argument("-enNL", "--encoderNumLayers", type=int, required=False, default=5, help = "Specify the number of layers in the encoder model. Default is 5.")
 	ap.add_argument("-fcNL", "--fcNumLayers", type=int, required=False, default=3, help = "Specify the number of layers in the final fully connected layer. Default is 3.")
 	ap.add_argument("-nos", "--numberofsamples", type=int, required=False, default=0, help = "Specify the number of training samples")
+	ap.add_argument("-noH", "--numberofheads", type=int, required=False, default=0, help = "Specify the number of heads (default auto selector)")
+	
 	# ap.add_argument("-b" ,"--batchSize", type=int, required=False, default=256, help = "Specify the highest order of zernike moments to use. Default and max is 860.")
 	args = vars(ap.parse_args())
 
@@ -290,5 +294,5 @@ if __name__ == '__main__':
 	   args["models"], args["labelsFile"], numberOfPositions=args["numberOfPositions"],
 		 numberOfZernikeMoments=args["numberOfZernikeMoments"], FolderAppendix = args["FolderAppendix"],
 		 lessBorder = args["lessBorder"], loadCheckpoint = args["loadCheckpoint"], sparsity = args["sparsity"], accelerator = args["accelerator"], numberOfAtoms = args["numAtoms"],
-		 hidden_size = args["hiddenSize"], num_layers = args["encoderNumLayers"], fc_num_layers = args["fcNumLayers"],number_of_samples = args["numberofsamples"])
+		 hidden_size = args["hiddenSize"], num_layers = args["encoderNumLayers"], fc_num_layers = args["fcNumLayers"],number_of_samples = args["numberofsamples"], number_of_heads = args["numberofheads"])
 
