@@ -197,7 +197,8 @@ class TwoPartLightning(LightningModule):
         hidden_size: int = 1024, 
         num_layers :int = 5,
         fc_num_layers :int = 3,
-        label_dims :int =2
+        label_dims :int =2,
+        number_of_heads : int = 0
     ) -> None:
         """Basic Transformer+Linear Model.
 
@@ -212,16 +213,19 @@ class TwoPartLightning(LightningModule):
         
         self.obs_size = numberOfZernikeMoments
         self.obs_size += 2 # 2 for x and y position 
-        self.nhead = 0
-        for i in np.arange(8,20, 2):
-            if self.obs_size % i == 0:
-                self.nhead = i
-                break
-        if self.nhead == 0:
-            for i in np.arange(2,8, 2):
+        if number_of_heads > 0:
+            self.nhead = number_of_heads
+        else:
+            self.nhead = 0
+            for i in np.arange(8,20, 2):
                 if self.obs_size % i == 0:
                     self.nhead = i
                     break
+            if self.nhead == 0:
+                for i in np.arange(2,8, 2):
+                    if self.obs_size % i == 0:
+                        self.nhead = i
+                        break
         print(f"number of heads: {self.nhead}")
 
         self.example_input_array = torch.zeros((1, numberOfPositions, self.obs_size), device=device, requires_grad=True)
