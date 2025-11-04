@@ -67,7 +67,7 @@ from ZernikePolynomials import Zernike
 windowSizeInA = 3 # Size of the window in Angstroms
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
-FolderAppendix = "_3010_4to8s_50def_15B_54Z_OSA_2"#"_4sparse_noEB_-50def_20Z"
+FolderAppendix = "_0411_4to12s_0to150def_15B_230Z_OSA"#"_4sparse_noEB_-50def_20Z"
 #now Zernike moments don't start at 0,0
 
 
@@ -217,7 +217,11 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
                              structure = "random", pbar = False, 
                              start = (5,5), end = (20,20), simple = False,
                              nonPredictedBorderInA = 0, device = "gpu",
-                             deviceAfter = "gpu", generate_graphics = False, defocus = -50, noise :float= 0) -> Tuple[str, Tuple[float, float], Atoms, BaseMeasurements, Potential]:
+                             deviceAfter = "gpu", generate_graphics = False, defocus :int|list= 50, noise = 0) -> Tuple[str, Tuple[float, float], Atoms, BaseMeasurements, Potential]:
+    
+    usedDefocus = defocus
+    if type(defocus) != int:
+        usedDefocus = uniform(defocus[0], defocus[1])
     xlen_structure = start[0] + end[0]
     ylen_structure = start[1] + end[1] 
     xlen_structure = ylen_structure = max(xlen_structure, ylen_structure) #make sure its square
@@ -245,7 +249,7 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
         warnings.simplefilter("ignore")
         #ctf.defocus = -5 
         #ctf.semiangle_cutoff = 1000 * energy2wavelength(ctf.energy) / point_resolution(Cs, ctf.energy)
-        probe = Probe(semiangle_cutoff=conv_angle, energy=energy, defocus = defocus, device=device)
+        probe = Probe(semiangle_cutoff=conv_angle, energy=energy, defocus = usedDefocus, device=device)
         #print(f"FWHM = {probe.profiles().width().compute()} Å")
         probe.match_grid(potential_thick)
         
@@ -268,7 +272,7 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
             print(f"BFD diameter in Pixel: {calc_diameter_bfd(waves.intensity().array)}")
             print(f"BFD diameter in A: {calc_diameter_bfd(waves.intensity().array) * waves.extent[0] / waves.shape[0]}")
             #print the lines from above to a file
-            with open(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/probeInfo_{defocus}.txt", "w") as f:
+            with open(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/probeInfo_{usedDefocus}.txt", "w") as f:
                 f.write(f"Probe shape: {waves.shape}\n")
                 f.write(f"waves extent in A: {waves.extent}\n")
                 f.write(f"BFD diameter in Pixel: {calc_diameter_bfd(waves.intensity().array)}\n")
@@ -276,13 +280,13 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
             waves.intensity().show(
             explode=True, cbar=True, common_color_scale=True, figsize=(10, 10)
             )
-            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/testProbe_{defocus}.png")
+            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/testProbe_{usedDefocus}.png")
             plt.close()
             waves.diffraction_patterns().show(explode=True, cbar=True, common_color_scale=True, figsize=(10, 10))
-            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/testProbe_DifPattern_{defocus}.png")
+            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/testProbe_DifPattern_{usedDefocus}.png")
             plt.close()
             waves.diffraction_patterns(block_direct=True).show(explode=True, cbar=True, common_color_scale=True, figsize=(10, 10))
-            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/testProbe_DifPattern_{defocus}.png")
+            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/testProbe_DifPattern_{usedDefocus}.png")
             plt.close()
 
         
@@ -299,11 +303,11 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
                 ],
                 ("base", "block direct"),
             ).show(explode=True, cbar=True, figsize=(13, 4))
-            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/diffractionPattern_{defocus}.png")
+            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/diffractionPattern_{usedDefocus}.png")
             plt.close()
-            plt.imsave(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/difPattern_asis_{defocus}.png", measurement_thick.array[1,1])
+            plt.imsave(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/difPattern_asis_{usedDefocus}.png", measurement_thick.array[1,1])
             single_diffraction_pattern.show(power=0.2, cbar=True)
-            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/diffractionPattern_{defocus}_powerScaling.png")
+            plt.savefig(f"/data/scratch/haertelk/Masterarbeit/SimulationImages/diffractionPattern_{usedDefocus}_powerScaling.png")
             plt.close()
         if noise > 0: measurement_thick : BaseMeasurements= measurement_thick.poisson_noise( noise) # type: ignore
         if deviceAfter == "gpu":
@@ -367,6 +371,7 @@ def generateXYE(datasetStructID, rows, atomStruct, start, end, silence = True, n
         yCoordinate = y*numberOfPositionsInOneAngstrom - yMinCoord
         
         if xCoordinate <= 0 or yCoordinate <= 0: continue 
+        #right now it ends at windowssize, which means, it goes from 0 to 15 (which is correct)
         if xCoordinate >= xMaxCoord - xMinCoord  or yCoordinate >= yMaxCoord - yMinCoord : continue
         xyes.append([xCoordinate,yCoordinate,atomNo])
         cnt += 1
@@ -431,6 +436,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
     nonPredictedBorderInCoords = nonPredictedBorderInA * 5
     windowLengthinCoords = windowSizeInA * 5
 
+
     if fileWrite: 
         if not zernike:
             fileName = os.path.join(f"measurements_{trainOrTest}{FolderAppendix}",f"{processID}_{timeStamp}.hdf5")
@@ -457,7 +463,7 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         # print(measurement_thick.array.shape)
         # exit()
         if initialCoords is None:
-            sparseGridFactor = randint(4,8)
+            sparseGridFactor = randint(4,12)
             MaxShift = nonPredictedBorderInCoords + windowLengthinCoords//2  
             xShift = randint(-MaxShift, MaxShift)
             yShift = randint(-MaxShift, MaxShift)
@@ -631,7 +637,7 @@ if __name__ == "__main__":
     end = (start[0] + nonPredictedBorderInA * 2 + windowSizeInA , start[1] + nonPredictedBorderInA * 2 + windowSizeInA)
 
     numberOfPositionsInOneAngstrom = 5
-    defocus = 50 #in Angstroms
+    defocus = [0,150] #in Angstroms
     size = int((end[0] - start[0]) * numberOfPositionsInOneAngstrom)
     BFDdiameter = 18 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
     assert(size % maxPooling == 0)
@@ -644,7 +650,7 @@ if __name__ == "__main__":
             timeStamp = int(str(time()).replace('.', ''))
             rows = saveAllPosDifPatterns(trainOrTest, int(testDivider[trainOrTest]*40), timeStamp, BFDdiameter, processID=args["id"], silence=True, 
                                          structure = args["structure"], start=start, end=end, maxPooling=maxPooling, simple = True, 
-                                         nonPredictedBorderInA=nonPredictedBorderInA, zernike=zernike, defocus=defocus, numberOfOSAANSIMoments= 54)
+                                         nonPredictedBorderInA=nonPredictedBorderInA, zernike=zernike, defocus=defocus, numberOfOSAANSIMoments= 230)
             #rows = saveAllDifPatterns(XDIMTILES, YDIMTILES, trainOrTest, int(12*testDivider[trainOrTest]), timeStamp, BFDdiameter, processID=args["id"], silence=True, maxPooling = maxPooling, structure = args["structure"], start=start, end=end)
             writeAllRows(rows=rows, trainOrTest=trainOrTest, XDIMTILES=XDIMTILES, YDIMTILES=YDIMTILES, processID=args["id"], 
                          timeStamp = timeStamp, maxPooling=maxPooling, size = size, zernike=zernike)

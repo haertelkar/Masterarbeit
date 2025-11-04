@@ -373,7 +373,7 @@ def createPredictionsWithFiles(indicesSortedByHighestPredicitionMinusInitial, en
     return fullLengthY,fullLengthX
 
 
-def CreatePredictions(resultVectorLength, model, PredShape, zernikeValuesUnsparsed, chosenCoords, scalerEnabled, windowSizeInCoords, nonPredictedBorderinCoordinates, zernike = True, circleWeights = None):
+def CreatePredictions(resultVectorLength, model, PredShape, zernikeValuesUnsparsed, chosenCoords, scalerEnabled, windowSizeInCoords, nonPredictedBorderinCoordinates, zernike = True):
     #load scaling factors
 
     if scalerEnabled:
@@ -393,26 +393,16 @@ def CreatePredictions(resultVectorLength, model, PredShape, zernikeValuesUnspars
     Predictions = np.zeros(PredShape)
     PositionsToScanX = chosenCoords[:,0]
     PositionsToScanY = chosenCoords[:,1]
-
-
-    if circleWeights is None:
-        circleWeights = np.array([
-            [1, 1, 1, 1, 1],
-            [1, 2, 2, 2, 1],
-            [1, 2, 3, 2, 1],
-            [1, 2, 2, 2, 1],
-            [1, 1, 1, 1, 1]
-        ])
     
 
     
 
     imageOrZernikeMoments = None
-    for indexX in tqdm(range(-windowSizeInCoords - nonPredictedBorderinCoordinates,Predictions.shape[0]), desc  = "Going through all positions and predicting"):
-        for indexY in range(-windowSizeInCoords - nonPredictedBorderinCoordinates,Predictions.shape[1]):
+    for indexX in tqdm(range(-windowSizeInCoords ,Predictions.shape[0] + 1), desc  = "Going through all positions and predicting"):
+        for indexY in range(-windowSizeInCoords ,Predictions.shape[1] + 1):
             PositionsToScanXLocal = PositionsToScanX - indexX
             PositionsToScanYLocal = PositionsToScanY - indexY
-            mask = (PositionsToScanXLocal >= -nonPredictedBorderinCoordinates) * (PositionsToScanYLocal >= - nonPredictedBorderinCoordinates) * (PositionsToScanXLocal < (windowSizeInCoords + nonPredictedBorderinCoordinates)) * (PositionsToScanYLocal < (windowSizeInCoords + nonPredictedBorderinCoordinates))
+            mask = (PositionsToScanXLocal >= -nonPredictedBorderinCoordinates) * (PositionsToScanYLocal >= - nonPredictedBorderinCoordinates) * (PositionsToScanXLocal <= (windowSizeInCoords + nonPredictedBorderinCoordinates)) * (PositionsToScanYLocal <= (windowSizeInCoords + nonPredictedBorderinCoordinates))
             numberOfAtomsInWindow = mask.sum()
             if numberOfAtomsInWindow <= 1:
                 continue
@@ -449,21 +439,18 @@ def CreatePredictions(resultVectorLength, model, PredShape, zernikeValuesUnspars
             scaler = 1                                                                                          #positions inside
 
             for predXY in pred:
-                for xCircle in range(-2,3):
-                    for yCircle in range(-2,3):                  
-                        # xMostLikely = np.clip(np.round(predXY[0]),0,14).astype(int)+xCircle
-                        # yMostLikely = np.clip(np.round(predXY[1]),0,14).astype(int)+yCircle
-                        xMostLikely = np.round(predXY[0]).astype(int)+xCircle
-                        yMostLikely = np.round(predXY[1]).astype(int)+yCircle
-                    # print(f"Predicted position: {xMostLikely + indexX}, {yMostLikely + indexY}, Predicted values: {predXY}")
-                        if xMostLikely + indexX < 0 or xMostLikely + indexX>= Predictions.shape[0] or yMostLikely + indexY< 0 or yMostLikely+ indexY >= Predictions.shape[1]:
-                        # if xCircle == 0 and yCircle == 0:
-                        #     tqdm.write("Predicted position is out of bounds")
-                        #     tqdm.write(f"\tPredicted position: {xMostLikely + indexX}, {yMostLikely + indexY}, Predicted values: {predXY}")
+                for xCircle in range(-1,2):
+                    for yCircle in range(-1,2):                  
+                        currentX = np.round(predXY[0]).astype(int)+xCircle
+                        currentY = np.round(predXY[1]).astype(int)+yCircle
+                        weight = 1 - np.min((np.square(predXY[0] - currentX) + np.square(predXY[1] - currentY), 1))
+                        currentNonRelX = indexX + currentX
+                        currentNonRelY = indexY + currentY
+                        if currentNonRelX < 0 or currentNonRelX >= Predictions.shape[0] or currentNonRelY < 0 or currentNonRelY >= Predictions.shape[1]:
+                        #skip if the predicted position is outside the sample
                             pass
                         else:
-                            Predictions[xMostLikely + indexX, yMostLikely + indexY] += circleWeights[xCircle+2,yCircle+2] *scaler #*len(PositionsToScanXLocal)#for some reason the reconstruction is transposed. Is adjusted later when plotted
-
+                            Predictions[currentNonRelX, currentNonRelY] += weight
     return Predictions
 
 
@@ -619,7 +606,7 @@ def BFD_calculation(onlyPred, diameterBFD50Pixels, measurement_thick, measuremen
 
 def createEmptyBackground(diameterBFD50Pixels, zernike, resultVectorLength, chosenCoords2dArray,
                           model, scalerEnabled, windowSizeInCoords, xMaxCNT, yMaxCNT,
-                          nonPredictedBorderinCoordinates, circleWeights = None, emptyInput = False):
+                          nonPredictedBorderinCoordinates, emptyInput = False):
     
 
     
@@ -645,7 +632,7 @@ def createEmptyBackground(diameterBFD50Pixels, zernike, resultVectorLength, chos
         zernikeValuesUnsparsed[x, y, :] = torch.tensor(empty_background_image).float().reshape(resultVectorLength)           
     Predictions = CreatePredictions(resultVectorLength, model, (xMaxCNT, yMaxCNT), zernikeValuesUnsparsed, chosenCoords=chosenCoords2dArray, 
                                     scalerEnabled = scalerEnabled, windowSizeInCoords=windowSizeInCoords, 
-                                    nonPredictedBorderinCoordinates = nonPredictedBorderinCoordinates, zernike = zernike, circleWeights= circleWeights)
+                                    nonPredictedBorderinCoordinates = nonPredictedBorderinCoordinates, zernike = zernike)
     return Predictions
     
 
