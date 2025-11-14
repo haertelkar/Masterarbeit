@@ -5,7 +5,7 @@
 #SBATCH --nodes=1      
 #SBATCH --ntasks-per-node=1            
 #SBATCH --cpus-per-task=10
-#SBATCH -J "100ZNN"   # job name
+#SBATCH -J "4to15sDaten"   # job name
 #SBATCH --mail-user=haertelk@physik.hu-berlin.de   # email address 
 #SBATCH --time=6-23:00:00
 
@@ -26,4 +26,4 @@ export 'PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True'
 # export NCCL_SOCKET_IFNAME=^docker0,lo
 
 # Run your training script#
-/data/scratch/haertelk/Masterarbeit/python-venv/bin/python -u lightningTrain.py -v 2310_0903_Z_TrE_230OSA_4to8sparse_hS12_enL3_FIXScaler_-50d -e 9000 -nA 9 -m TrE -nz 230 -l labels_only_Dist.csv -fa _1710_4to8s_-50def_15B_860Z_OSA -enNL 3 -hi 512
+/data/scratch/haertelk/Masterarbeit/python-venv/bin/python -u lightningTrain.py -v 1011_0955_Z_TrE_90OSA_4to15sA4to12s_hS512_enL5_0to150d_noH4 -e 9000 -nA 9 -m TrE -nz 90 -l labels_only_Dist.csv -fa _0411_4to12s_0to150def_15B_230Z_OSA,_0811_4to15s_0to150def_15B_230Z_OSA -enNL 5 -hi 512 -noH 4

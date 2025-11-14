@@ -381,14 +381,17 @@ def CreatePredictions(resultVectorLength, model, PredShape, zernikeValuesUnspars
 
         with open('Zernike/stdValues.csv', 'r') as file:
             line = file.readline()
-            stdValues = [float(x.strip()) for x in line.split(',') if x.strip()] #TODO es werden hier auch die Koordinaten mitgeladen, raus wenn im dataset raus
-            stdValuesArray = torch.tensor(stdValues[:resultVectorLength] + stdValues[-2:]) 
-            stdValuesArray = torch.clamp(stdValuesArray, min=1e-5, max=None) #avoid division by zero #TODO hier wird jetzt geclipt, im dataset neuerdings auch
+            stdValues = [float(x.strip()) for x in line.split(',') if x.strip()]
+            stdValuesArray = np.array(stdValues ) 
+            stdValuesArray = np.delete(stdValuesArray, np.s_[resultVectorLength:-2])
+            stdValuesArray = np.clip(stdValuesArray, a_min=1e-5, a_max=None) #avoid division by zero
+            #stdValuesTorch = torch.tensor(stdValuesArray, dtype=torch.float32)
+
         with open('Zernike/meanValues.csv', 'r') as file:
             line = file.readline()
             meanValues = [float(x.strip()) for x in line.split(',') if x.strip()]
-            meanValuesArray : torch.Tensor = torch.tensor(meanValues[:resultVectorLength]  + meanValues[-2:])  #TODO es werden hier auch die Koordinaten mitgeladen, raus wenn im dataset raus
-
+            meanValuesArray = np.array(meanValues)  
+            meanValuesArray = np.delete(meanValuesArray, np.s_[resultVectorLength:-2])
     # loop over the all positions and apply the model to the data
     Predictions = np.zeros(PredShape)
     PositionsToScanX = chosenCoords[:,0]
@@ -398,22 +401,20 @@ def CreatePredictions(resultVectorLength, model, PredShape, zernikeValuesUnspars
     
 
     imageOrZernikeMoments = None
-    for indexX in tqdm(range(-windowSizeInCoords ,Predictions.shape[0] + 1), desc  = "Going through all positions and predicting"):
-        for indexY in range(-windowSizeInCoords ,Predictions.shape[1] + 1):
+    for indexX in tqdm(range(-windowSizeInCoords - nonPredictedBorderinCoordinates,Predictions.shape[0] + 1 - nonPredictedBorderinCoordinates), desc  = "Going through all positions and predicting"):
+        for indexY in range(-windowSizeInCoords - nonPredictedBorderinCoordinates,Predictions.shape[1] + 1 - nonPredictedBorderinCoordinates):
             PositionsToScanXLocal = PositionsToScanX - indexX
             PositionsToScanYLocal = PositionsToScanY - indexY
-            mask = (PositionsToScanXLocal >= -nonPredictedBorderinCoordinates) * (PositionsToScanYLocal >= - nonPredictedBorderinCoordinates) * (PositionsToScanXLocal <= (windowSizeInCoords + nonPredictedBorderinCoordinates)) * (PositionsToScanYLocal <= (windowSizeInCoords + nonPredictedBorderinCoordinates))
-            numberOfAtomsInWindow = mask.sum()
-            if numberOfAtomsInWindow <= 1:
+            mask = (PositionsToScanXLocal >= 0) * (PositionsToScanYLocal >= 0) * (PositionsToScanXLocal <= (windowSizeInCoords + 2* nonPredictedBorderinCoordinates)) * (PositionsToScanYLocal <= (windowSizeInCoords + 2* nonPredictedBorderinCoordinates))
+            numberOfScansInWindowPlusBorder = mask.sum()
+            if numberOfScansInWindowPlusBorder <= 1:
                 continue
             PositionsToScanXLocal = PositionsToScanXLocal[mask]
             PositionsToScanYLocal = PositionsToScanYLocal[mask]
+            
+
             YCoordsLocal = torch.tensor(PositionsToScanYLocal)
             XCoordsLocal = torch.tensor(PositionsToScanXLocal)
-            # print(f"XCoordsLocal: {XCoordsLocal}")
-            # print(f"YCoordsLocal: {YCoordsLocal}")
-        
-            # imageOrZernikeMoments = zernikeValuesWindow.reshape((zernikeValuesWindowSizeX,zernikeValuesWindowSizeY,-1))[XCoordsLocal + min(indexX,0),YCoordsLocal + min(indexY,0)].reshape((XCoordsLocal.shape[0],-1))
             try: 
                 imageOrZernikeMoments = zernikeValuesUnsparsed[(indexX + XCoordsLocal), (indexY + YCoordsLocal), :].reshape(-1, resultVectorLength)
             except IndexError as E:
@@ -423,20 +424,20 @@ def CreatePredictions(resultVectorLength, model, PredShape, zernikeValuesUnspars
                 print(f"indexX: {indexX}")
                 print(f"indexY: {indexY}")
                 raise Exception(E)
-            imageOrZernikeMoments = torch.cat((imageOrZernikeMoments, torch.stack([XCoordsLocal, YCoordsLocal]).T), dim = 1)
+
+            imageOrZernikeMoments = np.concatenate((imageOrZernikeMoments, np.stack([XCoordsLocal - nonPredictedBorderinCoordinates, YCoordsLocal - nonPredictedBorderinCoordinates]).T), axis = 1)
+
             if scalerEnabled: imageOrZernikeMoments = (imageOrZernikeMoments - meanValuesArray[np.newaxis,:]) / stdValuesArray[np.newaxis,:] 
+            
             #y and x are now correct
-            imageOrZernikeMomentsCuda = imageOrZernikeMoments.to(torch.device("cuda"))
+            imageOrZernikeMomentsCuda = torch.tensor(imageOrZernikeMoments, dtype=torch.float32).to(torch.device("cuda"))
+
 
             with torch.inference_mode():
                 pred = model(imageOrZernikeMomentsCuda.unsqueeze(0))
                 pred = pred.cpu().detach().numpy().reshape((1,-1,2))[0]
-            #TODO scaler wieder einfügen? Macht Randpositionen vielleicht besser
-            # predRealXCoord  = np.round(pred[:,0]).astype(int) + indexX
-            # predRealYCoord  = np.round(pred[:,1]).astype(int) + indexY
-            # predRealCoordInside = (predRealXCoord >= 0) * (predRealYCoord >= 0) * (predRealXCoord < Predictions.shape[0]) * (predRealYCoord < Predictions.shape[1])
-            # #(zernikeValuesWindowSizeX/15 * zernikeValuesWindowSizeY/15 / (predRealCoordInside.sum()/10)) #10 is the number of predictions, 15 is the window size, only make as many predictions as there are 
-            scaler = 1                                                                                          #positions inside
+                
+
 
             for predXY in pred:
                 for xCircle in range(-1,2):
@@ -444,13 +445,14 @@ def CreatePredictions(resultVectorLength, model, PredShape, zernikeValuesUnspars
                         currentX = np.round(predXY[0]).astype(int)+xCircle
                         currentY = np.round(predXY[1]).astype(int)+yCircle
                         weight = 1 - np.min((np.square(predXY[0] - currentX) + np.square(predXY[1] - currentY), 1))
-                        currentNonRelX = indexX + currentX
-                        currentNonRelY = indexY + currentY
+                        currentNonRelX = indexX + nonPredictedBorderinCoordinates + currentX
+                        currentNonRelY = indexY + nonPredictedBorderinCoordinates + currentY
                         if currentNonRelX < 0 or currentNonRelX >= Predictions.shape[0] or currentNonRelY < 0 or currentNonRelY >= Predictions.shape[1]:
                         #skip if the predicted position is outside the sample
                             pass
                         else:
-                            Predictions[currentNonRelX, currentNonRelY] += weight
+
+                            Predictions[currentNonRelX, currentNonRelY] += weight #The reconstruction is transposed. This is adjusted later when plotting.
     return Predictions
 
 

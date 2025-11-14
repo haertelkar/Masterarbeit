@@ -67,7 +67,7 @@ from ZernikePolynomials import Zernike
 windowSizeInA = 3 # Size of the window in Angstroms
 numberOfAtomsInWindow = windowSizeInA**2
 pixelOutput = False
-FolderAppendix = "_0411_4to12s_0to150def_15B_230Z_OSA"#"_4sparse_noEB_-50def_20Z"
+FolderAppendix = "_1311_4to10s_0to100def_15B_90Z_OSA"#"_4sparse_noEB_-50def_20Z"
 #now Zernike moments don't start at 0,0
 
 
@@ -129,6 +129,62 @@ def MarcelsEx(xlen = None, ylen = None, xPos = None, yPos = None, zPos = None):
     orthogonal_atoms = moveAndRotateAtomsAndOrthogonalizeAndRepeat(double_walled_cnt,xPos, yPos, zPos, ortho=True, repeat=False)
     return orthogonal_atoms
 
+def grapheneAB(xlen = None, ylen = None, xPos = None, yPos = None, zPos = None) -> Atoms:
+    # Nach https://www.researchgate.net/figure/The-structure-diagram-of-stacked-and-twisted-bilayer-graphene-Reprinted-with-permission_fig2_382832342
+    # --- Parameters ---
+    C_C_BOND = 1.42      # C-C bond length (for shift vector)
+    LAYER_DIST = 3.35    # Typical AB stacking z-distance
+    final_cell_dim = 20.0
+    z_height = 15.0
+
+    # 1. Build the two layers separately (Unchanged)
+    layer1 = graphene(size=(12, 12, 1), vacuum=5.0)
+
+    layer2 = graphene(size=(12, 12, 1), vacuum=5.0)
+
+    # 2. Apply the AB stacking shift to layer 2
+    shift_vector = np.array([0, C_C_BOND, LAYER_DIST])
+    layer2.positions += shift_vector
+
+    # 3. Combine layers and set the final cell 
+    atoms = layer1 + layer2  # Combine the two Atoms objects
+
+    atoms.set_cell([final_cell_dim, final_cell_dim, z_height], scale_atoms=False)
+    atoms.set_pbc([True, True, False])
+    atoms.center()
+
+    # 4. Define defect parameters (Unchanged)
+    center_point = np.array([final_cell_dim / 2, final_cell_dim / 2]) # [10.0, 10.0]
+    big_hole_radius = 4.0
+
+    defect1_point = np.array([5.0, 15.0])
+    defect2_point = np.array([4.0, 4.0])
+    small_defect_radius = 1.5
+
+    # 5. Find and remove atoms to create holes and defects (Unchanged)
+    indices_to_delete = []
+    positions = atoms.get_positions()
+    initial_atom_count = len(atoms)
+
+    #find atoms to delete for defects
+    for i, pos in enumerate(positions):
+        pos_xy = pos[:2] 
+
+        if np.linalg.norm(pos_xy - center_point) < big_hole_radius:
+            indices_to_delete.append(i)
+            continue
+
+        if np.linalg.norm(pos_xy - defect1_point) < small_defect_radius:
+            indices_to_delete.append(i)
+            continue
+
+        if np.linalg.norm(pos_xy - defect2_point) < small_defect_radius:
+            indices_to_delete.append(i)
+
+    indices_to_delete = sorted(list(set(indices_to_delete)))
+    del atoms[indices_to_delete]
+    return atoms
+
 def grapheneC(xlen = None, ylen = None, xPos = None, yPos = None, zPos = None) -> Atoms:
     grapheneC = graphene()
     grapheneC_slab = moveAndRotateAtomsAndOrthogonalizeAndRepeat(grapheneC, xPos, yPos, zPos)
@@ -181,6 +237,7 @@ def createStructure(xlen, ylen, specificStructure : str = "random", trainOrTest 
         "MarcelsEx" : MarcelsEx,
         "grapheneC" : grapheneC,
         "emptySpace" : emptySpace,
+        "grapheneAB" : grapheneAB
     }
     if specificStructure != "random":
         if ".cif" in specificStructure:
@@ -227,11 +284,7 @@ def generateDiffractionArray(trainOrTest = None, conv_angle = 33, energy = 60e3,
     xlen_structure = ylen_structure = max(xlen_structure, ylen_structure) #make sure its square
     # print(f"Generating structure with xlen = {xlen_structure} and ylen = {ylen_structure} and start = {start} and end = {end} and nonPredictedBorderInA = {nonPredictedBorderInA}")
     # print(f"Calculating on {device}")
-    if structure == "emptySpace":
-        nameStruct = "emptySpace"
-        atomStruct = np.zeros(grid.shape)
-    else:
-        nameStruct, atomStruct = createStructure(xlen_structure, ylen_structure, specificStructure= structure, trainOrTest = trainOrTest, simple=simple, nonPredictedBorderInA = nonPredictedBorderInA, start=start)
+    nameStruct, atomStruct = createStructure(xlen_structure, ylen_structure, specificStructure= structure, trainOrTest = trainOrTest, simple=simple, nonPredictedBorderInA = nonPredictedBorderInA, start=start)
     try:
         potential_thick = Potential(
             atomStruct,
@@ -463,8 +516,8 @@ def saveAllPosDifPatterns(trainOrTest, numberOfPatterns, timeStamp, BFDdiameter,
         # print(measurement_thick.array.shape)
         # exit()
         if initialCoords is None:
-            sparseGridFactor = randint(4,12)
-            MaxShift = nonPredictedBorderInCoords + windowLengthinCoords//2  
+            sparseGridFactor = randint(4,10)
+            MaxShift = nonPredictedBorderInCoords + windowLengthinCoords  
             xShift = randint(-MaxShift, MaxShift)
             yShift = randint(-MaxShift, MaxShift)
             xStartShift = max(0, xShift)
@@ -637,7 +690,7 @@ if __name__ == "__main__":
     end = (start[0] + nonPredictedBorderInA * 2 + windowSizeInA , start[1] + nonPredictedBorderInA * 2 + windowSizeInA)
 
     numberOfPositionsInOneAngstrom = 5
-    defocus = [0,150] #in Angstroms
+    defocus = [0,100] #in Angstroms
     size = int((end[0] - start[0]) * numberOfPositionsInOneAngstrom)
     BFDdiameter = 18 #chosen on the upper end of the BFD diameters (like +4) to have a good margin
     assert(size % maxPooling == 0)

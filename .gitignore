@@ -216,3 +216,10 @@ ROPResults/*/*
 runs/detect/*/*
 runs/detect/*/*/*
 Yolo_Data/labels/*/*
+yolo11n copy.pt
+trained_YOLO copy.pt
+atoms copy.pt
+graphene_AB_with_defects.xyz
+graphene_with_defects.xyz
+grapheneWithHole.py
+TrainingBatchScript_FA_*ksamples.sh
